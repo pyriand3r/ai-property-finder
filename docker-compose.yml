@@ -19,19 +19,21 @@ services:
       # Exposed to the host so `psql -h localhost` works for local dev/tests
       # (Layer 0.1). Fine for a local-network-only app; drop this if the DB
       # should never be host-reachable.
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       # Postgres 18's image expects the volume at /var/lib/postgresql (not
       # .../data) — it manages the version-specific data subdirectory itself.
       - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d propertyfinder"]
+      test: ['CMD-SHELL', 'pg_isready -U app -d propertyfinder']
       interval: 5s
       timeout: 5s
       retries: 10
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     depends_on:
       db:
@@ -40,11 +42,11 @@ services:
       DATABASE_URL: postgres://app:${DB_PASSWORD}@db:5432/propertyfinder?sslmode=disable
       CLAUDE_API_KEY: ${CLAUDE_API_KEY}
     ports:
-      - "8080:8080"
+      - '8080:8080'
     volumes:
       - ./data:/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/health']
       interval: 10s
       timeout: 5s
       retries: 5

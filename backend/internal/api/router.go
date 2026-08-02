@@ -8,6 +8,7 @@ import (
 	"propertyfinder/internal/config"
 	"propertyfinder/internal/events"
 	"propertyfinder/internal/service"
+	"propertyfinder/internal/web"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -121,6 +122,10 @@ func (server *Server) Router() http.Handler {
 		r.Post("/images", server.image.Upload)
 		r.Delete("/images/{imageId}", server.image.Delete)
 	})
+
+	// Catch-all: embedded Vue SPA. Must be last — every /api/* and /media/*
+	// route above takes precedence.
+	router.HandleFunc("/*", web.SPAHandler)
 
 	return router
 }

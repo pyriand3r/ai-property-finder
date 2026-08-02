@@ -1,0 +1,18 @@
+import { createRouter, createWebHistory } from 'vue-router';
+
+export const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    {
+      path: '/',
+      name: 'profile-list',
+      component: () => import('@/views/ProfileListView.vue'),
+    },
+    {
+      path: '/profiles/:profileId',
+      name: 'profile-shell',
+      component: () => import('@/views/ProfileShellView.vue'),
+      props: true,
+    },
+  ],
+});

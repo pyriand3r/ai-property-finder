@@ -127,7 +127,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - **Test:** Nachricht senden → persistiert → Reload → noch da
   - **Test:** Zweite Session anlegen → alte hat `ended_at` gesetzt, beide in DB
 
-- [ ] **4.2 — Frontend-Skelett + Profil-Liste (Vue)**
+- [x] **4.2 — Frontend-Skelett + Profil-Liste (Vue)**
   - Scaffolding: Vite + TypeScript + Vue Router + Naive UI; Go embedt `dist/` (Single-Binary), Dev-Proxy auf `:8080`
   - `npm add -D oxlint oxfmt` — Configs (`.oxlintrc.json`, `.oxfmtrc.json`) liegen bereits im Repo-Root; npm-Scripts `lint`/`format`/`typecheck` anlegen. **Kein** ESLint/Prettier.
   - `ProfileListView.vue` — Liste, Archiv, Create/Rename/Archive
