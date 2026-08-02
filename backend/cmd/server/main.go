@@ -5,10 +5,11 @@
 //  2. Env config (DATABASE_URL required)
 //  3. pgxpool connect
 //  4. run pending migrations (forward-only; fail-fast on error)
-//  5. start HTTP server (GET /health)
+//  5. seed Tier 2 app_config from env (write-once; DB authoritative after)
+//  6. load Tier 2 app_config (llm.*)
+//  7. start HTTP server (GET /health, GET /api/config)
 //
-// Config bootstrap (app_config, Global Context seed) and the rest of the API
-// surface land in later layers.
+// The rest of the API surface lands in later layers.
 package main
 
 import (
@@ -59,7 +60,17 @@ func run() error {
 		return migrationError
 	}
 
-	router := api.NewRouter()
+	if seedError := config.SeedFromEnv(ctx, pool, envConfig.ClaudeAPIKey); seedError != nil {
+		return seedError
+	}
+	llmConfig, err := config.LoadAll(ctx, pool)
+	if err != nil {
+		return err
+	}
+	log.Printf("llm config resolved: provider=%s model=%q api_key_configured=%t",
+		llmConfig.Provider, llmConfig.Model, llmConfig.APIKey != "")
+
+	router := api.NewRouter(llmConfig)
 	server := &http.Server{
 		Addr:              envConfig.HTTPListenAddr,
 		Handler:           router,

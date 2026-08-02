@@ -4,16 +4,19 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"propertyfinder/internal/config"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
-// NewRouter builds the chi router. Layer 0 only wires the health check;
-// later layers add profile/listing/chat/context routes as those domains
-// land.
-func NewRouter() http.Handler {
+// NewRouter builds the chi router. Layer 0 wires health and the read-only
+// config endpoint; later layers add profile/listing/chat/context routes as
+// those domains land.
+func NewRouter(llmConfig config.LLM) http.Handler {
+	configHandler := &ConfigHandler{llm: llmConfig}
+
 	router := chi.NewRouter()
 	router.Use(chimw.RequestID)
 	router.Use(chimw.Logger)
@@ -21,6 +24,7 @@ func NewRouter() http.Handler {
 	router.Use(chimw.Timeout(60 * time.Second))
 
 	router.Get("/health", healthHandler)
+	router.Get("/api/config", configHandler.get)
 
 	return router
 }

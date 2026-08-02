@@ -27,7 +27,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - **Test:** `docker-compose up` → `curl localhost:8080/health` → `200 OK`
   - **Test:** `psql -h localhost -U app -d propertyfinder -c "\dt"` → alle Tabellen sichtbar
 
-- [ ] **0.2 — Go-Projektstruktur + Config**
+- [x] **0.2 — Go-Projektstruktur + Config**
   - `backend/` mit `go.mod` (Module-Pfad: `propertyfinder`), `cmd/server/main.go`
   - Linting: `backend/.golangci.yml` existiert bereits — `golangci-lint run` muss ab dem ersten Commit sauber durchlaufen
   - `internal/config/` — laedt `app_config` aus DB
