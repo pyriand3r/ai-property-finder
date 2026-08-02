@@ -41,7 +41,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
 
 ## Layer 1: Profil + Context + Kriterien (manuell, kein AI)
 
-- [ ] **1.1 — Search Profile CRUD**
+- [x] **1.1 — Search Profile CRUD**
   - Endpoints: `POST /api/profiles`, `GET /api/profiles`, `PATCH /api/profiles/{id}`, `DELETE /api/profiles/{id}`
   - `PATCH /api/profiles/{id}/archive` (setzt `archived_at`)
   - Beim Create: automatisch `chat_session` + leeren Profile-Context anlegen
@@ -49,14 +49,14 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - **Test:** `curl .../api/profiles` → zeigt "Schweden"
   - **Test:** `curl -X PATCH .../api/profiles/{id}/archive` → in DB `archived_at` gesetzt
 
-- [ ] **1.2 — Context Files (manuell editieren)**
+- [x] **1.2 — Context Files (manuell editieren)**
   - Endpoints: `GET /api/context/global`, `PUT /api/context/global`, `GET /api/profiles/{id}/context`, `PUT /api/profiles/{id}/context`
   - `context_revision`-Row bei jedem `PUT` schreiben (changed_by = 'user')
   - `GET /api/profiles/{id}/context/history` → Liste der Revisionen
   - **Test:** `curl -X PUT .../api/profiles/{id}/context -d '{"content_md":"Bei Booli: Makler-Link folgen"}'` → `200`
   - **Test:** `curl .../api/profiles/{id}/context/history` → eine Revision sichtbar
 
-- [ ] **1.3 — Criterion CRUD (manuell)**
+- [x] **1.3 — Criterion CRUD (manuell)**
   - Endpoints: `GET /api/profiles/{id}/criteria`, `POST /api/profiles/{id}/criteria`, `PATCH /api/criteria/{id}`, `DELETE /api/criteria/{id}`
   - Weight 1-5, Validierung
   - Kein LLM-Call — rein manuell
