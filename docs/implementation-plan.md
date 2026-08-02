@@ -110,7 +110,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - `POST /api/upload/pdf` — Multipart, max 32 MB, speichert Temp-Datei
   - **Test:** `curl -F "file=@listing.pdf" .../api/upload/pdf` → `201` mit Pfad
 
-- [ ] **3.4 — Geocoding (Nominatim)**
+- [x] **3.4 — Geocoding (Nominatim)**
   - `internal/geocode/nominatim.go` — HTTP GET
   - `GET /api/geocode?address=...&country=...` → `{"lat","lon","display_name"}`
   - Rate-Limiting: Mutex + Last-Call-Timestamp

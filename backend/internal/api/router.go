@@ -26,6 +26,7 @@ type Server struct {
 	events     *EventHandler
 	image      *ImageHandler
 	upload     *UploadHandler
+	geocode    *GeocodeHandler
 	dataDir    string
 }
 
@@ -46,6 +47,7 @@ func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provide
 		events:     &EventHandler{broker: broker},
 		image:      &ImageHandler{service: service.NewImageService(pool, dataDir)},
 		upload:     &UploadHandler{service: service.NewUploadService(dataDir)},
+		geocode:    &GeocodeHandler{},
 		dataDir:    dataDir,
 	}
 }
@@ -70,6 +72,7 @@ func (server *Server) Router() http.Handler {
 
 	timed.Get("/api/config", server.config.get)
 	timed.Post("/api/upload/pdf", server.upload.PDF)
+	timed.Get("/api/geocode", server.geocode.Get)
 
 	timed.Get("/api/context/global", server.context.GetGlobal)
 	timed.Put("/api/context/global", server.context.PutGlobal)
