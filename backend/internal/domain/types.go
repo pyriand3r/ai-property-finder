@@ -65,6 +65,17 @@ type CriterionScore struct {
 	Reasoning   string         `json:"reasoning"`
 }
 
+// ListingGrade is one row of the grade grid on the Listing Detail View
+// (spec 01-07 Layer 5.3) — a persisted Grade joined with its Criterion's
+// name for display. Unlike CriterionScore (the AI provider's transient
+// output shape), this is a read model over already-stored data.
+type ListingGrade struct {
+	CriterionID   uuid.UUID      `json:"criterion_id"`
+	CriterionName string         `json:"criterion_name"`
+	Grade         CriterionGrade `json:"grade"`
+	Reasoning     string         `json:"reasoning"`
+}
+
 // ListingStatus is the lifecycle state of a Listing (carried over from
 // dev-property-finder, unchanged — spec 01-07).
 type ListingStatus string

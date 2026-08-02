@@ -1,5 +1,6 @@
 import { http } from '@/api/http';
 
+import type { ListingGrade } from '@/types/grade';
 import type { CriterionGradeResult, Listing } from '@/types/listing';
 import type { Task } from '@/types/task';
 
@@ -52,4 +53,8 @@ export function evaluateListing(listingId: string) {
 
 export function reevaluateAll(profileId: string) {
   return http.post<Task>(`/api/profiles/${profileId}/listings/reevaluate-all`);
+}
+
+export function getListingGrades(listingId: string) {
+  return http.get<ListingGrade[]>(`/api/listings/${listingId}/grades`);
 }

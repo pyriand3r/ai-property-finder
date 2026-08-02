@@ -38,6 +38,12 @@ func NewEvaluationService(pool *pgxpool.Pool, provider ai.Provider, broker *even
 	return &EvaluationService{pool: pool, provider: provider, broker: broker}
 }
 
+// GetGrades returns a listing's current grade grid (spec 01-07 Layer 5.3)
+// — empty if it has never been evaluated.
+func (service *EvaluationService) GetGrades(ctx context.Context, listingID uuid.UUID) ([]domain.ListingGrade, error) {
+	return repository.NewGradeRepo(service.pool).ListByListing(ctx, listingID)
+}
+
 // EvaluateListing grades listingID against its profile's Criteria, replaces
 // its listing_criterion_grade rows, recomputes overall_score, and clears
 // needs_reevaluation — all in one transaction. Grades are mapped back to

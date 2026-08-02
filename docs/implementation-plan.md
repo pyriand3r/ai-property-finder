@@ -153,7 +153,7 @@ Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt
   - **Model:** Claude 3.5 Sonnet · GPT-4o-mini (Text-Generierung, kein Tool-Use — Haiku reicht fuer Kurztexte)
   - **Test:** Mehrere Listings → List View zeigt alle → Ranking View sortiert → "Rangliste aktualisieren" klicken → Kurzfazit-Texte + Gesamt-Summary erscheinen
 
-- [ ] **5.3 — Listing Detail View**
+- [x] **5.3 — Listing Detail View**
   - Form mit allen Feldern, `document_md` gerendert, Grade-Grid
   - `needs_reevaluation`-Badge + "Neu bewerten"-Button (2.2)
   - Status-Management (rejected mit Kommentar)

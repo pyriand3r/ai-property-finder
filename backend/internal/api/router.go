@@ -120,6 +120,7 @@ func (server *Server) Router() http.Handler {
 		r.Patch("/", server.listing.Update)
 		r.Delete("/", server.listing.Delete)
 		r.Post("/evaluate", server.evaluation.Evaluate)
+		r.Get("/grades", server.evaluation.GetGrades)
 
 		r.Get("/images", server.image.List)
 		r.Post("/images", server.image.Upload)

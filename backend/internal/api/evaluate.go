@@ -32,6 +32,21 @@ func (handler *EvaluationHandler) Evaluate(writer http.ResponseWriter, request *
 	writeJSON(writer, http.StatusOK, evaluateResponse{Listing: result.Listing, Grades: result.Grades})
 }
 
+// GetGrades handles GET /api/listings/{listingId}/grades.
+func (handler *EvaluationHandler) GetGrades(writer http.ResponseWriter, request *http.Request) {
+	id, ok := parseUUID(writer, request, "listingId")
+	if !ok {
+		return
+	}
+
+	grades, err := handler.service.GetGrades(request.Context(), id)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, grades)
+}
+
 // ReevaluateAll handles POST /api/profiles/{profileId}/listings/reevaluate-all.
 // Returns 202 immediately with the created task; progress streams over
 // GET /api/events (task.progress / task.finished).
