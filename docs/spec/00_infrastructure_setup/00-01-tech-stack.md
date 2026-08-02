@@ -7,7 +7,7 @@ spec: tech-stack
 phase: 0
 order: 1
 status: ready
-updated: 2026-07-28
+updated: 2026-08-02
 tags:
   - property-finder-obs-style
   - spec
@@ -40,6 +40,7 @@ Single-user, self-hosted client-server web app, no authentication, Docker Compos
 | AI                  | Claude API, agentic tool use + native PDF input | Primary and only supported provider for MVP. LM Studio and OpenCode are planned swap targets behind the same provider interface, deferred post-MVP — see [[00-03-llm-agent-integration#Provider Abstraction]] and [[../../docs/adr/0006-single-provider-for-agent-mvp]] |
 | Page fetching       | `net/http` GET + Readability-style text extraction | `chromedp` (headless Chrome) reserved for post-MVP when a site demonstrably needs JS rendering. MVP uses plain HTTP — faster, no Chrome container needed. |
 | Deployment          | Docker Compose                          | Two services: backend (+ embedded frontend, serves `/media/` from `/data/` volume) + PostgreSQL. No Chrome container (chromedp deferred post-MVP). |
+| Lint / Format       | `golangci-lint` v2 (backend) · `oxlint` + `oxfmt` (frontend) | New: see [[#Code Quality — Lint & Format]] |
 
 ---
 
@@ -108,6 +109,58 @@ Same stack as dev-property-finder, plus:
 | `useChatStream` composable | SSE consumption for chat-specific event types, analogous to the existing task-event composable |
 
 Layout: Chat view sits alongside List/Ranking/Map for a Search Profile, not instead of them — see [[../01_mvp/01-01-chat-interface]].
+
+---
+
+## Code Quality — Lint & Format
+
+Both sides use a single-binary, config-file-driven toolchain. No linter runs inside Docker; these are developer-machine and CI tools.
+
+| Side | Tool | Role | Config |
+|---|---|---|---|
+| Backend | `golangci-lint` v2 | Lint **and** format (`gofumpt` + `goimports` run as v2 *formatters*) | `backend/.golangci.yml` |
+| Frontend | `oxlint` | Lint (correctness/suspicious/perf categories, `vue` + `typescript` plugins) | `.oxlintrc.json` (repo root) |
+| Frontend | `oxfmt` | Format (Prettier-compatible, formats `.vue` SFCs, TS, JSON, CSS) | `.oxfmtrc.json` (repo root) |
+| Frontend | `vue-tsc` | Type check — neither oxlint nor oxfmt is type-aware | `tsconfig.json` |
+
+### Backend — golangci-lint
+
+Config uses the **v2 schema** (`version: "2"`), where formatters live in their own `formatters:` block rather than as linters. Beyond the default set (`errcheck`, `govet`, `ineffassign`, `staticcheck`, `unused`) the enabled linters are chosen for this app's shape:
+
+- **HTTP-client-heavy** (`fetch/`, `geocode/`, `agent/provider/claude/`): `bodyclose`, `noctx`, `contextcheck`
+- **SQL/pgx**: `rowserrcheck`, `sqlclosecheck`
+- **Error wrapping** (relevant to LLM-response robustness): `errorlint`, `errname`, `nilerr`, `nilnesserr`
+- **Filesystem/`/data/` handling**: `gosec`
+- **Quality**: `gocritic`, `modernize`, `revive`, `unparam`, `unconvert`, `wastedassign`, `misspell`, `nolintlint`
+
+Deliberately **not** enabled: `lll`, `funlen`, `mnd`, `varnamelen`, `wsl`, `nlreturn`, `exhaustruct`, `gochecknoglobals`, `wrapcheck`, `ireturn` — style-opinionated, high noise, low signal for a single-developer project.
+
+`goimports.local-prefixes` is set to `propertyfinder`, which **must** match the `module` line in `backend/go.mod`.
+
+```bash
+golangci-lint run          # lint
+golangci-lint fmt          # format
+golangci-lint run --fix    # lint + autofix
+```
+
+Install: `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest` (or Homebrew).
+
+### Frontend — oxlint + oxfmt
+
+Both are Rust binaries from the [Oxc](https://oxc.rs) project, installed as npm devDependencies. `oxfmt` replaces Prettier (Prettier configs are compatible, `oxfmt --migrate prettier` exists); `oxlint` replaces ESLint for the rule categories it covers.
+
+```bash
+npm add -D oxlint oxfmt
+
+npx oxlint          # lint
+npx oxfmt           # format in place
+npx oxfmt --check   # CI: fail on unformatted files
+npx vue-tsc --noEmit  # type check
+```
+
+Both root configs carry `ignorePatterns` excluding `backend/`, `docs/`, `data/`, `dist/`, and `node_modules/` — oxfmt otherwise reformats the Markdown specs and the backend YAML. Config discovery walks *up* the directory tree, so the root placement works whether the frontend ends up at the repo root or in a `frontend/` subdirectory.
+
+Known rough edge: `singleQuote` is not yet applied inside `.vue` script blocks ([oxc#17749](https://github.com/oxc-project/oxc/issues/17749)). Cosmetic; does not affect correctness.
 
 ---
 

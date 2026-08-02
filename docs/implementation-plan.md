@@ -28,7 +28,8 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - **Test:** `psql -h localhost -U app -d propertyfinder -c "\dt"` → alle Tabellen sichtbar
 
 - [ ] **0.2 — Go-Projektstruktur + Config**
-  - `backend/` mit `go.mod`, `cmd/server/main.go`
+  - `backend/` mit `go.mod` (Module-Pfad: `propertyfinder`), `cmd/server/main.go`
+  - Linting: `backend/.golangci.yml` existiert bereits — `golangci-lint run` muss ab dem ersten Commit sauber durchlaufen
   - `internal/config/` — laedt `app_config` aus DB
   - `internal/db/` — Verbindungspool, Migration-Runner
   - API-Router (chi) mit `/health`
@@ -128,6 +129,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
 
 - [ ] **4.2 — Frontend-Skelett + Profil-Liste (Vue)**
   - Scaffolding: Vite + TypeScript + Vue Router + Naive UI; Go embedt `dist/` (Single-Binary), Dev-Proxy auf `:8080`
+  - `npm add -D oxlint oxfmt` — Configs (`.oxlintrc.json`, `.oxfmtrc.json`) liegen bereits im Repo-Root; npm-Scripts `lint`/`format`/`typecheck` anlegen. **Kein** ESLint/Prettier.
   - `ProfileListView.vue` — Liste, Archiv, Create/Rename/Archive
   - Klick auf Profil → Profil-Shell mit Tab-Strip (Platzhalter-Tabs)
   - **Test:** Browser → Profil anlegen → anklicken → Profil-Shell erscheint

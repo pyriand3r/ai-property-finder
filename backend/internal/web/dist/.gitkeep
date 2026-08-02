@@ -1,0 +1,5 @@
+# Placeholder.
+#
+# `npm run build` writes the frontend bundle here and `internal/web` embeds it via go:embed.
+# go:embed fails at compile time if the directory does not exist, so this file is committed
+# while everything else in the directory is gitignored (see /.gitignore).

@@ -1,0 +1,146 @@
+# golangci-lint v2 configuration — property-finder-obs-style backend
+# Run:  golangci-lint run          (lint)
+#       golangci-lint fmt          (format)
+#       golangci-lint run --fix    (lint + autofix what can be autofixed)
+version: "2"
+
+run:
+  timeout: 5m
+  # Lint test files too — they hit the DB and the HTTP layer, same bug classes apply.
+  tests: true
+
+linters:
+  # Default set (errcheck, govet, ineffassign, staticcheck, unused) plus the ones below.
+  enable:
+    # --- correctness ---
+    - bodyclose # HTTP client is everywhere: fetch/, geocode/, agent/provider/claude/
+    - contextcheck # non-inherited context in request paths
+    - errorlint # %w / errors.Is / errors.As correctness
+    - errname # sentinel errors are ErrX, error types are XError
+    - nilerr # `if err != nil { return nil }`
+    - nilnesserr # returns a *different* nil error than the one checked
+    - noctx # HTTP requests without context — matters for SSE cancellation
+    - rowserrcheck # pgx/database/sql: Rows.Err() unchecked
+    - sqlclosecheck # Rows/Stmt not closed
+    - copyloopvar # redundant loop-var copies (Go 1.22+ semantics)
+    - reassign # package-level var reassigned from another package
+
+    # --- security ---
+    - gosec # path traversal in /data/ handling, weak rand, unchecked file perms
+
+    # --- quality / modernization ---
+    - gocritic
+    - modernize # suggests current stdlib/language constructs
+    - intrange # `for i := range n`
+    - unconvert
+    - unparam
+    - usestdlibvars # http.MethodGet instead of "GET"
+    - usetesting # t.Context(), t.TempDir(), t.Setenv()
+    - wastedassign
+    - misspell
+    - revive # golint successor, config below
+    - nolintlint # //nolint must be specific and explained
+
+  settings:
+    errcheck:
+      # Deferred Close on read-only handles is idiomatic to ignore.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*database/sql.Rows).Close
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - hugeParam # pointer-vs-value is a deliberate call in repositories
+        - rangeValCopy
+
+    gosec:
+      excludes:
+        - G104 # duplicate of errcheck
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # readability of DB structs beats a few padding bytes
+
+    misspell:
+      locale: US
+      # Domain vocabulary and German UI strings live in this codebase.
+      ignore-rules:
+        - kappmuren
+        - makler
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+          disabled: true # internal packages don't need doc comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+
+    staticcheck:
+      checks:
+        - all
+        - -ST1000 # package comment required
+        - -ST1003 # naming conventions — revive's var-naming covers this
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+      - legacy
+    rules:
+      # Tests may take shortcuts that production code may not.
+      - path: _test\.go
+        linters:
+          - bodyclose
+          - errcheck
+          - gosec
+          - noctx
+          - unparam
+      # Migration files embed long SQL strings.
+      - path: internal/db/migrations/
+        linters:
+          - gosec
+          - misspell
+
+formatters:
+  enable:
+    - gofumpt # stricter gofmt
+    - goimports # import grouping + removal
+  settings:
+    goimports:
+      # Must match the `module` line in backend/go.mod.
+      local-prefixes:
+        - propertyfinder
+  exclusions:
+    paths:
+      - internal/web/dist
