@@ -15,14 +15,14 @@ type configResponse struct {
 
 type llmConfigResponse struct {
 	Provider            string `json:"provider"`
-	BaseURL             string `json:"baseUrl"`
+	BaseURL             string `json:"base_url"`
 	Model               string `json:"model"`
-	TimeoutSeconds      int    `json:"timeoutSeconds"`
-	MaxRetries          int    `json:"maxRetries"`
-	MaxToolCallsPerTurn int    `json:"maxToolCallsPerTurn"`
-	MaxLLMRoundtrips    int    `json:"maxLlmRoundtrips"`
-	ReasoningLanguage   string `json:"reasoningLanguage"`
-	APIKeyConfigured    bool   `json:"apiKeyConfigured"`
+	TimeoutSeconds      int    `json:"timeout_seconds"`
+	MaxRetries          int    `json:"max_retries"`
+	MaxToolCallsPerTurn int    `json:"max_tool_calls_per_turn"`
+	MaxLLMRoundtrips    int    `json:"max_llm_roundtrips"`
+	ReasoningLanguage   string `json:"reasoning_language"`
+	APIKeyConfigured    bool   `json:"api_key_configured"`
 }
 
 // ConfigHandler serves the resolved Tier-2 app configuration.

@@ -17,26 +17,26 @@ type SearchProfile struct {
 	ID             uuid.UUID  `json:"id"`
 	Name           string     `json:"name"`
 	Description    string     `json:"description"`
-	ArchivedAt     *time.Time `json:"archivedAt,omitempty"`
-	RankingSummary *string    `json:"rankingSummary,omitempty"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
+	ArchivedAt     *time.Time `json:"archived_at,omitempty"`
+	RankingSummary *string    `json:"ranking_summary,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 // Criterion is a single evaluable dimension of a Listing (spec 01-04).
 // IsSubjective mirrors the criterion.is_subjective DB column directly —
-// deliberately not inverted to an "isObjective" wire field, to avoid a
+// deliberately not inverted to an "is_objective" wire field, to avoid a
 // double-negative source of bugs between API and storage.
 type Criterion struct {
 	ID           uuid.UUID `json:"id"`
-	ProfileID    uuid.UUID `json:"profileId"`
+	ProfileID    uuid.UUID `json:"profile_id"`
 	Name         string    `json:"name"`
 	Description  string    `json:"description"`
 	Weight       int       `json:"weight"`
-	IsSubjective bool      `json:"isSubjective"`
-	SortOrder    int       `json:"sortOrder"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	IsSubjective bool      `json:"is_subjective"`
+	SortOrder    int       `json:"sort_order"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // ContextScope distinguishes the single Global Context from a per-profile
@@ -55,10 +55,10 @@ const (
 type Context struct {
 	ID        uuid.UUID    `json:"id"`
 	Scope     ContextScope `json:"scope"`
-	ProfileID *uuid.UUID   `json:"profileId,omitempty"`
-	ContentMD string       `json:"contentMd"`
-	CreatedAt time.Time    `json:"createdAt"`
-	UpdatedAt time.Time    `json:"updatedAt"`
+	ProfileID *uuid.UUID   `json:"profile_id,omitempty"`
+	ContentMD string       `json:"content_md"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
 }
 
 // ChangedBy identifies who produced a ContextRevision.
@@ -74,11 +74,11 @@ const (
 // the change, not a diff (spec 00-02).
 type ContextRevision struct {
 	ID            uuid.UUID  `json:"id"`
-	ContextID     uuid.UUID  `json:"contextId"`
-	ContentMD     string     `json:"contentMd"`
-	ChangedBy     ChangedBy  `json:"changedBy"`
-	ChatMessageID *uuid.UUID `json:"chatMessageId,omitempty"`
-	CreatedAt     time.Time  `json:"createdAt"`
+	ContextID     uuid.UUID  `json:"context_id"`
+	ContentMD     string     `json:"content_md"`
+	ChangedBy     ChangedBy  `json:"changed_by"`
+	ChatMessageID *uuid.UUID `json:"chat_message_id,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 // ── Domain Errors ───────────────────────────────────────────────────────

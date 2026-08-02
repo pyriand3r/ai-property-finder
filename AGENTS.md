@@ -128,6 +128,15 @@ npx vue-tsc --noEmit        # type check (oxlint is not type-aware)
 Never commit `.env` (holds `DB_PASSWORD` and `CLAUDE_API_KEY`) or `/data/` (Docker volume: uploaded
 PDFs and listing images).
 
+## Naming Convention: snake_case on the wire
+
+DB columns, Go JSON struct tags, and REST request/response field names are all `snake_case` —
+e.g. `content_md`, `is_subjective`, `archived_at`. This applies to the backend API surface only.
+
+Frontend TypeScript/JS **variables** stay `camelCase` per normal JS convention (`const isSubjective
+= data.is_subjective`) — only the wire format (JSON field names, DB columns) is snake_case, not
+in-memory variable names once the frontend deserializes a response.
+
 ## Database
 
 - Schema: `docs/spec/00_infrastructure_setup/00-02-database-schema.md`

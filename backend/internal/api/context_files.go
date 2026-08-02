@@ -23,7 +23,7 @@ func (handler *ContextHandler) GetGlobal(writer http.ResponseWriter, request *ht
 // PutGlobal handles PUT /api/context/global.
 func (handler *ContextHandler) PutGlobal(writer http.ResponseWriter, request *http.Request) {
 	var body struct {
-		ContentMD string `json:"contentMd"`
+		ContentMD string `json:"content_md"`
 	}
 	if !decodeJSON(writer, request, &body) {
 		return
@@ -60,7 +60,7 @@ func (handler *ContextHandler) PutProfile(writer http.ResponseWriter, request *h
 	}
 
 	var body struct {
-		ContentMD string `json:"contentMd"`
+		ContentMD string `json:"content_md"`
 	}
 	if !decodeJSON(writer, request, &body) {
 		return

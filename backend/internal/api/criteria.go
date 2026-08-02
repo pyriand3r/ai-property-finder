@@ -38,7 +38,7 @@ func (handler *CriterionHandler) Create(writer http.ResponseWriter, request *htt
 		Name         string `json:"name"`
 		Description  string `json:"description"`
 		Weight       *int   `json:"weight,omitempty"`
-		IsSubjective bool   `json:"isSubjective"`
+		IsSubjective bool   `json:"is_subjective"`
 	}
 	if !decodeJSON(writer, request, &body) {
 		return
@@ -68,7 +68,7 @@ func (handler *CriterionHandler) Update(writer http.ResponseWriter, request *htt
 		Name         *string `json:"name,omitempty"`
 		Description  *string `json:"description,omitempty"`
 		Weight       *int    `json:"weight,omitempty"`
-		IsSubjective *bool   `json:"isSubjective,omitempty"`
+		IsSubjective *bool   `json:"is_subjective,omitempty"`
 	}
 	if !decodeJSON(writer, request, &body) {
 		return
