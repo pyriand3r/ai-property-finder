@@ -32,6 +32,9 @@ type ListingRepository interface {
 	// in profileID. Used on any Criteria change other than weight-only
 	// (add, remove, or a name/description/is_subjective edit).
 	FlagNeedsReevaluation(ctx context.Context, profileID uuid.UUID) error
+	// ClearNeedsReevaluation sets needs_reevaluation = false on a single
+	// listing. Used after a successful evaluate_listing call (spec 01-04).
+	ClearNeedsReevaluation(ctx context.Context, listingID uuid.UUID) error
 }
 
 // ListingRepo is the pgx-backed implementation of ListingRepository.
@@ -209,6 +212,14 @@ func (repo *ListingRepo) FlagNeedsReevaluation(ctx context.Context, profileID uu
 	const query = `UPDATE listing SET needs_reevaluation = true, updated_at = NOW() WHERE profile_id = $1`
 	if _, err := repo.db.Exec(ctx, query, profileID); err != nil {
 		return fmt.Errorf("listing flag needs_reevaluation: %w", err)
+	}
+	return nil
+}
+
+func (repo *ListingRepo) ClearNeedsReevaluation(ctx context.Context, listingID uuid.UUID) error {
+	const query = `UPDATE listing SET needs_reevaluation = false, updated_at = NOW() WHERE id = $1`
+	if _, err := repo.db.Exec(ctx, query, listingID); err != nil {
+		return fmt.Errorf("listing clear needs_reevaluation: %w", err)
 	}
 	return nil
 }

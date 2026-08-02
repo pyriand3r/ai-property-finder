@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"propertyfinder/internal/ai"
 	"propertyfinder/internal/api"
 	"propertyfinder/internal/config"
 	"propertyfinder/internal/db"
@@ -70,7 +71,20 @@ func run() error {
 	log.Printf("llm config resolved: provider=%s model=%q api_key_configured=%t",
 		llmConfig.Provider, llmConfig.Model, llmConfig.APIKey != "")
 
-	router := api.NewServer(pool, llmConfig, envConfig.DataDir).Router()
+	provider, err := ai.NewProvider(ai.Config{
+		Provider:          llmConfig.Provider,
+		APIKey:            llmConfig.APIKey,
+		BaseURL:           llmConfig.BaseURL,
+		Model:             llmConfig.Model,
+		TimeoutSeconds:    llmConfig.TimeoutSeconds,
+		MaxRetries:        llmConfig.MaxRetries,
+		ReasoningLanguage: llmConfig.ReasoningLanguage,
+	})
+	if err != nil {
+		return err
+	}
+
+	router := api.NewServer(pool, llmConfig, envConfig.DataDir, provider).Router()
 	server := &http.Server{
 		Addr:              envConfig.HTTPListenAddr,
 		Handler:           router,

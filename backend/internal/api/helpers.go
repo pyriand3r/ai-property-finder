@@ -31,6 +31,7 @@ func writeError(writer http.ResponseWriter, err error) {
 	var validationError *domain.ValidationError
 	var notFoundError *domain.NotFoundError
 	var conflictError *domain.ConflictError
+	var upstreamError *domain.UpstreamError
 
 	switch {
 	case errors.As(err, &validationError):
@@ -39,6 +40,8 @@ func writeError(writer http.ResponseWriter, err error) {
 		writeJSON(writer, http.StatusNotFound, apiError{Error: notFoundError.Error()})
 	case errors.As(err, &conflictError):
 		writeJSON(writer, http.StatusConflict, apiError{Error: conflictError.Message})
+	case errors.As(err, &upstreamError):
+		writeJSON(writer, http.StatusBadGateway, apiError{Error: upstreamError.Message})
 	case isUniqueViolation(err):
 		// A unique constraint fired despite the service's pre-check (a race
 		// between two concurrent creates) — surface it as a 409, not a 500.

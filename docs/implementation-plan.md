@@ -76,7 +76,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - **Test:** `curl -X POST .../api/profiles/{id}/listings -d '{"title":"Kappmuren 2","price":310000}'` → `201`
   - **Test:** `curl -X PATCH .../api/listings/{id} -d '{"price":305000}'` → DB: `needs_reevaluation = true`, `user_confirmed_fields = {price}`
 
-- [ ] **2.2 — evaluate_listing (Single-Shot-LLM-Call)**
+- [x] **2.2 — evaluate_listing (Single-Shot-LLM-Call)** — code complete, unit-tested; live Claude API call not yet run (no key in dev sandbox) — verify with `POST /api/listings/{id}/evaluate` once `CLAUDE_API_KEY`/`llm.model` are set
   - `POST /api/listings/{id}/evaluate` — kein Agent, kein Tool-Use
   - Prompt: Criterion-Liste + Listing-Daten → Grades mit Reasoning + Score
   - Provider-Interface wie dev-property-finder: `Evaluate(ctx, criteria, listing) -> ([]Grade, score, error)`

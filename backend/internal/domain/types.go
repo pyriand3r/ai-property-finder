@@ -39,6 +39,31 @@ type Criterion struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// CriterionGrade is the A-F letter mark the AI assigns to one Criterion for
+// one Listing (carried over from dev-property-finder, unchanged — spec
+// 01-04). A = best fit, F = worst fit.
+type CriterionGrade string
+
+const (
+	GradeA CriterionGrade = "A"
+	GradeB CriterionGrade = "B"
+	GradeC CriterionGrade = "C"
+	GradeD CriterionGrade = "D"
+	GradeE CriterionGrade = "E"
+	GradeF CriterionGrade = "F"
+)
+
+// CriterionScore is the per-Criterion result returned by the AI provider:
+// an ordered (by position) Grade plus reasoning (spec 01-04, ADR 0006 —
+// mapped by position, never by an ID the model echoes back). Index is
+// backend-only bookkeeping, not part of the wire response.
+type CriterionScore struct {
+	Index       int            `json:"-"`
+	CriterionID uuid.UUID      `json:"criterion_id"`
+	Grade       CriterionGrade `json:"grade"`
+	Reasoning   string         `json:"reasoning"`
+}
+
 // ListingStatus is the lifecycle state of a Listing (carried over from
 // dev-property-finder, unchanged — spec 01-07).
 type ListingStatus string
@@ -174,3 +199,12 @@ type ConflictError struct {
 }
 
 func (err *ConflictError) Error() string { return err.Message }
+
+// UpstreamError signals 502 Bad Gateway — a downstream service (the LLM
+// provider) failed transiently. Distinct from ValidationError: the request
+// itself was well-formed, retrying later may succeed.
+type UpstreamError struct {
+	Message string `json:"message"`
+}
+
+func (err *UpstreamError) Error() string { return err.Message }

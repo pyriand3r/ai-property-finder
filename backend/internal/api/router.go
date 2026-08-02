@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"propertyfinder/internal/ai"
 	"propertyfinder/internal/config"
 	"propertyfinder/internal/service"
 	"time"
@@ -15,23 +16,26 @@ import (
 
 // Server wraps the chi router and the configured handlers.
 type Server struct {
-	config    *ConfigHandler
-	profile   *ProfileHandler
-	context   *ContextHandler
-	criterion *CriterionHandler
-	listing   *ListingHandler
+	config     *ConfigHandler
+	profile    *ProfileHandler
+	context    *ContextHandler
+	criterion  *CriterionHandler
+	listing    *ListingHandler
+	evaluation *EvaluationHandler
 }
 
 // NewServer constructs the API server, wiring handlers to services backed
 // by pool. dataDir is the image storage volume root (ADR 0012), used by the
-// listing service to clean up files on delete.
-func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string) *Server {
+// listing service to clean up files on delete. provider is the resolved
+// single-shot LLM provider (internal/ai) used by evaluate_listing.
+func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provider ai.Provider) *Server {
 	return &Server{
-		config:    &ConfigHandler{llm: llmConfig},
-		profile:   &ProfileHandler{service: service.NewProfileService(pool)},
-		context:   &ContextHandler{service: service.NewContextService(pool)},
-		criterion: &CriterionHandler{service: service.NewCriterionService(pool)},
-		listing:   &ListingHandler{service: service.NewListingService(pool, dataDir)},
+		config:     &ConfigHandler{llm: llmConfig},
+		profile:    &ProfileHandler{service: service.NewProfileService(pool)},
+		context:    &ContextHandler{service: service.NewContextService(pool)},
+		criterion:  &CriterionHandler{service: service.NewCriterionService(pool)},
+		listing:    &ListingHandler{service: service.NewListingService(pool, dataDir)},
+		evaluation: &EvaluationHandler{service: service.NewEvaluationService(pool, provider)},
 	}
 }
 
@@ -79,6 +83,7 @@ func (server *Server) Router() http.Handler {
 		r.Get("/", server.listing.Get)
 		r.Patch("/", server.listing.Update)
 		r.Delete("/", server.listing.Delete)
+		r.Post("/evaluate", server.evaluation.Evaluate)
 	})
 
 	return router
