@@ -106,7 +106,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - Erstes Image-Upload: `title_image_id` automatisch setzen
   - **Test:** Zwei Bilder hochladen → `title_image_id` auf erstes → per PATCH auf zweites wechseln
 
-- [ ] **3.3 — PDF Upload**
+- [x] **3.3 — PDF Upload**
   - `POST /api/upload/pdf` — Multipart, max 32 MB, speichert Temp-Datei
   - **Test:** `curl -F "file=@listing.pdf" .../api/upload/pdf` → `201` mit Pfad
 

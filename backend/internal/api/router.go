@@ -25,6 +25,7 @@ type Server struct {
 	evaluation *EvaluationHandler
 	events     *EventHandler
 	image      *ImageHandler
+	upload     *UploadHandler
 	dataDir    string
 }
 
@@ -44,6 +45,7 @@ func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provide
 		evaluation: &EvaluationHandler{service: service.NewEvaluationService(pool, provider, broker)},
 		events:     &EventHandler{broker: broker},
 		image:      &ImageHandler{service: service.NewImageService(pool, dataDir)},
+		upload:     &UploadHandler{service: service.NewUploadService(dataDir)},
 		dataDir:    dataDir,
 	}
 }
@@ -67,6 +69,7 @@ func (server *Server) Router() http.Handler {
 	})
 
 	timed.Get("/api/config", server.config.get)
+	timed.Post("/api/upload/pdf", server.upload.PDF)
 
 	timed.Get("/api/context/global", server.context.GetGlobal)
 	timed.Put("/api/context/global", server.context.PutGlobal)
