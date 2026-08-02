@@ -5,6 +5,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -226,6 +227,47 @@ type ContextRevision struct {
 	ChangedBy     ChangedBy  `json:"changed_by"`
 	ChatMessageID *uuid.UUID `json:"chat_message_id,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
+}
+
+// ChatSession is one conversation thread for a Search Profile. A profile
+// owns exactly one *active* session (ended_at IS NULL) at a time; starting
+// a new one ends the previous — the old session becomes read-only history
+// (spec 01-01, Layer 4.1). The first session is created alongside the
+// profile itself (Layer 1.1).
+type ChatSession struct {
+	ID                 uuid.UUID  `json:"id"`
+	ProfileID          uuid.UUID  `json:"profile_id"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	EndedAt            *time.Time `json:"ended_at,omitempty"`
+	TokenCountEstimate *int       `json:"token_count_estimate,omitempty"`
+}
+
+// ChatRole distinguishes who/what produced a ChatMessage.
+type ChatRole string
+
+const (
+	ChatRoleUser      ChatRole = "user"
+	ChatRoleAssistant ChatRole = "assistant"
+	ChatRoleTool      ChatRole = "tool"
+)
+
+// ChatMessage is one turn in a ChatSession. Layer 4.1 only ever writes
+// role=user rows (no Agent yet, spec 01-04 Layer 4.1: "nur
+// User-Nachrichten, noch kein Agent") — ToolCalls/ToolResult/ToolName
+// exist on the type now because the column does, but stay unset until the
+// Agent loop lands (Layer 6).
+type ChatMessage struct {
+	ID             uuid.UUID       `json:"id"`
+	SessionID      uuid.UUID       `json:"session_id"`
+	Role           ChatRole        `json:"role"`
+	Content        string          `json:"content"`
+	ToolCalls      json.RawMessage `json:"tool_calls,omitempty"`
+	ToolResult     json.RawMessage `json:"tool_result,omitempty"`
+	ToolName       *string         `json:"tool_name,omitempty"`
+	AttachmentPath *string         `json:"attachment_path,omitempty"`
+	ListingID      *uuid.UUID      `json:"listing_id,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
 }
 
 // ── Domain Errors ───────────────────────────────────────────────────────

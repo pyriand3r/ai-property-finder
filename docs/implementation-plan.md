@@ -120,7 +120,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
 
 ## Layer 4: Chat-Basis + Frontend-Skelett
 
-- [ ] **4.1 — Chat Session + Message Persistence**
+- [x] **4.1 — Chat Session + Message Persistence**
   - Session-CRUD, Message-CRUD (nur User-Nachrichten, noch kein Agent)
   - `POST /api/profiles/{id}/chat/sessions/{sid}/messages` speichert nur
   - `POST /api/profiles/{id}/chat/sessions` legt neue Session an: alte Session bekommt `ended_at` gesetzt (read-only), neue Row ist aktiv
