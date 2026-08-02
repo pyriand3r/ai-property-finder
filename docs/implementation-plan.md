@@ -76,7 +76,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - **Test:** `curl -X POST .../api/profiles/{id}/listings -d '{"title":"Kappmuren 2","price":310000}'` → `201`
   - **Test:** `curl -X PATCH .../api/listings/{id} -d '{"price":305000}'` → DB: `needs_reevaluation = true`, `user_confirmed_fields = {price}`
 
-- [x] **2.2 — evaluate_listing (Single-Shot-LLM-Call)** — code complete, unit-tested; live Claude API call not yet run (no key in dev sandbox) — verify with `POST /api/listings/{id}/evaluate` once `CLAUDE_API_KEY`/`llm.model` are set
+- [x] **2.2 — evaluate_listing (Single-Shot-LLM-Call)** — verified with one live Claude API call (`claude-sonnet-5`): real Grade A + German reasoning, `overall_score` computed, `listing_criterion_grade` row persisted
   - `POST /api/listings/{id}/evaluate` — kein Agent, kein Tool-Use
   - Prompt: Criterion-Liste + Listing-Daten → Grades mit Reasoning + Score
   - Provider-Interface wie dev-property-finder: `Evaluate(ctx, criteria, listing) -> ([]Grade, score, error)`
@@ -84,7 +84,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - **Model:** Claude 3.5 Sonnet · GPT-4o-mini (Single-Shot, strukturiertes JSON — Haiku wuerde reichen, aber Sonnet ist sicherer bei Edge-Cases)
   - **Test:** Criterion anlegen (1.3), Listing anlegen (2.1), `curl -X POST .../api/listings/{id}/evaluate` → DB: `overall_score > 0`, `listing_criterion_grade`-Rows existieren
 
-- [x] **2.3 — needs_reevaluation + Bulk-Trigger** — SSE/task plumbing fully verified; the underlying LLM scoring itself has the same caveat as 2.2 (no `CLAUDE_API_KEY` in dev sandbox)
+- [x] **2.3 — needs_reevaluation + Bulk-Trigger**
   - `GET /api/profiles/{id}/listings?needs_reevaluation=true` → nur stale Listings
   - `POST /api/profiles/{id}/listings/reevaluate-all` → sequenzielle Goroutine, SSE-Stream (Task-SSE-Plumbing, wird in 6.3 fuer Chat-SSE wiederverwendet)
   - **Test:** Criterion-Beschreibung aendern → `needs_reevaluation = true` auf allen Listings → `curl .../reevaluate-all` → SSE-Stream zeigt Fortschritt → Scores aktualisiert
