@@ -4,6 +4,7 @@ import { onMounted, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { getProfile } from '@/api/profiles';
+import CriteriaEditor from '@/components/criteria/CriteriaEditor.vue';
 
 import type { Profile } from '@/types/profile';
 
@@ -30,10 +31,10 @@ onMounted(async () => {
         <NEmpty description="Chat kommt in Layer 6" />
       </NTabPane>
       <NTabPane name="context" tab="Context">
-        <NEmpty description="Context-Editor kommt in Layer 5" />
+        <NEmpty description="Context-Editor kommt in Layer 7" />
       </NTabPane>
       <NTabPane name="criteria" tab="Kriterien">
-        <NEmpty description="Kriterien-Verwaltung kommt in Layer 5" />
+        <CriteriaEditor :profile-id="profileId" />
       </NTabPane>
       <NTabPane name="listings" tab="Inserate">
         <NEmpty description="Listen-/Karten-Ansicht kommt in Layer 5" />

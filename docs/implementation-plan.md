@@ -140,7 +140,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
 
 Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt nur die fertigen REST-APIs aus Layer 1-3.
 
-- [ ] **5.1 — Criterion Editor**
+- [x] **5.1 — Criterion Editor**
   - Liste aller Criteria mit Weight-Slider, Add/Edit/Delete
   - Weight-Aenderung → Scores aktualisieren sofort (SQL-Recompute), kein Banner
   - Andere Aenderungen → Banner "N Inserate neu bewerten" + "Alle neu bewerten"-Button (2.3)
