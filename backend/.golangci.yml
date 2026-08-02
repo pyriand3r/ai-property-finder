@@ -132,15 +132,14 @@ linters:
           - gosec
           - misspell
 
+# goimports.local-prefixes is deliberately unset: it would group local
+# packages separately from third-party ones, which gofumpt's stricter
+# two-group import rule then flags as wrong on every `run` — an unfixable
+# oscillation between the two formatters.
 formatters:
   enable:
-    - gofumpt # stricter gofmt
-    - goimports # import grouping + removal
-  settings:
-    goimports:
-      # Must match the `module` line in backend/go.mod.
-      local-prefixes:
-        - propertyfinder
+    - gofumpt # stricter gofmt; also owns import grouping (stdlib vs. everything else)
+    - goimports # unused-import removal only
   exclusions:
     paths:
       - internal/web/dist

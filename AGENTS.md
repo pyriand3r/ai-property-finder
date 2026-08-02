@@ -102,8 +102,11 @@ npx oxfmt --check           # CI gate
 npx vue-tsc --noEmit        # type check (oxlint is not type-aware)
 ```
 
-- `backend/go.mod` **must** use module path `propertyfinder` — `.golangci.yml` sets
-  `goimports.local-prefixes: propertyfinder` for import grouping.
+- `backend/go.mod` uses module path `propertyfinder`.
+- `.golangci.yml` deliberately does **not** set `goimports.local-prefixes`: combined with
+  `gofumpt` (also enabled, for import grouping) it caused an unfixable oscillation between the
+  two formatters — each `run` re-flagged what the other had just written. See the comment above
+  the `formatters:` block in `backend/.golangci.yml`.
 - Frontend configs live at the repo root on purpose: oxc config discovery walks *up* the tree, so
   they apply whether the frontend lands at the root or under `frontend/`.
 - Both oxc configs ignore `backend/`, `docs/`, `data/`, `dist/`, `node_modules/`. Without that,

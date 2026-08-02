@@ -135,7 +135,7 @@ Config uses the **v2 schema** (`version: "2"`), where formatters live in their o
 
 Deliberately **not** enabled: `lll`, `funlen`, `mnd`, `varnamelen`, `wsl`, `nlreturn`, `exhaustruct`, `gochecknoglobals`, `wrapcheck`, `ireturn` — style-opinionated, high noise, low signal for a single-developer project.
 
-`goimports.local-prefixes` is set to `propertyfinder`, which **must** match the `module` line in `backend/go.mod`.
+`goimports.local-prefixes` is deliberately **not** set — combined with `gofumpt`'s own import-grouping rule it produced an unfixable oscillation between the two formatters (each `run` re-flagged what the other had just written). Local packages (module path `propertyfinder`) sort into the same group as third-party imports instead.
 
 ```bash
 golangci-lint run          # lint
@@ -184,7 +184,9 @@ services:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # Postgres 18's image expects the volume at /var/lib/postgresql (not
+      # .../data) — it manages the version-specific data subdirectory itself.
+      - pgdata:/var/lib/postgresql
 
   backend:
     build: ./backend

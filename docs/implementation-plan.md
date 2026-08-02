@@ -20,7 +20,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
 
 ## Layer 0: Skelett
 
-- [ ] **0.1 — Docker Compose + DB**
+- [x] **0.1 — Docker Compose + DB**
   - `docker-compose.yml`: PostgreSQL 18 + Go-Backend (leer, health endpoint)
   - DB-Migration: alle Tabellen aus `00-02-database-schema.md` anlegen
   - Volume `pgdata`, Volume `./data:/data`
