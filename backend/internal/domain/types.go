@@ -39,6 +39,73 @@ type Criterion struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// ListingStatus is the lifecycle state of a Listing (carried over from
+// dev-property-finder, unchanged — spec 01-07).
+type ListingStatus string
+
+const (
+	ListingStatusNew           ListingStatus = "new"
+	ListingStatusWaiting       ListingStatus = "waiting"
+	ListingStatusInNegotiation ListingStatus = "in_negotiation"
+	ListingStatusVisited       ListingStatus = "visited"
+	ListingStatusRejected      ListingStatus = "rejected"
+	ListingStatusArchived      ListingStatus = "archived"
+)
+
+// SourceType records how a Listing entered the system (spec 00-02). Layer 2
+// only produces "manual"; the other values are written once chat ingestion
+// (Layer 6+) lands.
+type SourceType string
+
+const (
+	SourceTypeURL    SourceType = "url"
+	SourceTypePDF    SourceType = "pdf"
+	SourceTypeImage  SourceType = "image"
+	SourceTypeManual SourceType = "manual"
+)
+
+// Listing is a real-estate offering (spec 01-07, 00-02). LastContactAt
+// ("Letztkontakt") is orthogonal to Status — it tracks seller outreach
+// only. OverallScore is nil until the first Evaluation completes.
+// UserConfirmedFields lists structured field names the user has manually
+// edited since the last Agent write (ADR 0016) — the Agent asks before
+// overwriting them; document_md/kurzfazit are prose, not structured
+// fields, and are never listed here.
+type Listing struct {
+	ID                  uuid.UUID     `json:"id"`
+	ProfileID           uuid.UUID     `json:"profile_id"`
+	Title               string        `json:"title"`
+	SourceURL           *string       `json:"source_url,omitempty"`
+	Price               *float64      `json:"price,omitempty"`
+	PriceCurrency       *string       `json:"price_currency,omitempty"`
+	PropertySizeM2      *float64      `json:"property_size_m2,omitempty"`
+	PlotSizeM2          *float64      `json:"plot_size_m2,omitempty"`
+	Address             *string       `json:"address,omitempty"`
+	Region              *string       `json:"region,omitempty"`
+	Country             *string       `json:"country,omitempty"`
+	Latitude            *float64      `json:"latitude,omitempty"`
+	Longitude           *float64      `json:"longitude,omitempty"`
+	Description         *string       `json:"description,omitempty"`
+	TitleImagePath      *string       `json:"title_image_path,omitempty"`
+	TitleImageID        *uuid.UUID    `json:"title_image_id,omitempty"`
+	Status              ListingStatus `json:"status"`
+	RejectionComment    *string       `json:"rejection_comment,omitempty"`
+	OverallScore        *float64      `json:"overall_score,omitempty"`
+	SellerName          *string       `json:"seller_name,omitempty"`
+	SellerPhone         *string       `json:"seller_phone,omitempty"`
+	SellerEmail         *string       `json:"seller_email,omitempty"`
+	SellerNotes         *string       `json:"seller_notes,omitempty"`
+	LastContactAt       *time.Time    `json:"last_contact_at,omitempty"`
+	DocumentMD          *string       `json:"document_md,omitempty"`
+	SourceType          SourceType    `json:"source_type"`
+	SourceFilePath      *string       `json:"source_file_path,omitempty"`
+	UserConfirmedFields []string      `json:"user_confirmed_fields"`
+	NeedsReevaluation   bool          `json:"needs_reevaluation"`
+	Kurzfazit           *string       `json:"kurzfazit,omitempty"`
+	CreatedAt           time.Time     `json:"created_at"`
+	UpdatedAt           time.Time     `json:"updated_at"`
+}
+
 // ContextScope distinguishes the single Global Context from a per-profile
 // Profile Context (spec 01-02).
 type ContextScope string

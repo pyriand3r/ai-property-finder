@@ -26,6 +26,12 @@ type Env struct {
 	// SeedFromEnv). Empty is valid — the LLM subsystem stays unconfigured
 	// until a later layer wires an implementation to it.
 	ClaudeAPIKey string
+	// DataDir is the root of the Docker volume holding uploaded/downloaded
+	// files (default "/data", matching docker-compose.yml's `./data:/data`
+	// mount and ADR 0012). Listing image cleanup on delete removes
+	// {DataDir}/images/listings/{listing_id}. Configurable so local
+	// (non-Docker) runs don't ever touch a real host /data directory.
+	DataDir string
 }
 
 // LLM is the resolved Tier-2 LLM configuration, read from app_config with
@@ -61,6 +67,7 @@ func LoadEnv(environ []string) (Env, error) {
 		DatabaseURL:    databaseURL,
 		HTTPListenAddr: envOrDefault(values, "HTTP_LISTEN_ADDR", ":8080"),
 		ClaudeAPIKey:   strings.TrimSpace(values["CLAUDE_API_KEY"]),
+		DataDir:        envOrDefault(values, "DATA_DIR", "/data"),
 	}, nil
 }
 

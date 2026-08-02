@@ -70,7 +70,7 @@ func run() error {
 	log.Printf("llm config resolved: provider=%s model=%q api_key_configured=%t",
 		llmConfig.Provider, llmConfig.Model, llmConfig.APIKey != "")
 
-	router := api.NewServer(pool, llmConfig).Router()
+	router := api.NewServer(pool, llmConfig, envConfig.DataDir).Router()
 	server := &http.Server{
 		Addr:              envConfig.HTTPListenAddr,
 		Handler:           router,

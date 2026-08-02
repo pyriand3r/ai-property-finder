@@ -19,16 +19,19 @@ type Server struct {
 	profile   *ProfileHandler
 	context   *ContextHandler
 	criterion *CriterionHandler
+	listing   *ListingHandler
 }
 
 // NewServer constructs the API server, wiring handlers to services backed
-// by pool.
-func NewServer(pool *pgxpool.Pool, llmConfig config.LLM) *Server {
+// by pool. dataDir is the image storage volume root (ADR 0012), used by the
+// listing service to clean up files on delete.
+func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string) *Server {
 	return &Server{
 		config:    &ConfigHandler{llm: llmConfig},
 		profile:   &ProfileHandler{service: service.NewProfileService(pool)},
 		context:   &ContextHandler{service: service.NewContextService(pool)},
 		criterion: &CriterionHandler{service: service.NewCriterionService(pool)},
+		listing:   &ListingHandler{service: service.NewListingService(pool, dataDir)},
 	}
 }
 
@@ -61,12 +64,21 @@ func (server *Server) Router() http.Handler {
 
 			r.Get("/criteria", server.criterion.List)
 			r.Post("/criteria", server.criterion.Create)
+
+			r.Get("/listings", server.listing.List)
+			r.Post("/listings", server.listing.Create)
 		})
 	})
 
 	router.Route("/api/criteria/{criterionId}", func(r chi.Router) {
 		r.Patch("/", server.criterion.Update)
 		r.Delete("/", server.criterion.Delete)
+	})
+
+	router.Route("/api/listings/{listingId}", func(r chi.Router) {
+		r.Get("/", server.listing.Get)
+		r.Patch("/", server.listing.Update)
+		r.Delete("/", server.listing.Delete)
 	})
 
 	return router

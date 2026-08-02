@@ -68,7 +68,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
 
 ## Layer 2: Listing + Bewertung (manuell + Single-Shot-LLM)
 
-- [ ] **2.1 — Listing CRUD (manuell)**
+- [x] **2.1 — Listing CRUD (manuell)**
   - Endpoints: `POST /api/profiles/{id}/listings`, `GET /api/profiles/{id}/listings`, `GET /api/listings/{id}`, `PATCH /api/listings/{id}`, `DELETE /api/listings/{id}`
   - Alle Felder aus Schema
   - `PATCH` auf strukturiertem Feld → `needs_reevaluation = true` **und** Feldname an `user_confirmed_fields` anhaengen (noetig fuer 8.2)
