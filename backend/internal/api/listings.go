@@ -6,6 +6,8 @@ import (
 	"propertyfinder/internal/service"
 	"strconv"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // ListingHandler serves the listing endpoints (spec 01-07 Layer 2.1).
@@ -30,6 +32,7 @@ type listingPatchBody struct {
 	Longitude        *float64              `json:"longitude,omitempty"`
 	Description      *string               `json:"description,omitempty"`
 	TitleImagePath   *string               `json:"title_image_path,omitempty"`
+	TitleImageID     *uuid.UUID            `json:"title_image_id,omitempty"`
 	Status           *domain.ListingStatus `json:"status,omitempty"`
 	RejectionComment *string               `json:"rejection_comment,omitempty"`
 	SellerName       *string               `json:"seller_name,omitempty"`
@@ -55,6 +58,7 @@ func (body listingPatchBody) toPatch() service.ListingPatch {
 		Longitude:        body.Longitude,
 		Description:      body.Description,
 		TitleImagePath:   body.TitleImagePath,
+		TitleImageID:     body.TitleImageID,
 		Status:           body.Status,
 		RejectionComment: body.RejectionComment,
 		SellerName:       body.SellerName,

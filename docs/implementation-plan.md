@@ -101,7 +101,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - `DELETE /api/listings/{id}/images/{image_id}` — Datei + DB-Row loeschen
   - **Test:** `curl -F "file=@photo.jpg" .../api/listings/{id}/images` → `201` → `curl .../media/images/listings/{id}/{uuid}.jpg` → Bild sichtbar
 
-- [ ] **3.2 — Title Image setzen/aendern**
+- [x] **3.2 — Title Image setzen/aendern**
   - `PATCH /api/listings/{id}` mit `{"title_image_id":"..."}`
   - Erstes Image-Upload: `title_image_id` automatisch setzen
   - **Test:** Zwei Bilder hochladen → `title_image_id` auf erstes → per PATCH auf zweites wechseln

@@ -38,6 +38,15 @@ type ListingRepository interface {
 	// ClearNeedsReevaluation sets needs_reevaluation = false on a single
 	// listing. Used after a successful evaluate_listing call (spec 01-04).
 	ClearNeedsReevaluation(ctx context.Context, listingID uuid.UUID) error
+	// SetTitleImageIfUnset sets title_image_id only when it is currently
+	// NULL, and reports whether it did. Used both by the first image
+	// upload (auto-set, Layer 3.2) and is safe to call unconditionally —
+	// it's a no-op once a title image already exists.
+	SetTitleImageIfUnset(ctx context.Context, listingID, imageID uuid.UUID) (bool, error)
+	// SetTitleImage unconditionally sets title_image_id — the manual
+	// "star icon" / PATCH path (ADR 0012), which always wins regardless
+	// of what was set before.
+	SetTitleImage(ctx context.Context, listingID, imageID uuid.UUID) error
 }
 
 // ListingRepo is the pgx-backed implementation of ListingRepository.
@@ -230,6 +239,27 @@ func (repo *ListingRepo) ClearNeedsReevaluation(ctx context.Context, listingID u
 	const query = `UPDATE listing SET needs_reevaluation = false, updated_at = NOW() WHERE id = $1`
 	if _, err := repo.db.Exec(ctx, query, listingID); err != nil {
 		return fmt.Errorf("listing clear needs_reevaluation: %w", err)
+	}
+	return nil
+}
+
+func (repo *ListingRepo) SetTitleImageIfUnset(ctx context.Context, listingID, imageID uuid.UUID) (bool, error) {
+	const query = `UPDATE listing SET title_image_id = $2, updated_at = NOW() WHERE id = $1 AND title_image_id IS NULL`
+	tag, err := repo.db.Exec(ctx, query, listingID, imageID)
+	if err != nil {
+		return false, fmt.Errorf("listing set title image if unset: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+func (repo *ListingRepo) SetTitleImage(ctx context.Context, listingID, imageID uuid.UUID) error {
+	const query = `UPDATE listing SET title_image_id = $2, updated_at = NOW() WHERE id = $1`
+	tag, err := repo.db.Exec(ctx, query, listingID, imageID)
+	if err != nil {
+		return fmt.Errorf("listing set title image: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return &domain.NotFoundError{Entity: "listing", ID: listingID.String()}
 	}
 	return nil
 }

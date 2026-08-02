@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"propertyfinder/internal/db"
 	"propertyfinder/internal/db/repository"
 	"propertyfinder/internal/domain"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -46,9 +48,10 @@ var validListingStatuses = map[domain.ListingStatus]bool{
 
 // ListingPatch carries the manual-edit-form fields for PATCH
 // /api/listings/{id} — every field the user can correct directly (spec
-// 01-07). overall_score, user_confirmed_fields, needs_reevaluation,
-// source_type, source_file_path, kurzfazit, and title_image_id are
-// system/Agent-managed and not exposed here.
+// 01-07), plus TitleImageID (ADR 0012's manual "star icon" path — Layer
+// 3.2). overall_score, user_confirmed_fields, needs_reevaluation,
+// source_type, source_file_path, and kurzfazit are system/Agent-managed
+// and not exposed here.
 type ListingPatch struct {
 	Title            *string
 	SourceURL        *string
@@ -63,6 +66,7 @@ type ListingPatch struct {
 	Longitude        *float64
 	Description      *string
 	TitleImagePath   *string
+	TitleImageID     *uuid.UUID
 	Status           *domain.ListingStatus
 	RejectionComment *string
 	SellerName       *string
@@ -165,6 +169,11 @@ func (service *ListingService) Create(ctx context.Context, profileID uuid.UUID, 
 // the user confirming that field's value (spec 01-07, ADR 0016). Fields in
 // evaluationRelevantFields additionally set needs_reevaluation = true;
 // document_md is excluded from both (prose, not structured).
+//
+// TitleImageID is handled separately from the rest of the patch: it is
+// never added to user_confirmed_fields and never triggers re-evaluation
+// (ADR 0012 — this is a pure display choice the user makes with one
+// click, not a correction the Agent needs to be warned about).
 func (service *ListingService) Update(ctx context.Context, id uuid.UUID, patch ListingPatch) (*domain.Listing, error) {
 	repo := repository.NewListingRepo(service.pool)
 	listing, err := repo.GetByID(ctx, id)
@@ -172,13 +181,35 @@ func (service *ListingService) Update(ctx context.Context, id uuid.UUID, patch L
 		return nil, err
 	}
 
+	if patch.TitleImageID != nil {
+		image, imageError := repository.NewImageRepo(service.pool).GetByID(ctx, *patch.TitleImageID)
+		if imageError != nil {
+			return nil, imageError
+		}
+		if image.ListingID != id {
+			return nil, &domain.ValidationError{Field: "title_image_id", Message: "Bild gehört nicht zu diesem Inserat"}
+		}
+	}
+
 	if validationError := service.applyPatch(listing, patch); validationError != nil {
 		return nil, validationError
 	}
 	listing.UpdatedAt = time.Now().UTC()
 
-	if updateError := repo.Update(ctx, listing); updateError != nil {
-		return nil, updateError
+	txError := db.WithTx(ctx, service.pool, func(tx pgx.Tx) error {
+		if updateError := repository.NewListingRepo(tx).Update(ctx, listing); updateError != nil {
+			return updateError
+		}
+		if patch.TitleImageID != nil {
+			return repository.NewListingRepo(tx).SetTitleImage(ctx, id, *patch.TitleImageID)
+		}
+		return nil
+	})
+	if txError != nil {
+		return nil, txError
+	}
+	if patch.TitleImageID != nil {
+		listing.TitleImageID = patch.TitleImageID
 	}
 	return listing, nil
 }

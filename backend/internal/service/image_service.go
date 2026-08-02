@@ -117,6 +117,13 @@ func (service *ImageService) Upload(ctx context.Context, listingID uuid.UUID, fi
 		_ = os.Remove(absPath)
 		return nil, createError
 	}
+
+	// Auto-set as title image if the listing has none yet (ADR 0012, Layer
+	// 3.2). A no-op once one is set — the Agent never overwrites it later,
+	// and neither does a subsequent upload.
+	if _, titleError := repository.NewListingRepo(service.pool).SetTitleImageIfUnset(ctx, listingID, imageID); titleError != nil {
+		return nil, titleError
+	}
 	return image, nil
 }
 
