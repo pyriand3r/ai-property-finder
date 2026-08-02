@@ -6,8 +6,8 @@
 //  3. pgxpool connect
 //  4. run pending migrations (forward-only; fail-fast on error)
 //  5. seed Tier 2 app_config from env (write-once; DB authoritative after)
-//  6. load Tier 2 app_config (llm.*)
-//  7. start HTTP server (GET /health, GET /api/config)
+//  6. load Tier 2 app_config (llm.*), build the LLM provider from it
+//  7. start HTTP server (GET /health, GET /api/config, GET /api/events, ...)
 //
 // The rest of the API surface lands in later layers.
 package main
@@ -23,6 +23,7 @@ import (
 	"propertyfinder/internal/api"
 	"propertyfinder/internal/config"
 	"propertyfinder/internal/db"
+	"propertyfinder/internal/events"
 	"syscall"
 	"time"
 
@@ -84,7 +85,10 @@ func run() error {
 		return err
 	}
 
-	router := api.NewServer(pool, llmConfig, envConfig.DataDir, provider).Router()
+	broker := events.NewBroker()
+	defer broker.Stop()
+
+	router := api.NewServer(pool, llmConfig, envConfig.DataDir, provider, broker).Router()
 	server := &http.Server{
 		Addr:              envConfig.HTTPListenAddr,
 		Handler:           router,

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"propertyfinder/internal/domain"
 	"propertyfinder/internal/service"
+	"strconv"
 	"time"
 )
 
@@ -65,14 +66,25 @@ func (body listingPatchBody) toPatch() service.ListingPatch {
 	}
 }
 
-// List handles GET /api/profiles/{profileId}/listings.
+// List handles GET /api/profiles/{profileId}/listings, optionally filtered
+// by ?needs_reevaluation=true|false.
 func (handler *ListingHandler) List(writer http.ResponseWriter, request *http.Request) {
 	profileID, ok := parseUUID(writer, request, "profileId")
 	if !ok {
 		return
 	}
 
-	listings, err := handler.service.List(request.Context(), profileID)
+	var needsReevaluation *bool
+	if raw := request.URL.Query().Get("needs_reevaluation"); raw != "" {
+		value, parseErr := strconv.ParseBool(raw)
+		if parseErr != nil {
+			writeError(writer, &domain.ValidationError{Field: "needs_reevaluation", Message: "muss true oder false sein"})
+			return
+		}
+		needsReevaluation = &value
+	}
+
+	listings, err := handler.service.List(request.Context(), profileID, needsReevaluation)
 	if err != nil {
 		writeError(writer, err)
 		return

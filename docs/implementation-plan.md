@@ -84,7 +84,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
   - **Model:** Claude 3.5 Sonnet · GPT-4o-mini (Single-Shot, strukturiertes JSON — Haiku wuerde reichen, aber Sonnet ist sicherer bei Edge-Cases)
   - **Test:** Criterion anlegen (1.3), Listing anlegen (2.1), `curl -X POST .../api/listings/{id}/evaluate` → DB: `overall_score > 0`, `listing_criterion_grade`-Rows existieren
 
-- [ ] **2.3 — needs_reevaluation + Bulk-Trigger**
+- [x] **2.3 — needs_reevaluation + Bulk-Trigger** — SSE/task plumbing fully verified; the underlying LLM scoring itself has the same caveat as 2.2 (no `CLAUDE_API_KEY` in dev sandbox)
   - `GET /api/profiles/{id}/listings?needs_reevaluation=true` → nur stale Listings
   - `POST /api/profiles/{id}/listings/reevaluate-all` → sequenzielle Goroutine, SSE-Stream (Task-SSE-Plumbing, wird in 6.3 fuer Chat-SSE wiederverwendet)
   - **Test:** Criterion-Beschreibung aendern → `needs_reevaluation = true` auf allen Listings → `curl .../reevaluate-all` → SSE-Stream zeigt Fortschritt → Scores aktualisiert

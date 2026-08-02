@@ -15,7 +15,10 @@ import (
 type ListingRepository interface {
 	Create(ctx context.Context, listing *domain.Listing) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Listing, error)
-	ListByProfile(ctx context.Context, profileID uuid.UUID) ([]domain.Listing, error)
+	// ListByProfile returns a profile's listings, most recently created
+	// first. needsReevaluation filters on the column of the same name when
+	// non-nil (spec 01-04 Layer 2.3: GET .../listings?needs_reevaluation=true).
+	ListByProfile(ctx context.Context, profileID uuid.UUID, needsReevaluation *bool) ([]domain.Listing, error)
 	// Update overwrites every structured column from listing (a full
 	// replace, not a partial patch — the service layer merges the partial
 	// request onto the current row first).
@@ -85,10 +88,17 @@ func (repo *ListingRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Lis
 }
 
 // ListByProfile returns all listings in profileID, most recently created
-// first.
-func (repo *ListingRepo) ListByProfile(ctx context.Context, profileID uuid.UUID) ([]domain.Listing, error) {
-	query := `SELECT ` + listingColumns + ` FROM listing WHERE profile_id = $1 ORDER BY created_at DESC`
-	rows, err := repo.db.Query(ctx, query, profileID)
+// first, optionally filtered by needs_reevaluation.
+func (repo *ListingRepo) ListByProfile(ctx context.Context, profileID uuid.UUID, needsReevaluation *bool) ([]domain.Listing, error) {
+	query := `SELECT ` + listingColumns + ` FROM listing WHERE profile_id = $1`
+	args := []any{profileID}
+	if needsReevaluation != nil {
+		query += ` AND needs_reevaluation = $2`
+		args = append(args, *needsReevaluation)
+	}
+	query += ` ORDER BY created_at DESC`
+
+	rows, err := repo.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing list: %w", err)
 	}

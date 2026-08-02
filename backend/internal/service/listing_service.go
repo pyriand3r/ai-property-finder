@@ -86,9 +86,10 @@ func NewListingService(pool *pgxpool.Pool, dataDir string) *ListingService {
 	return &ListingService{pool: pool, dataDir: dataDir}
 }
 
-// List returns all listings in a profile, most recently created first.
-func (service *ListingService) List(ctx context.Context, profileID uuid.UUID) ([]domain.Listing, error) {
-	return repository.NewListingRepo(service.pool).ListByProfile(ctx, profileID)
+// List returns a profile's listings, most recently created first,
+// optionally filtered by needs_reevaluation.
+func (service *ListingService) List(ctx context.Context, profileID uuid.UUID, needsReevaluation *bool) ([]domain.Listing, error) {
+	return repository.NewListingRepo(service.pool).ListByProfile(ctx, profileID, needsReevaluation)
 }
 
 // Get returns a single listing.

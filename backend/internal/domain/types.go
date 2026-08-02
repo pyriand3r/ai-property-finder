@@ -131,6 +131,44 @@ type Listing struct {
 	UpdatedAt           time.Time     `json:"updated_at"`
 }
 
+// TaskType enumerates the kinds of background tasks the app can run. Only
+// bulk re-evaluation exists so far (spec 01-04 Layer 2.3, ADR 0015); chat
+// turns are fire-and-forget instead (ADR 0008) and don't use this table.
+type TaskType string
+
+const TaskTypeListingsReevaluateAll TaskType = "listings.reevaluate_all"
+
+// TaskStatus is the lifecycle state of a Task row. There is no "queued"
+// state here — a Task starts "running" the moment its goroutine is
+// spawned; nothing is dequeued later (spec 01-04: "sequenzielle
+// Goroutine", not a polling worker).
+type TaskStatus string
+
+const (
+	TaskStatusRunning   TaskStatus = "running"
+	TaskStatusSucceeded TaskStatus = "succeeded"
+	TaskStatusFailed    TaskStatus = "failed"
+)
+
+// Task is the durable record of a background task, surfaced to the
+// frontend via SSE (internal/events) and readable directly for reconnect
+// reconciliation.
+type Task struct {
+	ID          uuid.UUID  `json:"id"`
+	Type        TaskType   `json:"type"`
+	Status      TaskStatus `json:"status"`
+	ProfileID   *uuid.UUID `json:"profile_id,omitempty"`
+	ListingID   *uuid.UUID `json:"listing_id,omitempty"`
+	Total       *int       `json:"total,omitempty"`
+	Done        int        `json:"done"`
+	FailedCount int        `json:"failed_count"`
+	Error       *string    `json:"error,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
 // ContextScope distinguishes the single Global Context from a per-profile
 // Profile Context (spec 01-02).
 type ContextScope string
