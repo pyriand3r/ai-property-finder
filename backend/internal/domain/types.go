@@ -131,6 +131,23 @@ type Listing struct {
 	UpdatedAt           time.Time     `json:"updated_at"`
 }
 
+// ListingImage is one photo attached to a Listing (ADR 0012). URL is the
+// remote source the Agent downloaded it from; a directly user-uploaded
+// image (Layer 3.1, plain-form fallback per ADR 0001) has no remote
+// source, so URL is "" and IsLocal is true from the start. FilePath is
+// relative to DATA_DIR: "images/listings/{listing_id}/{uuid}.{ext}",
+// served at /media/{file_path}.
+type ListingImage struct {
+	ID        uuid.UUID `json:"id"`
+	ListingID uuid.UUID `json:"listing_id"`
+	URL       string    `json:"url"`
+	IsLocal   bool      `json:"is_local"`
+	SortOrder int       `json:"sort_order"`
+	FilePath  string    `json:"file_path"`
+	Category  *string   `json:"category,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // TaskType enumerates the kinds of background tasks the app can run. Only
 // bulk re-evaluation exists so far (spec 01-04 Layer 2.3, ADR 0015); chat
 // turns are fire-and-forget instead (ADR 0008) and don't use this table.

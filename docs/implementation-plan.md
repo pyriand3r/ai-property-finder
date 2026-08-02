@@ -94,7 +94,7 @@ Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring ko
 
 ## Layer 3: File-Handling (Bilder, PDF, Geocoding)
 
-- [ ] **3.1 — Image Upload + Storage + Serving**
+- [x] **3.1 — Image Upload + Storage + Serving**
   - `/media/` → `http.FileServer(http.Dir("/data"))` im chi-Router
   - `POST /api/listings/{id}/images` — Multipart-Upload, UUID-rename
   - `GET /api/listings/{id}/images` — Liste aller `listing_image`-Rows

@@ -24,14 +24,16 @@ type Server struct {
 	listing    *ListingHandler
 	evaluation *EvaluationHandler
 	events     *EventHandler
+	image      *ImageHandler
+	dataDir    string
 }
 
 // NewServer constructs the API server, wiring handlers to services backed
 // by pool. dataDir is the image storage volume root (ADR 0012), used by the
-// listing service to clean up files on delete. provider is the resolved
-// single-shot LLM provider (internal/ai) used by evaluate_listing. broker
-// fans out SSE progress for bulk re-evaluation (Layer 2.3) and, later,
-// chat streaming (Layer 6.3).
+// listing service to clean up files on delete and served at /media/.
+// provider is the resolved single-shot LLM provider (internal/ai) used by
+// evaluate_listing. broker fans out SSE progress for bulk re-evaluation
+// (Layer 2.3) and, later, chat streaming (Layer 6.3).
 func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provider ai.Provider, broker *events.Broker) *Server {
 	return &Server{
 		config:     &ConfigHandler{llm: llmConfig},
@@ -41,12 +43,15 @@ func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provide
 		listing:    &ListingHandler{service: service.NewListingService(pool, dataDir)},
 		evaluation: &EvaluationHandler{service: service.NewEvaluationService(pool, provider, broker)},
 		events:     &EventHandler{broker: broker},
+		image:      &ImageHandler{service: service.NewImageService(pool, dataDir)},
+		dataDir:    dataDir,
 	}
 }
 
 // Router builds the chi router. GET /api/events is mounted outside the
 // Timeout middleware group — it's long-lived SSE, and chi's Timeout
-// wrapper doesn't implement http.Flusher (would break streaming).
+// wrapper doesn't implement http.Flusher (would break streaming). /media/
+// is also outside it — file transfers shouldn't be cut off at 60s.
 func (server *Server) Router() http.Handler {
 	router := chi.NewRouter()
 	router.Use(chimw.RequestID)
@@ -55,6 +60,7 @@ func (server *Server) Router() http.Handler {
 
 	router.Get("/health", healthHandler)
 	router.Get("/api/events", server.events.Stream)
+	router.Handle("/media/*", http.StripPrefix("/media/", http.FileServer(http.Dir(server.dataDir))))
 
 	timed := router.Group(func(r chi.Router) {
 		r.Use(chimw.Timeout(60 * time.Second))
@@ -97,6 +103,10 @@ func (server *Server) Router() http.Handler {
 		r.Patch("/", server.listing.Update)
 		r.Delete("/", server.listing.Delete)
 		r.Post("/evaluate", server.evaluation.Evaluate)
+
+		r.Get("/images", server.image.List)
+		r.Post("/images", server.image.Upload)
+		r.Delete("/images/{imageId}", server.image.Delete)
 	})
 
 	return router
