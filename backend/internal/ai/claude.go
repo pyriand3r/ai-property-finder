@@ -87,3 +87,7 @@ func classifyProviderError(callCtx context.Context, err error) error {
 func (p *claudeProvider) EvaluateListing(ctx context.Context, listing domain.Listing, criteria []domain.Criterion) ([]domain.CriterionScore, error) {
 	return runEvaluate(ctx, p, listing, criteria)
 }
+
+func (p *claudeProvider) GenerateRanking(ctx context.Context, listings []domain.Listing) (RankingResult, error) {
+	return runGenerateRanking(ctx, p, listings)
+}

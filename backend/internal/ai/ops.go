@@ -87,6 +87,70 @@ func parseGrades(raw string, criteria []domain.Criterion) ([]domain.CriterionSco
 	return out, nil
 }
 
+const rankingSystem = `You write short, comparative one-liners for a ranked list of real-estate listings, plus one overall summary.
+
+You receive listings numbered by rank (1 = best Score), each with its Score and key facts. For EACH listing, write one short sentence (Kurzfazit) — punchy, comparative, mentioning what stands out versus the others (e.g. "Beste Infrastruktur, aber kleinstes Grundstück"). Then write one paragraph (summary) comparing the top few listings overall, as a buyer-facing recap.
+
+Return ONLY a JSON object:
+{"kurzfazits": ["<one per listing, SAME ORDER as numbered list>"], "summary": "<comparison paragraph>"}
+
+The kurzfazits array length MUST equal the number of listings. No prose outside the JSON, no markdown fences.`
+
+// rawRanking is the wire shape of GenerateRanking's response.
+type rawRanking struct {
+	Kurzfazits []string `json:"kurzfazits"`
+	Summary    string   `json:"summary"`
+}
+
+// runGenerateRanking implements Provider.GenerateRanking against any
+// completer. listings must already be sorted by Score desc — the model
+// only narrates the order, it doesn't decide it.
+func runGenerateRanking(ctx context.Context, c completer, listings []domain.Listing) (RankingResult, error) {
+	if len(listings) == 0 {
+		return RankingResult{}, nil
+	}
+	cfg := c.config()
+
+	var user strings.Builder
+	fmt.Fprintf(&user, "Reasoning language: %s.\n\n", cfg.reasoningLanguage())
+	user.WriteString("Ranked listings (best Score first):\n")
+	for i, listing := range listings {
+		score := "n/a"
+		if listing.OverallScore != nil {
+			score = fmt.Sprintf("%.0f", *listing.OverallScore)
+		}
+		fmt.Fprintf(&user, "%d. [Score %s] %s\n", i+1, score, renderListing(listing))
+	}
+
+	return callWithRetries(ctx, c, rankingSystem, user.String(), func(raw string) (RankingResult, error) {
+		return parseRanking(raw, len(listings))
+	})
+}
+
+// parseRanking extracts exactly wantCount kurzfazits plus the summary. A
+// wrong-length array is an ErrParse so the corrective retry fires.
+func parseRanking(raw string, wantCount int) (RankingResult, error) {
+	value, err := extractFirstJSON(raw)
+	if err != nil {
+		return RankingResult{}, err
+	}
+	var wire rawRanking
+	if err := json.Unmarshal([]byte(value), &wire); err != nil {
+		return RankingResult{}, fmt.Errorf("unmarshal ranking: %w", ErrParse)
+	}
+	if len(wire.Kurzfazits) != wantCount {
+		return RankingResult{}, fmt.Errorf("got %d kurzfazits, want %d: %w", len(wire.Kurzfazits), wantCount, ErrParse)
+	}
+	if strings.TrimSpace(wire.Summary) == "" {
+		return RankingResult{}, fmt.Errorf("empty summary: %w", ErrParse)
+	}
+	kurzfazits := make([]string, len(wire.Kurzfazits))
+	for i, text := range wire.Kurzfazits {
+		kurzfazits[i] = strings.TrimSpace(text)
+	}
+	return RankingResult{Kurzfazits: kurzfazits, Summary: strings.TrimSpace(wire.Summary)}, nil
+}
+
 // renderListing serializes the evaluation-relevant listing fields as
 // compact labeled lines, omitting empty optional fields.
 func renderListing(listing domain.Listing) string {

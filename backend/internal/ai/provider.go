@@ -17,4 +17,19 @@ type Provider interface {
 	// EvaluateListing returns the per-Criterion Grade and reasoning for one
 	// listing against the given ordered criteria.
 	EvaluateListing(ctx context.Context, listing domain.Listing, criteria []domain.Criterion) ([]domain.CriterionScore, error)
+
+	// GenerateRanking writes a short Kurzfazit for each listing (same
+	// order as the input, mapped back by position like EvaluateListing —
+	// ADR 0006) plus one profile-wide comparison summary (spec 01-05:
+	// "isolierter LLM-Call... kein Agent involviert"). listings must
+	// already be sorted by Score desc and pre-filtered to those with a
+	// Score (the caller's job, not the model's).
+	GenerateRanking(ctx context.Context, listings []domain.Listing) (RankingResult, error)
+}
+
+// RankingResult is GenerateRanking's output. Kurzfazits has exactly
+// len(listings) entries, in the same order as the input.
+type RankingResult struct {
+	Kurzfazits []string
+	Summary    string
 }

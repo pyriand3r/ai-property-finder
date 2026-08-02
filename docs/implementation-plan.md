@@ -146,7 +146,7 @@ Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt
   - Andere Aenderungen → Banner "N Inserate neu bewerten" + "Alle neu bewerten"-Button (2.3)
   - **Test:** Weight aendern → Scores neu, kein Banner → Beschreibung aendern → Banner erscheint → "Alle neu bewerten" klicken → SSE-Fortschritt
 
-- [ ] **5.2 — List View + Ranking View**
+- [x] **5.2 — List View + Ranking View**
   - Sortierbare/filterbare Tabelle (Score, Preis, Groesse, Datum; Filter Status/Score/Preis)
   - Ranking: Score-Sortierung + Kurzfazit + Gesamt-Summary (`search_profile.ranking_summary`)
   - "Rangliste aktualisieren"-Button: isolierter Single-Shot-LLM-Call (kein Agent, nutzt Provider-Seam aus 2.2), speichert `listing.kurzfazit` + `search_profile.ranking_summary`

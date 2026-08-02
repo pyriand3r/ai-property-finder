@@ -35,7 +35,7 @@ export interface Listing {
   document_md?: string;
   source_type: 'url' | 'pdf' | 'image' | 'manual';
   source_file_path?: string;
-  user_confirmed_fields: string[];
+  user_confirmed_fields: readonly string[];
   needs_reevaluation: boolean;
   kurzfazit?: string;
   created_at: string;

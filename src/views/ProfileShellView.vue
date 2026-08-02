@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router';
 
 import { getProfile } from '@/api/profiles';
 import CriteriaEditor from '@/components/criteria/CriteriaEditor.vue';
+import ListingsPanel from '@/components/listings/ListingsPanel.vue';
 
 import type { Profile } from '@/types/profile';
 
@@ -37,7 +38,7 @@ onMounted(async () => {
         <CriteriaEditor :profile-id="profileId" />
       </NTabPane>
       <NTabPane name="listings" tab="Inserate">
-        <NEmpty description="Listen-/Karten-Ansicht kommt in Layer 5" />
+        <ListingsPanel :profile-id="profileId" />
       </NTabPane>
     </NTabs>
   </main>

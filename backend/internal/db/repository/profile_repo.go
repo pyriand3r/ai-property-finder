@@ -27,6 +27,9 @@ type ProfileRepository interface {
 	// matching name already exists. When excludeID is non-nil, that profile
 	// is excluded (used during Update so a profile keeps its own name).
 	ExistsByName(ctx context.Context, name string, excludeID *uuid.UUID) (bool, error)
+	// SetRankingSummary writes the profile-wide comparison summary (spec
+	// 01-05 Layer 5.2 "Rangliste aktualisieren").
+	SetRankingSummary(ctx context.Context, profileID uuid.UUID, summary string) error
 }
 
 // ProfileRepo is the pgx-backed implementation of ProfileRepository.
@@ -179,6 +182,18 @@ SELECT EXISTS(
 		return false, fmt.Errorf("profile exists by name: %w", err)
 	}
 	return exists, nil
+}
+
+func (repo *ProfileRepo) SetRankingSummary(ctx context.Context, profileID uuid.UUID, summary string) error {
+	const query = `UPDATE search_profile SET ranking_summary = $2, updated_at = NOW() WHERE id = $1`
+	tag, err := repo.db.Exec(ctx, query, profileID, summary)
+	if err != nil {
+		return fmt.Errorf("profile set ranking summary: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return &domain.NotFoundError{Entity: "profile", ID: profileID.String()}
+	}
+	return nil
 }
 
 // scanProfileRow scans a search_profile row from either a pgx.Row or pgx.Rows.

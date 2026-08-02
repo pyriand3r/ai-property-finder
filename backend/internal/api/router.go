@@ -29,6 +29,7 @@ type Server struct {
 	upload     *UploadHandler
 	geocode    *GeocodeHandler
 	chat       *ChatHandler
+	ranking    *RankingHandler
 	dataDir    string
 }
 
@@ -51,6 +52,7 @@ func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provide
 		upload:     &UploadHandler{service: service.NewUploadService(dataDir)},
 		geocode:    &GeocodeHandler{},
 		chat:       &ChatHandler{service: service.NewChatService(pool)},
+		ranking:    &RankingHandler{service: service.NewRankingService(pool, provider)},
 		dataDir:    dataDir,
 	}
 }
@@ -99,6 +101,7 @@ func (server *Server) Router() http.Handler {
 			r.Get("/listings", server.listing.List)
 			r.Post("/listings", server.listing.Create)
 			r.Post("/listings/reevaluate-all", server.evaluation.ReevaluateAll)
+			r.Post("/ranking/refresh", server.ranking.Refresh)
 
 			r.Get("/chat/sessions", server.chat.ListSessions)
 			r.Post("/chat/sessions", server.chat.StartSession)

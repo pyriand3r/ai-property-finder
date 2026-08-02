@@ -47,6 +47,15 @@ type ListingRepository interface {
 	// "star icon" / PATCH path (ADR 0012), which always wins regardless
 	// of what was set before.
 	SetTitleImage(ctx context.Context, listingID, imageID uuid.UUID) error
+	// ListRankable returns a profile's scored, non-rejected/archived
+	// listings ordered by overall_score desc — the Ranking view's input
+	// set (spec 01-05: "Rank = row position after sorting by Score desc,
+	// excluding rejected/archived"). A listing with no Score yet can't be
+	// ranked, so it's excluded too.
+	ListRankable(ctx context.Context, profileID uuid.UUID) ([]domain.Listing, error)
+	// SetKurzfazit writes the AI-generated one-liner for a single listing
+	// (spec 01-05 Layer 5.2 "Rangliste aktualisieren").
+	SetKurzfazit(ctx context.Context, listingID uuid.UUID, text string) error
 }
 
 // ListingRepo is the pgx-backed implementation of ListingRepository.
@@ -257,6 +266,42 @@ func (repo *ListingRepo) SetTitleImage(ctx context.Context, listingID, imageID u
 	tag, err := repo.db.Exec(ctx, query, listingID, imageID)
 	if err != nil {
 		return fmt.Errorf("listing set title image: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return &domain.NotFoundError{Entity: "listing", ID: listingID.String()}
+	}
+	return nil
+}
+
+func (repo *ListingRepo) ListRankable(ctx context.Context, profileID uuid.UUID) ([]domain.Listing, error) {
+	query := `SELECT ` + listingColumns + ` FROM listing
+WHERE profile_id = $1 AND status NOT IN ('rejected', 'archived') AND overall_score IS NOT NULL
+ORDER BY overall_score DESC`
+	rows, err := repo.db.Query(ctx, query, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("listing list rankable: %w", err)
+	}
+	defer rows.Close()
+
+	listings := make([]domain.Listing, 0)
+	for rows.Next() {
+		listing, scanError := scanListingRow(rows)
+		if scanError != nil {
+			return nil, fmt.Errorf("listing list rankable scan: %w", scanError)
+		}
+		listings = append(listings, listing)
+	}
+	if rowsError := rows.Err(); rowsError != nil {
+		return nil, fmt.Errorf("listing list rankable rows: %w", rowsError)
+	}
+	return listings, nil
+}
+
+func (repo *ListingRepo) SetKurzfazit(ctx context.Context, listingID uuid.UUID, text string) error {
+	const query = `UPDATE listing SET kurzfazit = $2, updated_at = NOW() WHERE id = $1`
+	tag, err := repo.db.Exec(ctx, query, listingID, text)
+	if err != nil {
+		return fmt.Errorf("listing set kurzfazit: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return &domain.NotFoundError{Entity: "listing", ID: listingID.String()}

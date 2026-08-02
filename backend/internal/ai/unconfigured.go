@@ -14,3 +14,7 @@ type unconfiguredProvider struct{}
 func (unconfiguredProvider) EvaluateListing(context.Context, domain.Listing, []domain.Criterion) ([]domain.CriterionScore, error) {
 	return nil, ErrNotConfigured
 }
+
+func (unconfiguredProvider) GenerateRanking(context.Context, []domain.Listing) (RankingResult, error) {
+	return RankingResult{}, ErrNotConfigured
+}

@@ -14,5 +14,11 @@ export const router = createRouter({
       component: () => import('@/views/ProfileShellView.vue'),
       props: true,
     },
+    {
+      path: '/listings/:listingId',
+      name: 'listing-detail',
+      component: () => import('@/views/ListingDetailView.vue'),
+      props: true,
+    },
   ],
 });

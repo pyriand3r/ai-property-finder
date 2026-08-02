@@ -77,6 +77,61 @@ func TestParseGrades_MalformedJSON(t *testing.T) {
 	}
 }
 
+func TestParseRanking_WellFormed(t *testing.T) {
+	raw := `{"kurzfazits":["Beste Lage","Guenstigster Preis"],"summary":"Nummer 1 hat die beste Lage, Nummer 2 ist am guenstigsten."}`
+
+	result, err := parseRanking(raw, 2)
+	if err != nil {
+		t.Fatalf("parseRanking failed: %v", err)
+	}
+	if len(result.Kurzfazits) != 2 {
+		t.Fatalf("got %d kurzfazits, want 2", len(result.Kurzfazits))
+	}
+	if result.Kurzfazits[0] != "Beste Lage" || result.Kurzfazits[1] != "Guenstigster Preis" {
+		t.Errorf("kurzfazits = %+v, unexpected content/order", result.Kurzfazits)
+	}
+	if result.Summary == "" {
+		t.Error("summary is empty")
+	}
+}
+
+func TestParseRanking_FencedAndProse(t *testing.T) {
+	raw := "Here's the ranking:\n```json\n{\"kurzfazits\":[\"A\"],\"summary\":\"B\"}\n```\nHope that helps!"
+
+	result, err := parseRanking(raw, 1)
+	if err != nil {
+		t.Fatalf("parseRanking failed on fenced+prose input: %v", err)
+	}
+	if result.Kurzfazits[0] != "A" || result.Summary != "B" {
+		t.Errorf("result = %+v, unexpected content", result)
+	}
+}
+
+func TestParseRanking_WrongLength(t *testing.T) {
+	raw := `{"kurzfazits":["only one"],"summary":"x"}`
+
+	_, err := parseRanking(raw, 2)
+	if !errors.Is(err, ErrParse) {
+		t.Errorf("expected ErrParse for wrong-length kurzfazits, got %v", err)
+	}
+}
+
+func TestParseRanking_EmptySummary(t *testing.T) {
+	raw := `{"kurzfazits":["A"],"summary":"   "}`
+
+	_, err := parseRanking(raw, 1)
+	if !errors.Is(err, ErrParse) {
+		t.Errorf("expected ErrParse for empty summary, got %v", err)
+	}
+}
+
+func TestParseRanking_MalformedJSON(t *testing.T) {
+	_, err := parseRanking("not json at all", 1)
+	if !errors.Is(err, ErrParse) {
+		t.Errorf("expected ErrParse for non-JSON input, got %v", err)
+	}
+}
+
 func TestRenderListing_OmitsEmptyFields(t *testing.T) {
 	listing := domain.Listing{Title: "Test House"}
 	rendered := renderListing(listing)
