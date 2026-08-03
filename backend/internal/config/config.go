@@ -34,12 +34,19 @@ type Env struct {
 	DataDir string
 }
 
+// defaultClaudeModel is applied when app_config has no llm.model row.
+// Unlike APIKey/BaseURL there is a sane default here — a missing model
+// isn't "unconfigured" the way a missing key is, it's just every Claude
+// call 404ing with a confusing "model: " error until someone notices and
+// inserts the row by hand.
+const defaultClaudeModel = "claude-sonnet-5"
+
 // LLM is the resolved Tier-2 LLM configuration, read from app_config with
-// code defaults applied for keys that have one. APIKey, BaseURL, and Model
-// default to "" (unconfigured) — there is no sane default API key, and
+// code defaults applied for keys that have one. APIKey and BaseURL default
+// to "" (unconfigured) — there is no sane default API key, and
 // dev-property-finder's precedent is to leave a provider unconfigured
 // rather than guess (see docs/spec/00_infrastructure_setup/00-03
-// -llm-agent-integration.md "Config").
+// -llm-agent-integration.md "Config"). Model defaults to defaultClaudeModel.
 type LLM struct {
 	Provider            string
 	APIKey              string
@@ -140,7 +147,7 @@ func LoadAll(ctx context.Context, pool *pgxpool.Pool) (LLM, error) {
 		Provider:            defaultString(raw["llm.provider"], "claude"),
 		APIKey:              raw["llm.api_key"],
 		BaseURL:             raw["llm.base_url"],
-		Model:               raw["llm.model"],
+		Model:               defaultString(raw["llm.model"], defaultClaudeModel),
 		TimeoutSeconds:      defaultInt(raw["llm.timeout_seconds"], 30),
 		MaxRetries:          defaultInt(raw["llm.max_retries"], 2),
 		MaxToolCallsPerTurn: defaultInt(raw["llm.max_tool_calls_per_turn"], 15),
