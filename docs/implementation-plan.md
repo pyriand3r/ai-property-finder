@@ -186,7 +186,7 @@ Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt
   - **Model:** Claude 3.5 Sonnet · GPT-4o (erster echter Kontakt mit dem Modell — hier zeigt sich ob der Prompt stimmt)
   - **Test:** Chat-Nachricht senden → Agent antwortet (text only) → Antwort erscheint streamend im Chat
 
-- [ ] **6.4 — First Tools (fetch_url, save_listing, download_image)**
+- [x] **6.4 — First Tools (fetch_url, save_listing, download_image)**
   - Tool-Registry + Dispatch in `loop.go` (Preamble ab hier mit voller Tool-Sektion)
   - `fetch_url` — HTTP GET + Readability-Text-Extraktion
   - `save_listing` — DB-Insert/Update mit `force_overwrite`
