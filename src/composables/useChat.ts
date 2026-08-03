@@ -19,6 +19,21 @@ interface ChatTurnErrorPayload {
   session_id: string;
   message: string;
 }
+interface ChatToolProgressPayload {
+  session_id: string;
+  tool: string;
+}
+
+/** German progress labels for the tools a Tool call in progress can name
+ * (spec 00-03: "each intermediate tool call is also streamed as a
+ * progress event so the user sees 'Lese Seite…', 'Extrahiere Bilder…'
+ * live"). Falls back to the raw tool name for any tool added later without
+ * a label here. */
+const toolProgressLabels: Record<string, string> = {
+  fetch_url: 'Lese Seite…',
+  save_listing: 'Speichere Inserat…',
+  download_image: 'Lade Bild herunter…',
+};
 
 function parseSSEPayload<T>(event: Event): T | null {
   const messageEvent = event as MessageEvent<string>;
@@ -50,6 +65,7 @@ export function useChat(profileId: string) {
   const sending = shallowRef(false);
   const error = shallowRef<string | null>(null);
   const streamingText = shallowRef('');
+  const toolProgress = shallowRef<string | null>(null);
 
   let eventSource: EventSource | null = null;
 
@@ -58,7 +74,8 @@ export function useChat(profileId: string) {
     () => currentSessionId.value !== null && currentSessionId.value === activeSession.value?.id,
   );
   const displayMessages = computed<ChatMessage[]>(() => {
-    if (!streamingText.value || !currentSessionId.value) {
+    const liveContent = streamingText.value || toolProgress.value;
+    if (!liveContent || !currentSessionId.value) {
       return messages.value;
     }
     return [
@@ -67,7 +84,7 @@ export function useChat(profileId: string) {
         id: '__streaming__',
         session_id: currentSessionId.value,
         role: 'assistant',
-        content: streamingText.value,
+        content: liveContent,
         created_at: new Date().toISOString(),
       },
     ];
@@ -102,6 +119,7 @@ export function useChat(profileId: string) {
 
   async function selectSession(sessionId: string) {
     streamingText.value = '';
+    toolProgress.value = null;
     currentSessionId.value = sessionId;
     await fetchMessages();
   }
@@ -137,6 +155,7 @@ export function useChat(profileId: string) {
     currentSessionId.value = session.id;
     messages.value = [];
     streamingText.value = '';
+    toolProgress.value = null;
   }
 
   /** Refetches sessions only, to pick up token_count_estimate after a turn
@@ -157,13 +176,21 @@ export function useChat(profileId: string) {
     eventSource.addEventListener('chat.text_delta', (event) => {
       const payload = parseSSEPayload<ChatTextDeltaPayload>(event);
       if (payload && payload.session_id === currentSessionId.value) {
+        toolProgress.value = null;
         streamingText.value += payload.delta;
+      }
+    });
+    eventSource.addEventListener('chat.tool_progress', (event) => {
+      const payload = parseSSEPayload<ChatToolProgressPayload>(event);
+      if (payload && payload.session_id === currentSessionId.value) {
+        toolProgress.value = toolProgressLabels[payload.tool] ?? payload.tool;
       }
     });
     eventSource.addEventListener('chat.message', (event) => {
       const payload = parseSSEPayload<ChatMessagePayload>(event);
       if (payload && payload.session_id === currentSessionId.value) {
         streamingText.value = '';
+        toolProgress.value = null;
         messages.value = [...messages.value, payload.message];
         void refreshTokenCount();
       }
@@ -172,6 +199,7 @@ export function useChat(profileId: string) {
       const payload = parseSSEPayload<ChatTurnErrorPayload>(event);
       if (payload && payload.session_id === currentSessionId.value) {
         streamingText.value = '';
+        toolProgress.value = null;
         error.value = payload.message;
       }
     });

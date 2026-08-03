@@ -42,6 +42,18 @@ export interface Listing {
   updated_at: string;
 }
 
+/** Mirrors backend/internal/domain.ListingImage JSON. */
+export interface ListingImage {
+  id: string;
+  listing_id: string;
+  url: string;
+  is_local: boolean;
+  sort_order: number;
+  file_path: string;
+  category?: string;
+  created_at: string;
+}
+
 /** Mirrors backend/internal/domain.CriterionScore JSON (evaluate_listing response). */
 export interface CriterionGradeResult {
   criterion_id: string;

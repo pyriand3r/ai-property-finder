@@ -2,6 +2,8 @@
 import { NEmpty, NText } from 'naive-ui';
 import { nextTick, useTemplateRef, watch } from 'vue';
 
+import ChatListingCard from '@/components/chat/ChatListingCard.vue';
+
 import type { ChatMessage } from '@/types/chat';
 
 const props = defineProps<{
@@ -35,6 +37,7 @@ function formatTime(iso: string) {
       <div class="chat-message-bubble">
         <p class="chat-message-content">{{ message.content }}</p>
         <NText depth="3" class="chat-message-time">{{ formatTime(message.created_at) }}</NText>
+        <ChatListingCard v-if="message.listing_id" :listing-id="message.listing_id" />
       </div>
     </div>
   </div>

@@ -54,7 +54,7 @@ func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provide
 		image:      &ImageHandler{service: service.NewImageService(pool, dataDir)},
 		upload:     &UploadHandler{service: service.NewUploadService(dataDir)},
 		geocode:    &GeocodeHandler{},
-		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, agentProvider, broker, llmConfig)},
+		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, agentProvider, broker, llmConfig, dataDir)},
 		ranking:    &RankingHandler{service: service.NewRankingService(pool, provider)},
 		dataDir:    dataDir,
 	}
