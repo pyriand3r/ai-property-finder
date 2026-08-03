@@ -4,6 +4,7 @@ import { onMounted, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { getProfile } from '@/api/profiles';
+import ChatView from '@/components/chat/ChatView.vue';
 import CriteriaEditor from '@/components/criteria/CriteriaEditor.vue';
 import ListingsPanel from '@/components/listings/ListingsPanel.vue';
 
@@ -27,9 +28,9 @@ onMounted(async () => {
 
     <NH1 v-if="profile">{{ profile.name }}</NH1>
 
-    <NTabs type="line" animated>
+    <NTabs type="line" animated default-value="chat">
       <NTabPane name="chat" tab="Chat">
-        <NEmpty description="Chat kommt in Layer 6" />
+        <ChatView :profile-id="profileId" />
       </NTabPane>
       <NTabPane name="context" tab="Context">
         <NEmpty description="Context-Editor kommt in Layer 7" />

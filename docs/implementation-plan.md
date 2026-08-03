@@ -163,7 +163,7 @@ Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt
 
 ## Layer 6: Chat-UI + Agent-Integration (Chat wird lebendig)
 
-- [ ] **6.1 — Frontend: Chat-UI (Vue, ohne Agent)**
+- [x] **6.1 — Frontend: Chat-UI (Vue, ohne Agent)**
   - `ChatView.vue` — Message-Liste, Input, File-Dropzone
   - Donut-Chart (zeigt bis 6.3 `0%` — `token_count_estimate` wird erst vom Agenten befuellt), "Neue Session"-Button (einfach, ohne Warnung/Disable — kommt in 8.3), Session-Dropdown
   - Nachrichten persistieren, keine Antworten (noch kein Agent)
