@@ -169,7 +169,7 @@ Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt
   - Nachrichten persistieren, keine Antworten (noch kein Agent)
   - **Test:** Nachricht tippen → Enter → erscheint in Liste → Reload → noch da
 
-- [ ] **6.2 — Provider Interface + Claude-Implementierung**
+- [x] **6.2 — Provider Interface + Claude-Implementierung**
   - `internal/agent/provider.go` — Interface: `Chat()`, `FormatTools()`, `FormatMessages()`, `SupportsDocumentInput()`
   - `internal/agent/provider/claude/` — Anthropic-Client, SSE-Mapping
   - `ChatEvent`-Stream: `text_delta`, `tool_call_request`, `done`
