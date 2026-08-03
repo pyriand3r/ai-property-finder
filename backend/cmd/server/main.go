@@ -19,11 +19,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"propertyfinder/internal/agent"
+	"propertyfinder/internal/agent/provider/claude"
 	"propertyfinder/internal/ai"
 	"propertyfinder/internal/api"
 	"propertyfinder/internal/config"
 	"propertyfinder/internal/db"
 	"propertyfinder/internal/events"
+	"strings"
 	"syscall"
 	"time"
 
@@ -85,10 +88,12 @@ func run() error {
 		return err
 	}
 
+	agentProvider := newAgentProvider(llmConfig)
+
 	broker := events.NewBroker()
 	defer broker.Stop()
 
-	router := api.NewServer(pool, llmConfig, envConfig.DataDir, provider, broker).Router()
+	router := api.NewServer(pool, llmConfig, envConfig.DataDir, provider, agentProvider, broker).Router()
 	server := &http.Server{
 		Addr:              envConfig.HTTPListenAddr,
 		Handler:           router,
@@ -120,4 +125,21 @@ func run() error {
 	}
 	log.Print("shutdown complete")
 	return nil
+}
+
+// newAgentProvider resolves the multi-turn agent.Provider (ADR 0007) from
+// llmConfig, mirroring ai.NewProvider's gating: an empty API key or a
+// non-Claude provider value (lmstudio/opencode reserved, ADR 0006) yields
+// the unconfigured stand-in instead of a Provider that would fail on
+// every call anyway.
+func newAgentProvider(llmConfig config.LLM) agent.Provider {
+	if strings.ToLower(strings.TrimSpace(llmConfig.Provider)) != "claude" || strings.TrimSpace(llmConfig.APIKey) == "" {
+		return agent.NewUnconfiguredProvider()
+	}
+	return claude.New(claude.Config{
+		APIKey:         llmConfig.APIKey,
+		BaseURL:        llmConfig.BaseURL,
+		Model:          llmConfig.Model,
+		TimeoutSeconds: llmConfig.TimeoutSeconds,
+	})
 }

@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"propertyfinder/internal/agent"
 	"propertyfinder/internal/ai"
 	"propertyfinder/internal/config"
 	"propertyfinder/internal/events"
@@ -37,9 +38,11 @@ type Server struct {
 // by pool. dataDir is the image storage volume root (ADR 0012), used by the
 // listing service to clean up files on delete and served at /media/.
 // provider is the resolved single-shot LLM provider (internal/ai) used by
-// evaluate_listing. broker fans out SSE progress for bulk re-evaluation
-// (Layer 2.3) and, later, chat streaming (Layer 6.3).
-func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provider ai.Provider, broker *events.Broker) *Server {
+// evaluate_listing. agentProvider is the resolved multi-turn Provider (ADR
+// 0007) used by the Agent loop — an unconfigured stand-in when llm.api_key
+// is empty (agent.NewUnconfiguredProvider). broker fans out SSE progress
+// for bulk re-evaluation (Layer 2.3) and chat streaming (Layer 6.3).
+func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provider ai.Provider, agentProvider agent.Provider, broker *events.Broker) *Server {
 	return &Server{
 		config:     &ConfigHandler{llm: llmConfig},
 		profile:    &ProfileHandler{service: service.NewProfileService(pool)},
@@ -51,7 +54,7 @@ func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provide
 		image:      &ImageHandler{service: service.NewImageService(pool, dataDir)},
 		upload:     &UploadHandler{service: service.NewUploadService(dataDir)},
 		geocode:    &GeocodeHandler{},
-		chat:       &ChatHandler{service: service.NewChatService(pool)},
+		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, agentProvider, broker, llmConfig)},
 		ranking:    &RankingHandler{service: service.NewRankingService(pool, provider)},
 		dataDir:    dataDir,
 	}

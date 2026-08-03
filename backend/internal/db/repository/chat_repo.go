@@ -35,6 +35,10 @@ type ChatRepository interface {
 	CreateMessage(ctx context.Context, message *domain.ChatMessage) error
 	// ListMessages returns a session's messages in chronological order.
 	ListMessages(ctx context.Context, sessionID uuid.UUID) ([]domain.ChatMessage, error)
+	// UpdateTokenCount sets a session's token_count_estimate from the
+	// summed Provider usage of the Agent turn that just completed on it
+	// (spec 00-03 Layer 6.3 — feeds the chat header's donut chart).
+	UpdateTokenCount(ctx context.Context, sessionID uuid.UUID, tokenCount int) error
 }
 
 // ChatRepo is the pgx-backed implementation of ChatRepository.
@@ -162,6 +166,14 @@ func (repo *ChatRepo) ListMessages(ctx context.Context, sessionID uuid.UUID) ([]
 		return nil, fmt.Errorf("chat list messages rows: %w", rowsError)
 	}
 	return messages, nil
+}
+
+func (repo *ChatRepo) UpdateTokenCount(ctx context.Context, sessionID uuid.UUID, tokenCount int) error {
+	const query = `UPDATE chat_session SET token_count_estimate = $2, updated_at = NOW() WHERE id = $1`
+	if _, err := repo.db.Exec(ctx, query, sessionID, tokenCount); err != nil {
+		return fmt.Errorf("chat update token count: %w", err)
+	}
+	return nil
 }
 
 func scanChatSessionRow(scanner interface {

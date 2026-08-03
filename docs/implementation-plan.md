@@ -176,7 +176,7 @@ Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt
   - **Model:** Claude 3.5 Sonnet · GPT-4o (Tool-Use-Zuverlaessigkeit ist hier kritisch — kein Platz fuer Halluzinationen im JSON-Format)
   - **Test:** Unit-Test mit Mock-HTTP-Server → Claude-Tool-Call → `ChatEvent` korrekt
 
-- [ ] **6.3 — Agent Loop (ohne Tools, nur Echo)**
+- [x] **6.3 — Agent Loop (ohne Tools, nur Echo)**
   - `internal/agent/loop.go` — `Run()` als Goroutine
   - System-Prompt-Assembly (Preamble + Global Context + Profile Context) — Preamble **ohne Tool-Sektion**, solange der Tool-Katalog leer ist (sonst halluziniert das Modell Tool-Calls als Text)
   - SSE-Streaming der Agent-Antwort ins Frontend

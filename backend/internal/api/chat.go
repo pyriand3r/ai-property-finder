@@ -5,10 +5,11 @@ import (
 	"propertyfinder/internal/service"
 )
 
-// ChatHandler serves Chat Session/message persistence (spec 01-01 Layer
-// 4.1 — no Agent turn yet).
+// ChatHandler serves Chat Session/message persistence (spec 01-01) and
+// triggers the Agent turn on each new message (spec 00-03, Layer 6.3).
 type ChatHandler struct {
 	service *service.ChatService
+	agent   *service.AgentService
 }
 
 // ListSessions handles GET /api/profiles/{profileId}/chat/sessions.
@@ -64,7 +65,11 @@ func (handler *ChatHandler) ListMessages(writer http.ResponseWriter, request *ht
 
 // SendMessage handles
 // POST /api/profiles/{profileId}/chat/sessions/{sessionId}/messages —
-// persists a user message only, no Agent turn (Layer 4.1).
+// persists the user message, then fires the Agent turn as a detached
+// goroutine (ADR 0008). Returns 202 Accepted with the persisted user
+// message the moment it's written; the reply streams over GET /api/events
+// (chat.text_delta, chat.message, chat.turn_error) and lands as its own
+// chat_message once the turn ends.
 func (handler *ChatHandler) SendMessage(writer http.ResponseWriter, request *http.Request) {
 	profileID, ok := parseUUID(writer, request, "profileId")
 	if !ok {
@@ -83,10 +88,10 @@ func (handler *ChatHandler) SendMessage(writer http.ResponseWriter, request *htt
 		return
 	}
 
-	message, err := handler.service.SendMessage(request.Context(), profileID, sessionID, body.Content, body.AttachmentPath)
+	message, err := handler.agent.SendMessage(request.Context(), profileID, sessionID, body.Content, body.AttachmentPath)
 	if err != nil {
 		writeError(writer, err)
 		return
 	}
-	writeJSON(writer, http.StatusCreated, message)
+	writeJSON(writer, http.StatusAccepted, message)
 }
