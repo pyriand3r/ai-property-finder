@@ -205,7 +205,7 @@ Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt
   - **Model:** Claude 3.5 Sonnet · GPT-4o (Pending-Confirmation-Pattern muss zuverlaessig funktionieren — das Modell darf nicht "vergessen" dass es auf Bestaetigung wartet)
   - **Test:** URL in Chat → Agent schlaegt Criteria vor → Confirm-Card erscheint → Uebernehmen klicken → Criteria in DB (sichtbar in 5.1) → evaluate_listing laeuft
 
-- [ ] **6.6 — Remaining Tools**
+- [x] **6.6 — Remaining Tools**
   - `geocode` Tool (ruft 3.4 auf)
   - `list_profile_listings` Tool
   - `compute_ranking` Tool (Score-Sortierung, kein LLM; Kurzfazit schreibt der Agent im Chat — Persistierung nur via Button aus 5.2)

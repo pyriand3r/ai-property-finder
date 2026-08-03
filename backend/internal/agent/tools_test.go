@@ -6,6 +6,7 @@ import (
 	"errors"
 	"propertyfinder/internal/domain"
 	"propertyfinder/internal/fetch"
+	"propertyfinder/internal/geocode"
 	"strings"
 	"testing"
 
@@ -53,6 +54,26 @@ func (f *fakeListingWriter) SetTitleImageIfUnset(_ context.Context, listingID, i
 	}
 	f.titleSet[listingID] = imageID
 	return true, nil
+}
+
+func (f *fakeListingWriter) ListByProfile(_ context.Context, profileID uuid.UUID, _ *bool) ([]domain.Listing, error) {
+	var result []domain.Listing
+	for _, listing := range f.listings {
+		if listing.ProfileID == profileID {
+			result = append(result, *listing)
+		}
+	}
+	return result, nil
+}
+
+func (f *fakeListingWriter) ListRankable(_ context.Context, profileID uuid.UUID) ([]domain.Listing, error) {
+	var result []domain.Listing
+	for _, listing := range f.listings {
+		if listing.ProfileID == profileID && listing.OverallScore != nil {
+			result = append(result, *listing)
+		}
+	}
+	return result, nil
 }
 
 // fakeImageWriter is an in-memory stand-in for repository.ImageRepository
@@ -365,5 +386,79 @@ func TestDispatch_UpdateContext_RejectsUnsupportedOperation(t *testing.T) {
 	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "update_context", Arguments: json.RawMessage(args)})
 	if !isError {
 		t.Error("expected an error result for an unsupported operation")
+	}
+}
+
+type fakeGeocoder struct {
+	result *geocode.Result
+	err    error
+}
+
+func (f *fakeGeocoder) Geocode(context.Context, string, string) (*geocode.Result, error) {
+	return f.result, f.err
+}
+
+func TestDispatch_Geocode_ReturnsCoordinates(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+	registry.Geocoder = &fakeGeocoder{result: &geocode.Result{Lat: 55.6, Lon: 13.0, DisplayName: "Malmö, Schweden"}}
+
+	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "geocode", Arguments: json.RawMessage(`{"address":"Malmö"}`)})
+	if isError {
+		t.Fatalf("Dispatch returned an error result: %s", result)
+	}
+	if !strings.Contains(result, "Malmö, Schweden") || !strings.Contains(result, "55.6") {
+		t.Errorf("result = %s, want it to contain the resolved coordinates and display name", result)
+	}
+}
+
+func TestDispatch_Geocode_NotFoundIsAnError(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+	registry.Geocoder = &fakeGeocoder{err: geocode.ErrNotFound}
+
+	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "geocode", Arguments: json.RawMessage(`{"address":"Nirgendwo"}`)})
+	if !isError {
+		t.Error("expected an error result when the address isn't found")
+	}
+	if !strings.Contains(result, "nicht gefunden") {
+		t.Errorf("result = %s, want a not-found message", result)
+	}
+}
+
+func TestDispatch_ListProfileListings_ReturnsOnlyCurrentProfile(t *testing.T) {
+	listings := newFakeListingWriter()
+	registry := newTestRegistry(t, listings, &fakeImageWriter{})
+
+	ownID := uuid.New()
+	listings.listings[ownID] = &domain.Listing{ID: ownID, ProfileID: registry.ProfileID, Title: "Kappmuren 2", SourceURL: new("https://x")}
+	otherID := uuid.New()
+	listings.listings[otherID] = &domain.Listing{ID: otherID, ProfileID: uuid.New(), Title: "Not yours"}
+
+	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "list_profile_listings"})
+	if isError {
+		t.Fatalf("Dispatch returned an error result: %s", result)
+	}
+	if !strings.Contains(result, "Kappmuren 2") {
+		t.Errorf("result = %s, want it to include the profile's own listing", result)
+	}
+	if strings.Contains(result, "Not yours") {
+		t.Errorf("result = %s, want it to exclude another profile's listing", result)
+	}
+}
+
+func TestDispatch_ComputeRanking_OrdersByScoreDescending(t *testing.T) {
+	listings := newFakeListingWriter()
+	registry := newTestRegistry(t, listings, &fakeImageWriter{})
+
+	low, high := 40.0, 90.0
+	lowID, highID := uuid.New(), uuid.New()
+	listings.listings[lowID] = &domain.Listing{ID: lowID, ProfileID: registry.ProfileID, Title: "Niedrig", OverallScore: &low}
+	listings.listings[highID] = &domain.Listing{ID: highID, ProfileID: registry.ProfileID, Title: "Hoch", OverallScore: &high}
+
+	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "compute_ranking"})
+	if isError {
+		t.Fatalf("Dispatch returned an error result: %s", result)
+	}
+	if !strings.Contains(result, "Hoch") || !strings.Contains(result, "Niedrig") {
+		t.Errorf("result = %s, want both listings present", result)
 	}
 }

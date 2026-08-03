@@ -11,6 +11,8 @@ import (
 	"propertyfinder/internal/domain"
 	"propertyfinder/internal/events"
 	"propertyfinder/internal/fetch"
+	"propertyfinder/internal/geocode"
+	"propertyfinder/internal/pdf"
 	"strings"
 	"time"
 
@@ -103,6 +105,7 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 		Downloader: fetch.NewClient(),
 		DataDir:    service.dataDir,
 		Evaluator:  evaluationAdapter{service.evaluation},
+		Geocoder:   geocodeAdapter{},
 	}
 	loop := &agent.Loop{
 		Provider:            service.provider,
@@ -114,6 +117,23 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 		System:   agent.BuildSystemPrompt(len(tools) > 0, agent.EffectiveMaxLLMRoundtrips(service.llm.MaxLLMRoundtrips), globalContext.ContentMD, profileContext.ContentMD),
 		Messages: service.provider.FormatMessages(history),
 		Tools:    tools,
+	}
+
+	// A PDF attached to the triggering user message is read once here and
+	// appended as a native document content block to that message — not
+	// requested via a Tool call (spec 00-03 "PDF Handling"; read_pdf isn't
+	// in the Tools() catalog for exactly this reason). Deleted from disk
+	// once the turn ends either way, so it's never resent on a later turn.
+	pdfAttachment := attachedPDFPath(history)
+	if pdfAttachment != nil && service.provider.SupportsDocumentInput() {
+		if encoded, readErr := pdf.ReadBase64(service.dataDir, *pdfAttachment); readErr != nil {
+			log.Printf("agent: read pdf attachment for session %s: %v", sessionID, readErr)
+		} else if last := len(req.Messages) - 1; last >= 0 {
+			req.Messages[last].Content = append(req.Messages[last].Content, agent.ContentBlock{
+				Type:         agent.ContentBlockDocument,
+				DocumentData: encoded,
+			})
+		}
 	}
 
 	onEvent := func(event agent.ChatEvent) {
@@ -134,6 +154,13 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 	}
 
 	result, err := loop.Run(ctx, req, onEvent, onRoundtrip)
+
+	if pdfAttachment != nil {
+		if deleteErr := pdf.Delete(service.dataDir, *pdfAttachment); deleteErr != nil {
+			log.Printf("agent: delete pdf attachment for session %s: %v", sessionID, deleteErr)
+		}
+	}
+
 	if err != nil {
 		service.publishError(sessionID, err)
 		return
@@ -163,7 +190,7 @@ func (service *AgentService) persistRoundtrip(ctx context.Context, chatRepo *rep
 		SessionID: sessionID,
 		Role:      domain.ChatRoleAssistant,
 		Content:   textFromBlocks(outcome.Assistant.Content),
-		ToolCalls: toolCallsJSON(outcome.Assistant.Content),
+		ToolCalls: toolCallsJSON(outcome.Assistant.Content, outcome.Results),
 		CreatedAt: time.Now().UTC(),
 	}
 	if isFinal {
@@ -210,12 +237,32 @@ func textFromBlocks(blocks []agent.ContentBlock) string {
 // toolCallsJSON extracts the tool_use blocks from an assistant Message
 // into the StoredToolCall shape chat_message.tool_calls persists (nil —
 // not an empty array — when the roundtrip made no tool calls, matching
-// the column's NULL-when-absent convention).
-func toolCallsJSON(blocks []agent.ContentBlock) json.RawMessage {
+// the column's NULL-when-absent convention). results is a defensive
+// cross-check: every ToolOutcome that was actually dispatched is appended
+// if its call ID didn't already come through in blocks. Without this, an
+// occasional streaming/roundtrip-persistence gap can produce an assistant
+// row with fewer tool_calls than were really dispatched — the
+// corresponding role=tool row (built independently from results, not
+// blocks) still gets its own chat_message with a real ToolResultForID,
+// and a later turn's history replay then contains a tool_result with no
+// matching tool_use in the previous message, which Claude's API rejects
+// outright ("Each tool_result block must have a corresponding tool_use
+// block in the previous message"). Observed intermittently in Layer 6.6
+// live testing (evaluate_listing x2 then compute_ranking in one turn);
+// this makes the persisted record correct regardless of that gap's exact
+// cause.
+func toolCallsJSON(blocks []agent.ContentBlock, results []agent.ToolOutcome) json.RawMessage {
 	var calls []agent.StoredToolCall
+	seen := make(map[string]bool, len(blocks))
 	for _, block := range blocks {
 		if block.Type == agent.ContentBlockToolUse {
 			calls = append(calls, agent.StoredToolCall{ID: block.ToolUseID, Name: block.ToolName, Input: block.ToolInput})
+			seen[block.ToolUseID] = true
+		}
+	}
+	for _, outcome := range results {
+		if !seen[outcome.Call.ID] {
+			calls = append(calls, agent.StoredToolCall{ID: outcome.Call.ID, Name: outcome.Call.Name, Input: outcome.Call.Arguments})
 		}
 	}
 	if len(calls) == 0 {
@@ -261,6 +308,33 @@ func humanizeToolResult(toolName, resultJSON string, isError bool) string {
 	default:
 		return toolName
 	}
+}
+
+// attachedPDFPath returns the triggering user message's attachment_path if
+// it names a PDF, or nil. history is chronological, so that message is
+// always the last row — SendMessage persists the user's message before
+// runTurn is ever spawned (ADR 0008), and this function only runs once per
+// turn on the history as of that point.
+func attachedPDFPath(history []domain.ChatMessage) *string {
+	if len(history) == 0 {
+		return nil
+	}
+	last := history[len(history)-1]
+	if last.Role != domain.ChatRoleUser || last.AttachmentPath == nil {
+		return nil
+	}
+	if !strings.HasSuffix(strings.ToLower(*last.AttachmentPath), ".pdf") {
+		return nil
+	}
+	return last.AttachmentPath
+}
+
+// geocodeAdapter satisfies agent.AddressGeocoder against the
+// package-level geocode.Geocode func.
+type geocodeAdapter struct{}
+
+func (geocodeAdapter) Geocode(ctx context.Context, address, country string) (*geocode.Result, error) {
+	return geocode.Geocode(ctx, address, country)
 }
 
 // evaluationAdapter satisfies agent.ListingEvaluator against

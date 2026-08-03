@@ -24,6 +24,13 @@ const (
 	ContentBlockText       ContentBlockType = "text"
 	ContentBlockToolUse    ContentBlockType = "tool_use"
 	ContentBlockToolResult ContentBlockType = "tool_result"
+	// ContentBlockDocument carries a PDF attached natively for this turn
+	// only (spec 00-03 "PDF Handling") — appended to the triggering user
+	// Message by AgentService when its chat_message row has
+	// attachment_path set, not requested via a Tool call. Gated on
+	// Provider.SupportsDocumentInput(); a provider that returns false for
+	// it never receives this block type.
+	ContentBlockDocument ContentBlockType = "document"
 )
 
 // ContentBlock is one normalized piece of a Message or system prompt.
@@ -46,6 +53,10 @@ type ContentBlock struct {
 	ToolResultForID string
 	ToolResultText  string
 	ToolResultError bool
+
+	// Document fields: set for ContentBlockDocument. DocumentData is
+	// base64-encoded PDF bytes (internal/pdf.ReadBase64's output).
+	DocumentData string
 }
 
 // Message is one normalized conversation turn sent to Chat(). Role is

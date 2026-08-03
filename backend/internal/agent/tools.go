@@ -3,11 +3,13 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"propertyfinder/internal/domain"
 	"propertyfinder/internal/fetch"
+	"propertyfinder/internal/geocode"
 	"slices"
 	"strings"
 	"time"
@@ -17,9 +19,12 @@ import (
 
 // Tools returns the full Tool catalog offered to the model: reading and
 // saving a listing plus its photos (Layer 6.4), evaluating it against the
-// profile's Criteria, and proposing Criteria/Context changes for the user
-// to confirm (Layer 6.5, spec 00-03 "Tool Catalog"). geocode
-// /list_profile_listings/compute_ranking/read_pdf land in Layer 6.6.
+// profile's Criteria and proposing Criteria/Context changes for the user
+// to confirm (Layer 6.5), and address lookup, cross-listing comparison,
+// and ranking (Layer 6.6, spec 00-03 "Tool Catalog"). read_pdf isn't a
+// dispatchable Tool — an uploaded PDF is attached to the triggering
+// message automatically (see AgentService.runTurn), matching how the
+// model receives it: as native document content, not a tool result.
 func Tools() []Tool {
 	return []Tool{
 		{
@@ -125,18 +130,44 @@ func Tools() []Tool {
 				"required": ["scope", "operation", "content"]
 			}`),
 		},
+		{
+			Name:        "geocode",
+			Description: "Löst eine Adresse in Koordinaten (Breitengrad/Längengrad) auf, z.B. wenn eine Quelle nur eine Adresse aber keine Koordinaten nennt.",
+			InputSchema: json.RawMessage(`{
+				"properties": {
+					"address": {"type": "string", "description": "Aufzulösende Adresse."},
+					"country": {"type": "string", "description": "ISO 3166-1 alpha-2 Ländercode zur Eingrenzung, z.B. SE, AT, PT. Optional."}
+				},
+				"required": ["address"]
+			}`),
+		},
+		{
+			Name:        "list_profile_listings",
+			Description: "Liefert eine Übersicht (Titel, Preis, Score, Status, Quell-URL) aller bestehenden Inserate in diesem Profil — für Vergleichsfragen (\"vergleiche mit Kappmuren 2\") und um vor dem Anlegen eines neuen Inserats zu prüfen, ob die Quell-URL schon existiert.",
+			InputSchema: json.RawMessage(`{"properties": {}, "required": []}`),
+		},
+		{
+			Name:        "compute_ranking",
+			Description: "Liefert die nach Score absteigend sortierte Rangliste aller bewerteten, nicht abgelehnten/archivierten Inserate im Profil. Rein deterministisch, kein LLM-Call — das Kurzfazit für den Chat formulierst du selbst im Antworttext, nicht dieses Tool.",
+			InputSchema: json.RawMessage(`{"properties": {}, "required": []}`),
+		},
 	}
 }
 
 // ListingWriter is the narrow slice of repository.ListingRepository the
 // Agent's tools need: Create/GetByID/Update for save_listing,
 // SetTitleImageIfUnset for download_image's auto-title-image behavior
-// (mirrors internal/service.ImageService.Upload, Layer 3.2).
+// (mirrors internal/service.ImageService.Upload, Layer 3.2), ListByProfile
+// for list_profile_listings and ListRankable for compute_ranking (Layer
+// 6.6) — both plain reads, kept on this interface rather than a separate
+// one since it already isn't purely a "writer" (GetByID is a read too).
 type ListingWriter interface {
 	Create(ctx context.Context, listing *domain.Listing) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Listing, error)
 	Update(ctx context.Context, listing *domain.Listing) error
 	SetTitleImageIfUnset(ctx context.Context, listingID, imageID uuid.UUID) (bool, error)
+	ListByProfile(ctx context.Context, profileID uuid.UUID, needsReevaluation *bool) ([]domain.Listing, error)
+	ListRankable(ctx context.Context, profileID uuid.UUID) ([]domain.Listing, error)
 }
 
 // ImageWriter is the narrow slice of repository.ImageRepository
@@ -166,6 +197,13 @@ type ListingEvaluator interface {
 	EvaluateListing(ctx context.Context, listingID uuid.UUID) (*domain.Listing, []domain.CriterionScore, error)
 }
 
+// AddressGeocoder backs the geocode Tool. Satisfied by an adapter over the
+// package-level geocode.Geocode func (internal/geocode has no client type
+// to implement this directly).
+type AddressGeocoder interface {
+	Geocode(ctx context.Context, address, country string) (*geocode.Result, error)
+}
+
 var validImageCategories = map[string]bool{
 	"exterior":    true,
 	"interior":    true,
@@ -186,6 +224,7 @@ type Registry struct {
 	Fetcher    PageFetcher
 	Downloader ImageDownloader
 	Evaluator  ListingEvaluator
+	Geocoder   AddressGeocoder
 	DataDir    string
 
 	touchedListingID *uuid.UUID
@@ -215,6 +254,12 @@ func (r *Registry) Dispatch(ctx context.Context, call ToolCall) (string, bool) {
 		return r.proposeCriteria(call.Arguments)
 	case "update_context":
 		return r.updateContext(call.Arguments)
+	case "geocode":
+		return r.geocodeAddress(ctx, call.Arguments)
+	case "list_profile_listings":
+		return r.listProfileListings(ctx)
+	case "compute_ranking":
+		return r.computeRanking(ctx)
 	default:
 		return errorJSON("unbekanntes Tool: " + call.Name), true
 	}
@@ -557,6 +602,69 @@ func (r *Registry) updateContext(raw json.RawMessage) (string, bool) {
 		"status":  "pending_confirmation",
 		"summary": fmt.Sprintf("Kontext-Ergänzung vorgeschlagen (%s) — ⚠️ Noch nicht aktiv, Bestätigung ausstehend.", args.Scope),
 	}), false
+}
+
+func (r *Registry) geocodeAddress(ctx context.Context, raw json.RawMessage) (string, bool) {
+	var args struct {
+		Address string `json:"address"`
+		Country string `json:"country"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil || strings.TrimSpace(args.Address) == "" {
+		return errorJSON("address ist erforderlich"), true
+	}
+
+	result, err := r.Geocoder.Geocode(ctx, args.Address, args.Country)
+	if err != nil {
+		if errors.Is(err, geocode.ErrNotFound) {
+			return errorJSON("Adresse nicht gefunden: " + args.Address), true
+		}
+		return errorJSON(err.Error()), true
+	}
+	return mustJSON(map[string]any{
+		"latitude":     result.Lat,
+		"longitude":    result.Lon,
+		"display_name": result.DisplayName,
+	}), false
+}
+
+func (r *Registry) listProfileListings(ctx context.Context) (string, bool) {
+	listings, err := r.Listings.ListByProfile(ctx, r.ProfileID, nil)
+	if err != nil {
+		return errorJSON(err.Error()), true
+	}
+
+	summaries := make([]map[string]any, len(listings))
+	for i, listing := range listings {
+		summaries[i] = map[string]any{
+			"listing_id":     listing.ID.String(),
+			"title":          listing.Title,
+			"price":          listing.Price,
+			"price_currency": listing.PriceCurrency,
+			"score":          listing.OverallScore,
+			"status":         listing.Status,
+			"source_url":     listing.SourceURL,
+		}
+	}
+	return mustJSON(map[string]any{"listings": summaries}), false
+}
+
+func (r *Registry) computeRanking(ctx context.Context) (string, bool) {
+	listings, err := r.Listings.ListRankable(ctx, r.ProfileID)
+	if err != nil {
+		return errorJSON(err.Error()), true
+	}
+
+	ranking := make([]map[string]any, len(listings))
+	for i, listing := range listings {
+		ranking[i] = map[string]any{
+			"rank":       i + 1,
+			"listing_id": listing.ID.String(),
+			"title":      listing.Title,
+			"price":      listing.Price,
+			"score":      listing.OverallScore,
+		}
+	}
+	return mustJSON(map[string]any{"ranking": ranking}), false
 }
 
 func mustJSON(v any) string {

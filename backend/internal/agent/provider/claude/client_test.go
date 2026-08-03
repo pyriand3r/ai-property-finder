@@ -118,6 +118,64 @@ func TestChat_StreamsTextThenToolCallThenDone(t *testing.T) {
 	}
 }
 
+// noArgToolSSEBody mirrors what Claude actually streams for a tool whose
+// schema takes no parameters (e.g. compute_ranking): content_block_start
+// with input:{} immediately followed by content_block_stop — zero
+// input_json_delta events, since there's nothing to stream.
+const noArgToolSSEBody = `event: message_start
+data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-3-5-sonnet-20241022","usage":{"input_tokens":10,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_2","name":"compute_ranking","input":{}}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"input_tokens":10,"output_tokens":2}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`
+
+// TestChat_ZeroArgumentToolCall_DefaultsToEmptyObject guards against a
+// regression: Arguments must never come out as "" for a no-parameter tool
+// call — replaying an empty string as tool_use.input on the next
+// roundtrip is rejected by Claude's API ("Field required"), even though
+// the original streamed response is well-formed.
+func TestChat_ZeroArgumentToolCall_DefaultsToEmptyObject(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(noArgToolSSEBody))
+	}))
+	defer server.Close()
+
+	provider := New(Config{APIKey: "test-key", BaseURL: server.URL, Model: "claude-sonnet-5"})
+	events, err := provider.Chat(context.Background(), agent.ChatRequest{Stream: true})
+	if err != nil {
+		t.Fatalf("Chat returned error: %v", err)
+	}
+
+	var toolCall *agent.ToolCall
+	for event := range events {
+		if event.Error != nil {
+			t.Fatalf("unexpected event error: %v", event.Error)
+		}
+		if event.Type == agent.ChatEventToolCallRequest {
+			toolCall = event.ToolCall
+		}
+	}
+
+	if toolCall == nil {
+		t.Fatal("expected a tool call request, got none")
+	}
+	if string(toolCall.Arguments) != "{}" {
+		t.Errorf("toolCall.Arguments = %q, want %q", toolCall.Arguments, "{}")
+	}
+}
+
 func TestFormatMessages_MergesConsecutiveToolResults(t *testing.T) {
 	provider := New(Config{APIKey: "test-key"})
 

@@ -206,6 +206,8 @@ func formatMessages(messages []agent.Message) []anthropic.MessageParam {
 				blocks = append(blocks, anthropic.NewToolUseBlock(block.ToolUseID, input, block.ToolName))
 			case agent.ContentBlockToolResult:
 				blocks = append(blocks, anthropic.NewToolResultBlock(block.ToolResultForID, block.ToolResultText, block.ToolResultError))
+			case agent.ContentBlockDocument:
+				blocks = append(blocks, anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: block.DocumentData}))
 			}
 		}
 		role := anthropic.MessageParamRoleUser
@@ -222,6 +224,21 @@ func formatMessages(messages []agent.Message) []anthropic.MessageParam {
 type pendingToolCall struct {
 	id, name string
 	args     strings.Builder
+}
+
+// toolArgsOrEmptyObject returns raw, or "{}" if raw is empty. A tool whose
+// schema takes no parameters (e.g. compute_ranking) gets zero
+// input_json_delta events during streaming — Claude sends nothing to
+// accumulate since there's nothing to send — leaving args empty rather
+// than "{}". Replaying that empty string back to the API on the next
+// roundtrip's history is invalid: Claude rejects a tool_use block with a
+// missing input field ("Field required"), even though the identical
+// distinction was fine on the original streamed response.
+func toolArgsOrEmptyObject(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return "{}"
+	}
+	return raw
 }
 
 // translateStream drains an Anthropic SSE stream and emits normalized
@@ -261,7 +278,7 @@ func translateStream(stream *ssestream.Stream[anthropic.MessageStreamEventUnion]
 					ToolCall: &agent.ToolCall{
 						ID:        call.id,
 						Name:      call.name,
-						Arguments: json.RawMessage(call.args.String()),
+						Arguments: json.RawMessage(toolArgsOrEmptyObject(call.args.String())),
 					},
 				}
 			}

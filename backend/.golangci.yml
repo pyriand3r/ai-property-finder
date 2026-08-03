@@ -73,6 +73,7 @@ linters:
         - kappmuren
         - makler
         - immobilien
+        - deterministisch
 
     nolintlint:
       require-explanation: true
