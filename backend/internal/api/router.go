@@ -31,6 +31,7 @@ type Server struct {
 	geocode    *GeocodeHandler
 	chat       *ChatHandler
 	ranking    *RankingHandler
+	toolCall   *ToolCallHandler
 	dataDir    string
 }
 
@@ -38,24 +39,29 @@ type Server struct {
 // by pool. dataDir is the image storage volume root (ADR 0012), used by the
 // listing service to clean up files on delete and served at /media/.
 // provider is the resolved single-shot LLM provider (internal/ai) used by
-// evaluate_listing. agentProvider is the resolved multi-turn Provider (ADR
-// 0007) used by the Agent loop — an unconfigured stand-in when llm.api_key
-// is empty (agent.NewUnconfiguredProvider). broker fans out SSE progress
-// for bulk re-evaluation (Layer 2.3) and chat streaming (Layer 6.3).
+// evaluate_listing (both directly, via EvaluationHandler, and through the
+// Agent's evaluate_listing Tool — the same *EvaluationService instance
+// backs both, Layer 6.5). agentProvider is the resolved multi-turn
+// Provider (ADR 0007) used by the Agent loop — an unconfigured stand-in
+// when llm.api_key is empty (agent.NewUnconfiguredProvider). broker fans
+// out SSE progress for bulk re-evaluation (Layer 2.3) and chat streaming
+// (Layer 6.3).
 func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provider ai.Provider, agentProvider agent.Provider, broker *events.Broker) *Server {
+	evaluationService := service.NewEvaluationService(pool, provider, broker)
 	return &Server{
 		config:     &ConfigHandler{llm: llmConfig},
 		profile:    &ProfileHandler{service: service.NewProfileService(pool)},
 		context:    &ContextHandler{service: service.NewContextService(pool)},
 		criterion:  &CriterionHandler{service: service.NewCriterionService(pool)},
 		listing:    &ListingHandler{service: service.NewListingService(pool, dataDir)},
-		evaluation: &EvaluationHandler{service: service.NewEvaluationService(pool, provider, broker)},
+		evaluation: &EvaluationHandler{service: evaluationService},
 		events:     &EventHandler{broker: broker},
 		image:      &ImageHandler{service: service.NewImageService(pool, dataDir)},
 		upload:     &UploadHandler{service: service.NewUploadService(dataDir)},
 		geocode:    &GeocodeHandler{},
-		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, agentProvider, broker, llmConfig, dataDir)},
+		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, agentProvider, broker, llmConfig, dataDir, evaluationService)},
 		ranking:    &RankingHandler{service: service.NewRankingService(pool, provider)},
+		toolCall:   &ToolCallHandler{service: service.NewToolCallService(pool)},
 		dataDir:    dataDir,
 	}
 }
@@ -111,6 +117,11 @@ func (server *Server) Router() http.Handler {
 			r.Get("/chat/sessions/{sessionId}/messages", server.chat.ListMessages)
 			r.Post("/chat/sessions/{sessionId}/messages", server.chat.SendMessage)
 		})
+	})
+
+	timed.Route("/api/chat/messages/{messageId}/tool-calls/{callIdx}", func(r chi.Router) {
+		r.Post("/confirm", server.toolCall.Confirm)
+		r.Post("/reject", server.toolCall.Reject)
 	})
 
 	timed.Route("/api/criteria/{criterionId}", func(r chi.Router) {

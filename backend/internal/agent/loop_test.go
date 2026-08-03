@@ -51,7 +51,11 @@ func TestLoop_Run_TextOnlyEndsAfterOneRoundtrip(t *testing.T) {
 	loop := &Loop{Provider: provider}
 
 	var seen []ChatEvent
-	result, err := loop.Run(context.Background(), TurnRequest{}, func(e ChatEvent) { seen = append(seen, e) })
+	var roundtrips []RoundtripOutcome
+	result, err := loop.Run(context.Background(), TurnRequest{},
+		func(e ChatEvent) { seen = append(seen, e) },
+		func(r RoundtripOutcome) { roundtrips = append(roundtrips, r) },
+	)
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -66,6 +70,15 @@ func TestLoop_Run_TextOnlyEndsAfterOneRoundtrip(t *testing.T) {
 	}
 	if len(seen) != 3 {
 		t.Errorf("onEvent saw %d events, want 3 (forwarded every event)", len(seen))
+	}
+	if len(roundtrips) != 1 {
+		t.Fatalf("onRoundtrip fired %d times, want 1", len(roundtrips))
+	}
+	if len(roundtrips[0].Results) != 0 {
+		t.Errorf("final roundtrip has %d Results, want 0 (no tool calls)", len(roundtrips[0].Results))
+	}
+	if len(roundtrips[0].Assistant.Content) != 1 || roundtrips[0].Assistant.Content[0].Text != "Hallo, wie kann ich helfen?" {
+		t.Errorf("Assistant.Content = %+v, want one text block with the reply", roundtrips[0].Assistant.Content)
 	}
 }
 
@@ -94,7 +107,10 @@ func TestLoop_Run_DispatchesToolCallAndContinues(t *testing.T) {
 		},
 	}
 
-	result, err := loop.Run(context.Background(), TurnRequest{}, func(ChatEvent) {})
+	var roundtrips []RoundtripOutcome
+	result, err := loop.Run(context.Background(), TurnRequest{}, func(ChatEvent) {},
+		func(r RoundtripOutcome) { roundtrips = append(roundtrips, r) },
+	)
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -110,6 +126,25 @@ func TestLoop_Run_DispatchesToolCallAndContinues(t *testing.T) {
 	if result.Usage.InputTokens != 13 || result.Usage.OutputTokens != 5 {
 		t.Errorf("Usage = %+v, want summed across roundtrips (InputTokens=13 OutputTokens=5)", result.Usage)
 	}
+
+	if len(roundtrips) != 2 {
+		t.Fatalf("onRoundtrip fired %d times, want 2 (one per roundtrip)", len(roundtrips))
+	}
+	if len(roundtrips[0].Results) != 1 || roundtrips[0].Results[0].Call.Name != "fetch_url" {
+		t.Errorf("first roundtrip Results = %+v, want one fetch_url outcome", roundtrips[0].Results)
+	}
+	toolUseFound := false
+	for _, block := range roundtrips[0].Assistant.Content {
+		if block.Type == ContentBlockToolUse && block.ToolName == "fetch_url" {
+			toolUseFound = true
+		}
+	}
+	if !toolUseFound {
+		t.Errorf("first roundtrip Assistant.Content = %+v, want a tool_use block for fetch_url", roundtrips[0].Assistant.Content)
+	}
+	if len(roundtrips[1].Results) != 0 {
+		t.Errorf("second (final) roundtrip has %d Results, want 0", len(roundtrips[1].Results))
+	}
 }
 
 func TestLoop_Run_StopsAtRoundtripLimitWithPendingToolCall(t *testing.T) {
@@ -124,7 +159,10 @@ func TestLoop_Run_StopsAtRoundtripLimitWithPendingToolCall(t *testing.T) {
 		Dispatch:         func(context.Context, ToolCall) (string, bool) { return `{}`, false },
 	}
 
-	result, err := loop.Run(context.Background(), TurnRequest{}, func(ChatEvent) {})
+	var roundtrips []RoundtripOutcome
+	result, err := loop.Run(context.Background(), TurnRequest{}, func(ChatEvent) {},
+		func(r RoundtripOutcome) { roundtrips = append(roundtrips, r) },
+	)
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -134,13 +172,25 @@ func TestLoop_Run_StopsAtRoundtripLimitWithPendingToolCall(t *testing.T) {
 	if want := "[Limit von 2 LLM-Anfragen erreicht"; !strings.Contains(result.Text, want) {
 		t.Errorf("Text = %q, want it to contain %q", result.Text, want)
 	}
+	// Two onRoundtrip calls: roundtrip 1 dispatches its tool call normally
+	// (budget not yet exhausted) and persists with a Results entry;
+	// roundtrip 2 is the one that hits the limit and never dispatches.
+	if len(roundtrips) != 2 {
+		t.Fatalf("onRoundtrip fired %d times, want 2", len(roundtrips))
+	}
+	if len(roundtrips[0].Results) != 1 {
+		t.Errorf("first roundtrip has %d Results, want 1 (dispatched before the limit)", len(roundtrips[0].Results))
+	}
+	if len(roundtrips[1].Results) != 0 {
+		t.Errorf("second (budget-exhausted) roundtrip has %d Results, want 0 (never dispatched)", len(roundtrips[1].Results))
+	}
 }
 
 func TestLoop_Run_PropagatesProviderError(t *testing.T) {
 	provider := &fakeProvider{err: errBoom}
 	loop := &Loop{Provider: provider}
 
-	_, err := loop.Run(context.Background(), TurnRequest{}, func(ChatEvent) {})
+	_, err := loop.Run(context.Background(), TurnRequest{}, func(ChatEvent) {}, func(RoundtripOutcome) {})
 	if !errors.Is(err, errBoom) {
 		t.Errorf("Run error = %v, want errBoom", err)
 	}

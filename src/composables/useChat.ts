@@ -13,7 +13,6 @@ interface ChatTextDeltaPayload {
 }
 interface ChatMessagePayload {
   session_id: string;
-  message: ChatMessage;
 }
 interface ChatTurnErrorPayload {
   session_id: string;
@@ -47,15 +46,19 @@ function parseSSEPayload<T>(event: Event): T | null {
 /**
  * Owns a profile's chat sessions + the currently displayed session's
  * messages (spec 01-01), and the Agent turn's live stream (spec 00-03
- * Layer 6.3): sending a message triggers the Agent over SSE
- * (`/api/events`, events `chat.text_delta` / `chat.message`
- * / `chat.turn_error`), and `displayMessages` appends a synthetic
- * in-progress bubble from the accumulating deltas until the final
- * `chat.message` replaces it with the persisted row. The user can browse a
- * past (ended) session via the dropdown, but only the active session
- * accepts new messages — the backend enforces this (409), this composable
- * also exposes `canSend` so the UI can disable the input instead of
- * letting the user hit that error.
+ * Layer 6.3/6.5): sending a message triggers the Agent over SSE
+ * (`/api/events`, events `chat.text_delta` / `chat.tool_progress`
+ * / `chat.message` / `chat.turn_error`), and `displayMessages` appends a
+ * synthetic in-progress bubble from the accumulating deltas/tool-progress
+ * label until the turn ends. `chat.message` only carries a session_id —
+ * every roundtrip of the turn persisted its own row (Layer 6.5, so
+ * pending-confirmation tool calls from an intermediate roundtrip are
+ * readable too, not just the final reply), so on turn-end the handler
+ * refetches the full message list rather than appending one row. The user
+ * can browse a past (ended) session via the dropdown, but only the active
+ * session accepts new messages — the backend enforces this (409), this
+ * composable also exposes `canSend` so the UI can disable the input
+ * instead of letting the user hit that error.
  */
 export function useChat(profileId: string) {
   const sessions = shallowRef<ChatSession[]>([]);
@@ -159,9 +162,9 @@ export function useChat(profileId: string) {
   }
 
   /** Refetches sessions only, to pick up token_count_estimate after a turn
-   * ends (the donut chart's data source) — messages are already up to date
-   * from the chat.message handler, so fetchSessions()'s extra
-   * fetchMessages() call would just be a redundant round trip. */
+   * ends (the donut chart's data source) — separate from fetchMessages()
+   * since fetchSessions() would also re-resolve currentSessionId, which
+   * isn't needed here and messages already get their own refetch. */
   async function refreshTokenCount() {
     try {
       sessions.value = await chatApi.listSessions(profileId);
@@ -191,7 +194,7 @@ export function useChat(profileId: string) {
       if (payload && payload.session_id === currentSessionId.value) {
         streamingText.value = '';
         toolProgress.value = null;
-        messages.value = [...messages.value, payload.message];
+        void fetchMessages();
         void refreshTokenCount();
       }
     });

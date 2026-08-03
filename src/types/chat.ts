@@ -8,9 +8,38 @@ export interface ChatSession {
   token_count_estimate?: number;
 }
 
-/** Mirrors backend/internal/domain.ChatMessage JSON. tool_calls/tool_result
- * stay untyped (JSONB, Agent-only from Layer 6.4+) — the chat UI never
- * needs to read them directly, only display content/listing_id. */
+/** Mirrors backend/internal/agent.StoredToolCall JSON — one element of
+ * chat_message.tool_calls (spec 00-02, ADR 0010). input's shape depends on
+ * name; see ProposeCriteriaArgs/UpdateContextArgs for the two tools the
+ * chat UI renders a Confirm-Card for (Layer 6.5, ADR 0009). Every other
+ * tool's input is display-irrelevant — only its chat.tool_progress event
+ * and the resulting role=tool message/Listing card matter to the UI. */
+export interface StoredToolCall {
+  id: string;
+  name: string;
+  input: unknown;
+}
+
+/** propose_criteria tool-call arguments (backend/internal/agent/tools.go). */
+export interface ProposeCriteriaArgs {
+  action: 'add' | 'edit';
+  criterion_id?: string;
+  name: string;
+  description?: string;
+  is_subjective?: boolean;
+  weight?: number;
+}
+
+/** update_context tool-call arguments (backend/internal/agent/tools.go). */
+export interface UpdateContextArgs {
+  scope: 'global' | 'profile';
+  operation: 'append';
+  content: string;
+}
+
+/** Mirrors backend/internal/domain.ChatMessage JSON. tool_result stays
+ * untyped — the chat UI never reads it directly, only content/tool_name
+ * for a role=tool bubble's display text. */
 export type ChatRole = 'user' | 'assistant' | 'tool';
 
 export interface ChatMessage {
@@ -18,7 +47,7 @@ export interface ChatMessage {
   session_id: string;
   role: ChatRole;
   content: string;
-  tool_calls?: unknown;
+  tool_calls?: StoredToolCall[];
   tool_result?: unknown;
   tool_name?: string;
   attachment_path?: string;

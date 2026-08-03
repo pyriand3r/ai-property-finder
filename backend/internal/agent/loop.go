@@ -48,9 +48,11 @@ type TurnRequest struct {
 	Tools    []Tool
 }
 
-// TurnResult is what one Run call produced: the assistant's final text
-// reply — the concatenation of every text_delta across every roundtrip
-// spent on this turn — and the summed token usage across those roundtrips.
+// TurnResult is what one Run call produced: the concatenation of every
+// roundtrip's text across the whole turn, and the summed token usage.
+// Persistence is driven by OnRoundtrip, not this — TurnResult is a
+// convenience summary for callers that don't need row-by-row detail (e.g.
+// tests).
 type TurnResult struct {
 	Text  string
 	Usage Usage
@@ -67,13 +69,36 @@ type DispatchFunc func(ctx context.Context, call ToolCall) (result string, isErr
 // onto SSE as it happens rather than buffering until Run returns.
 type OnEvent func(ChatEvent)
 
+// ToolOutcome is one dispatched tool call's result, paired with the call
+// that produced it.
+type ToolOutcome struct {
+	Call    ToolCall
+	Result  string
+	IsError bool
+}
+
+// RoundtripOutcome is what one LLM roundtrip produced: the assistant's
+// message for that roundtrip (text and/or tool_use blocks) and — once
+// dispatched — each tool call's outcome. Results is empty for the
+// roundtrip that ends the turn (no tool calls requested, or the budget
+// was hit before dispatching).
+type RoundtripOutcome struct {
+	Assistant Message
+	Results   []ToolOutcome
+}
+
+// OnRoundtrip is called once per completed roundtrip, after any tool
+// calls in it have been dispatched. The caller persists it as its own
+// chat_message row(s) — spec 00-02/ADR 0010 model history as one
+// assistant row per roundtrip (carrying tool_calls when present) plus one
+// role=tool row per dispatched call, not a single row per turn. Without
+// this, a second user message in the same session would replay a history
+// with every intermediate tool call/result silently missing.
+type OnRoundtrip func(RoundtripOutcome)
+
 // Loop drives the multi-roundtrip conversation with a Provider until the
 // model stops requesting tool calls, a limit is hit, or the Provider
-// errors (ADR 0007). Layer 6.3 ships with no Tool catalog — TurnRequest
-// .Tools is always empty and Dispatch is always nil, so every real turn is
-// exactly one roundtrip ending in text only. The roundtrip/tool-call
-// limits and the dispatch hook are wired now so Layer 6.4 only needs to
-// populate the catalog, not touch loop structure.
+// errors (ADR 0007).
 type Loop struct {
 	Provider            Provider
 	MaxLLMRoundtrips    int
@@ -86,8 +111,8 @@ type Loop struct {
 // errors. On budget exhaustion it does not return an error — spec 00-03
 // says hitting max_llm_roundtrips "returns a tool error to the Agent" so
 // it can wrap up in the same turn; Run appends one instruction to that
-// effect to the accumulated text instead of making the next roundtrip.
-func (loop *Loop) Run(ctx context.Context, req TurnRequest, onEvent OnEvent) (TurnResult, error) {
+// effect to the roundtrip's own text instead of making the next roundtrip.
+func (loop *Loop) Run(ctx context.Context, req TurnRequest, onEvent OnEvent, onRoundtrip OnRoundtrip) (TurnResult, error) {
 	maxRoundtrips := EffectiveMaxLLMRoundtrips(loop.MaxLLMRoundtrips)
 	maxToolCalls := effectiveMaxToolCallsPerTurn(loop.MaxToolCallsPerTurn)
 
@@ -110,25 +135,40 @@ func (loop *Loop) Run(ctx context.Context, req TurnRequest, onEvent OnEvent) (Tu
 		roundtripText, toolCalls, roundtripUsage, streamErr := drainChat(events, onEvent)
 		usage.InputTokens += roundtripUsage.InputTokens
 		usage.OutputTokens += roundtripUsage.OutputTokens
-		text.WriteString(roundtripText)
 		if streamErr != nil {
+			text.WriteString(roundtripText)
 			return TurnResult{Text: text.String(), Usage: usage}, streamErr
 		}
 
 		if len(toolCalls) == 0 {
+			text.WriteString(roundtripText)
+			assistant := Message{Role: "assistant", Content: assistantResponseBlocks(roundtripText, nil)}
+			onRoundtrip(RoundtripOutcome{Assistant: assistant})
 			return TurnResult{Text: text.String(), Usage: usage}, nil
 		}
 
-		messages = append(messages, Message{Role: "assistant", Content: assistantResponseBlocks(roundtripText, toolCalls)})
+		assistantBlocks := assistantResponseBlocks(roundtripText, toolCalls)
+		messages = append(messages, Message{Role: "assistant", Content: assistantBlocks})
 
 		budgetExhausted := roundtrip == maxRoundtrips || toolCallsUsed+len(toolCalls) > maxToolCalls
 		if budgetExhausted {
-			text.WriteString(limitReachedNote(maxRoundtrips))
+			note := limitReachedNote(maxRoundtrips)
+			text.WriteString(roundtripText)
+			text.WriteString(note)
+			// The cutoff note is surfaced as this roundtrip's own text —
+			// visible in chat history exactly where the turn stopped —
+			// rather than only appended to TurnResult.Text.
+			assistant := Message{Role: "assistant", Content: append(assistantBlocks, ContentBlock{Type: ContentBlockText, Text: note})}
+			onRoundtrip(RoundtripOutcome{Assistant: assistant})
 			return TurnResult{Text: text.String(), Usage: usage}, nil
 		}
 
+		text.WriteString(roundtripText)
 		toolCallsUsed += len(toolCalls)
-		messages = append(messages, Message{Role: "user", Content: loop.dispatchAll(ctx, toolCalls)})
+
+		resultBlocks, outcomes := loop.dispatchAll(ctx, toolCalls)
+		messages = append(messages, Message{Role: "user", Content: resultBlocks})
+		onRoundtrip(RoundtripOutcome{Assistant: Message{Role: "assistant", Content: assistantBlocks}, Results: outcomes})
 	}
 
 	return TurnResult{Text: text.String(), Usage: usage}, nil
@@ -177,11 +217,12 @@ func assistantResponseBlocks(text string, toolCalls []ToolCall) []ContentBlock {
 }
 
 // dispatchAll resolves every tool call via Dispatch (or a stand-in error
-// result when no dispatcher is wired — Layer 6.3 never reaches this path
-// since it offers no Tools for the model to call) and returns the
-// tool_result content blocks for the next roundtrip's user turn.
-func (loop *Loop) dispatchAll(ctx context.Context, calls []ToolCall) []ContentBlock {
+// result when no dispatcher is wired) and returns both the tool_result
+// content blocks for the next roundtrip's user turn and the raw outcomes
+// for the caller to persist.
+func (loop *Loop) dispatchAll(ctx context.Context, calls []ToolCall) ([]ContentBlock, []ToolOutcome) {
 	blocks := make([]ContentBlock, 0, len(calls))
+	outcomes := make([]ToolOutcome, 0, len(calls))
 	for _, call := range calls {
 		resultText, isError := loop.dispatch(ctx, call)
 		blocks = append(blocks, ContentBlock{
@@ -190,8 +231,9 @@ func (loop *Loop) dispatchAll(ctx context.Context, calls []ToolCall) []ContentBl
 			ToolResultText:  resultText,
 			ToolResultError: isError,
 		})
+		outcomes = append(outcomes, ToolOutcome{Call: call, Result: resultText, IsError: isError})
 	}
-	return blocks
+	return blocks, outcomes
 }
 
 func (loop *Loop) dispatch(ctx context.Context, call ToolCall) (string, bool) {

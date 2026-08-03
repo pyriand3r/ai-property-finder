@@ -196,7 +196,7 @@ Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt
   - **Model:** Claude 3.5 Sonnet · GPT-4o (erster Multi-Turn-Tool-Use — Modell muss Tool-Ergebnisse korrekt einordnen und weiterfuehren)
   - **Test:** URL in Chat pasten → Agent laedt Seite, speichert Listing, laedt Bilder → Listing sichtbar in List-View (5.2), Bilder in Detail-View, Card im Chat verlinkt
 
-- [ ] **6.5 — Evaluation Tools + Confirm-Flow**
+- [x] **6.5 — Evaluation Tools + Confirm-Flow**
   - `evaluate_listing` Tool (ruft Single-Shot-Call aus 2.2)
   - `propose_criteria` Tool (pending, kein Write)
   - `update_context` Tool (pending, kein Write)

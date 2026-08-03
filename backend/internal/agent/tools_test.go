@@ -260,3 +260,110 @@ func TestDispatch_UnknownTool_ReturnsError(t *testing.T) {
 		t.Error("expected an error result for an unknown tool name")
 	}
 }
+
+type fakeEvaluator struct {
+	listing *domain.Listing
+	scores  []domain.CriterionScore
+	err     error
+}
+
+func (f *fakeEvaluator) EvaluateListing(context.Context, uuid.UUID) (*domain.Listing, []domain.CriterionScore, error) {
+	return f.listing, f.scores, f.err
+}
+
+func TestDispatch_EvaluateListing_ReturnsGrades(t *testing.T) {
+	listings := newFakeListingWriter()
+	registry := newTestRegistry(t, listings, &fakeImageWriter{})
+	listingID := uuid.New()
+	listings.listings[listingID] = &domain.Listing{ID: listingID, ProfileID: registry.ProfileID}
+
+	score := 85.0
+	registry.Evaluator = &fakeEvaluator{
+		listing: &domain.Listing{ID: listingID, ProfileID: registry.ProfileID, OverallScore: &score},
+		scores:  []domain.CriterionScore{{CriterionID: uuid.New(), Grade: domain.GradeA, Reasoning: "Gute Lage"}},
+	}
+
+	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "evaluate_listing", Arguments: json.RawMessage(`{"listing_id":"` + listingID.String() + `"}`)})
+	if isError {
+		t.Fatalf("Dispatch returned an error result: %s", result)
+	}
+	if !strings.Contains(result, "Gute Lage") || !strings.Contains(result, `"grade":"A"`) {
+		t.Errorf("result = %s, want it to contain the grade and reasoning", result)
+	}
+	if registry.TouchedListingID() == nil || *registry.TouchedListingID() != listingID {
+		t.Error("TouchedListingID not set to the evaluated listing")
+	}
+}
+
+func TestDispatch_EvaluateListing_RejectsListingFromAnotherProfile(t *testing.T) {
+	listings := newFakeListingWriter()
+	registry := newTestRegistry(t, listings, &fakeImageWriter{})
+	registry.Evaluator = &fakeEvaluator{}
+
+	listingID := uuid.New()
+	listings.listings[listingID] = &domain.Listing{ID: listingID, ProfileID: uuid.New()}
+
+	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "evaluate_listing", Arguments: json.RawMessage(`{"listing_id":"` + listingID.String() + `"}`)})
+	if !isError {
+		t.Error("expected an error result for a listing from another profile")
+	}
+}
+
+func TestDispatch_ProposeCriteria_ReturnsPendingConfirmationWithoutWriting(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+
+	args := `{"action":"add","name":"Nähe zum Wasser","description":"Distanz zum See","is_subjective":false,"weight":3}`
+	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
+	if isError {
+		t.Fatalf("Dispatch returned an error result: %s", result)
+	}
+	if !strings.Contains(result, `"status":"pending_confirmation"`) {
+		t.Errorf("result = %s, want status=pending_confirmation", result)
+	}
+	if !strings.Contains(result, "Nähe zum Wasser") {
+		t.Errorf("result = %s, want it to name the proposed criterion", result)
+	}
+}
+
+func TestDispatch_ProposeCriteria_RejectsEditWithoutCriterionID(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+
+	args := `{"action":"edit","name":"Preis"}`
+	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
+	if !isError {
+		t.Error("expected an error result for action=edit without criterion_id")
+	}
+}
+
+func TestDispatch_ProposeCriteria_RejectsOutOfRangeWeight(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+
+	args := `{"action":"add","name":"Preis","weight":9}`
+	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
+	if !isError {
+		t.Error("expected an error result for weight out of 1-5 range")
+	}
+}
+
+func TestDispatch_UpdateContext_ReturnsPendingConfirmation(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+
+	args := `{"scope":"profile","operation":"append","content":"Bei Booli immer dem Makler-Link folgen."}`
+	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "update_context", Arguments: json.RawMessage(args)})
+	if isError {
+		t.Fatalf("Dispatch returned an error result: %s", result)
+	}
+	if !strings.Contains(result, `"status":"pending_confirmation"`) {
+		t.Errorf("result = %s, want status=pending_confirmation", result)
+	}
+}
+
+func TestDispatch_UpdateContext_RejectsUnsupportedOperation(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+
+	args := `{"scope":"global","operation":"replace","content":"x"}`
+	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "update_context", Arguments: json.RawMessage(args)})
+	if !isError {
+		t.Error("expected an error result for an unsupported operation")
+	}
+}

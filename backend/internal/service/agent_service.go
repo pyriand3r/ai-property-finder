@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"propertyfinder/internal/agent"
 	"propertyfinder/internal/config"
@@ -9,6 +11,7 @@ import (
 	"propertyfinder/internal/domain"
 	"propertyfinder/internal/events"
 	"propertyfinder/internal/fetch"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,16 +20,21 @@ import (
 
 // AgentService drives one Agent turn per user message: assembles the
 // system prompt, replays session history through the Provider, dispatches
-// Tool calls (Layer 6.4: fetch_url/save_listing/download_image), streams
-// progress over the SSE broker, and persists the final assistant reply
-// (spec 00-03, ADR 0007/0008).
+// Tool calls (Layer 6.4/6.5: fetch_url/save_listing/download_image
+// /evaluate_listing/propose_criteria/update_context), streams progress
+// over the SSE broker, and persists every roundtrip's assistant/tool
+// chat_message rows (spec 00-02, ADR 0007/0008/0010) — not just the
+// turn's final reply, so a later turn in the same session replays a
+// complete history and pending-confirmation tool calls (Layer 6.5,
+// ADR 0009) are readable from the DB.
 type AgentService struct {
-	pool     *pgxpool.Pool
-	chat     *ChatService
-	provider agent.Provider
-	broker   *events.Broker
-	llm      config.LLM
-	dataDir  string
+	pool       *pgxpool.Pool
+	chat       *ChatService
+	evaluation *EvaluationService
+	provider   agent.Provider
+	broker     *events.Broker
+	llm        config.LLM
+	dataDir    string
 }
 
 // NewAgentService constructs an AgentService wired to pool, provider (the
@@ -34,9 +42,12 @@ type AgentService struct {
 // empty, per agent.NewUnconfiguredProvider), broker, the current
 // llm.max_llm_roundtrips / llm.max_tool_calls_per_turn config, and dataDir
 // (ADR 0012 — where download_image writes files, same volume root as
-// ImageService).
-func NewAgentService(pool *pgxpool.Pool, provider agent.Provider, broker *events.Broker, llm config.LLM, dataDir string) *AgentService {
-	return &AgentService{pool: pool, chat: NewChatService(pool), provider: provider, broker: broker, llm: llm, dataDir: dataDir}
+// ImageService). evaluation backs the evaluate_listing Tool — the caller
+// passes the same *EvaluationService instance wired to the
+// POST /api/listings/{id}/evaluate endpoint (Layer 2.2), not a second one,
+// so there's exactly one place that single-shot Grade logic lives.
+func NewAgentService(pool *pgxpool.Pool, provider agent.Provider, broker *events.Broker, llm config.LLM, dataDir string, evaluation *EvaluationService) *AgentService {
+	return &AgentService{pool: pool, chat: NewChatService(pool), evaluation: evaluation, provider: provider, broker: broker, llm: llm, dataDir: dataDir}
 }
 
 // SendMessage persists the user's message synchronously — so a message is
@@ -91,6 +102,7 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 		Fetcher:    fetch.NewClient(),
 		Downloader: fetch.NewClient(),
 		DataDir:    service.dataDir,
+		Evaluator:  evaluationAdapter{service.evaluation},
 	}
 	loop := &agent.Loop{
 		Provider:            service.provider,
@@ -104,7 +116,7 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 		Tools:    tools,
 	}
 
-	result, err := loop.Run(ctx, req, func(event agent.ChatEvent) {
+	onEvent := func(event agent.ChatEvent) {
 		switch {
 		case event.Type == agent.ChatEventTextDelta:
 			service.broker.Publish("chat.text_delta", chatTextDeltaPayload{SessionID: sessionID, Delta: event.Text})
@@ -115,22 +127,15 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 			// intermediate tool call is also streamed as a progress event").
 			service.broker.Publish("chat.tool_progress", chatToolProgressPayload{SessionID: sessionID, Tool: event.ToolCall.Name})
 		}
-	})
-	if err != nil {
-		service.publishError(sessionID, err)
-		return
 	}
 
-	assistantMessage := &domain.ChatMessage{
-		ID:        uuid.New(),
-		SessionID: sessionID,
-		Role:      domain.ChatRoleAssistant,
-		Content:   result.Text,
-		ListingID: registry.TouchedListingID(),
-		CreatedAt: time.Now().UTC(),
+	onRoundtrip := func(outcome agent.RoundtripOutcome) {
+		service.persistRoundtrip(ctx, chatRepo, sessionID, registry, outcome)
 	}
-	if createErr := chatRepo.CreateMessage(ctx, assistantMessage); createErr != nil {
-		service.publishError(sessionID, createErr)
+
+	result, err := loop.Run(ctx, req, onEvent, onRoundtrip)
+	if err != nil {
+		service.publishError(sessionID, err)
 		return
 	}
 
@@ -138,8 +143,139 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 	if updateErr := chatRepo.UpdateTokenCount(ctx, sessionID, tokenCount); updateErr != nil {
 		log.Printf("agent: update token count for session %s: %v", sessionID, updateErr)
 	}
+}
 
-	service.broker.Publish("chat.message", chatMessagePayload{SessionID: sessionID, Message: assistantMessage})
+// persistRoundtrip writes one roundtrip's assistant message (text and/or
+// tool_calls) and, once dispatched, one role=tool row per tool outcome
+// (spec 00-02, ADR 0010) — every roundtrip, not just the turn's last one,
+// so the next turn's history replay is complete. The turn-ending roundtrip
+// (Results empty) is the one that streams as "chat.message" to the
+// frontend and carries the inline Listing card; intermediate
+// tool-calling roundtrips still get their own DB rows (for replay and for
+// Layer 6.5's confirm-cards to read propose_criteria/update_context
+// arguments from) but aren't separately pushed as a visible chat bubble
+// beyond the tool_progress event already sent for each call.
+func (service *AgentService) persistRoundtrip(ctx context.Context, chatRepo *repository.ChatRepo, sessionID uuid.UUID, registry *agent.Registry, outcome agent.RoundtripOutcome) {
+	isFinal := len(outcome.Results) == 0
+
+	assistantMessage := &domain.ChatMessage{
+		ID:        uuid.New(),
+		SessionID: sessionID,
+		Role:      domain.ChatRoleAssistant,
+		Content:   textFromBlocks(outcome.Assistant.Content),
+		ToolCalls: toolCallsJSON(outcome.Assistant.Content),
+		CreatedAt: time.Now().UTC(),
+	}
+	if isFinal {
+		assistantMessage.ListingID = registry.TouchedListingID()
+	}
+	if createErr := chatRepo.CreateMessage(ctx, assistantMessage); createErr != nil {
+		log.Printf("agent: persist assistant message for session %s: %v", sessionID, createErr)
+		return
+	}
+	if isFinal {
+		service.broker.Publish("chat.message", chatMessagePayload{SessionID: sessionID, Message: assistantMessage})
+	}
+
+	for _, toolOutcome := range outcome.Results {
+		toolName := toolOutcome.Call.Name
+		toolMessage := &domain.ChatMessage{
+			ID:         uuid.New(),
+			SessionID:  sessionID,
+			Role:       domain.ChatRoleTool,
+			Content:    humanizeToolResult(toolName, toolOutcome.Result, toolOutcome.IsError),
+			ToolResult: toolResultJSON(toolOutcome.Call.ID, toolOutcome.Result),
+			ToolName:   &toolName,
+			CreatedAt:  time.Now().UTC(),
+		}
+		if createErr := chatRepo.CreateMessage(ctx, toolMessage); createErr != nil {
+			log.Printf("agent: persist tool result for session %s: %v", sessionID, createErr)
+		}
+	}
+}
+
+// textFromBlocks concatenates every text block in an assistant Message —
+// there is at most one per roundtrip (see assistantResponseBlocks), but
+// this stays correct if that ever changes.
+func textFromBlocks(blocks []agent.ContentBlock) string {
+	var text strings.Builder
+	for _, block := range blocks {
+		if block.Type == agent.ContentBlockText {
+			text.WriteString(block.Text)
+		}
+	}
+	return text.String()
+}
+
+// toolCallsJSON extracts the tool_use blocks from an assistant Message
+// into the StoredToolCall shape chat_message.tool_calls persists (nil —
+// not an empty array — when the roundtrip made no tool calls, matching
+// the column's NULL-when-absent convention).
+func toolCallsJSON(blocks []agent.ContentBlock) json.RawMessage {
+	var calls []agent.StoredToolCall
+	for _, block := range blocks {
+		if block.Type == agent.ContentBlockToolUse {
+			calls = append(calls, agent.StoredToolCall{ID: block.ToolUseID, Name: block.ToolName, Input: block.ToolInput})
+		}
+	}
+	if len(calls) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(calls)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// toolResultJSON builds chat_message.tool_result's
+// {"tool_call_id":"...","result":...} shape (ADR 0010). result is already
+// valid JSON — every Registry tool implementation returns it via
+// json.Marshal — so it's spliced in raw rather than re-encoded as a
+// string.
+func toolResultJSON(callID, result string) json.RawMessage {
+	return json.RawMessage(fmt.Sprintf(`{"tool_call_id":%q,"result":%s}`, callID, result))
+}
+
+// humanizeToolResult renders a short, chat-readable line for a tool
+// -result bubble instead of the raw JSON a Tool returns. Falls back to
+// just the tool name if the result has none of the fields it knows to
+// look for — every Registry tool's JSON shape includes at least one.
+func humanizeToolResult(toolName, resultJSON string, isError bool) string {
+	var parsed struct {
+		Status  string `json:"status"`
+		Summary string `json:"summary"`
+		Note    string `json:"note"`
+		Error   string `json:"error"`
+	}
+	_ = json.Unmarshal([]byte(resultJSON), &parsed)
+	switch {
+	case isError && parsed.Error != "":
+		return fmt.Sprintf("%s: %s", toolName, parsed.Error)
+	case parsed.Summary != "":
+		return parsed.Summary
+	case parsed.Note != "":
+		return fmt.Sprintf("%s — %s", toolName, parsed.Note)
+	case parsed.Status != "":
+		return fmt.Sprintf("%s: %s", toolName, parsed.Status)
+	default:
+		return toolName
+	}
+}
+
+// evaluationAdapter satisfies agent.ListingEvaluator against
+// *EvaluationService without internal/agent importing internal/service
+// (which would cycle — service already imports agent for AgentService).
+type evaluationAdapter struct {
+	service *EvaluationService
+}
+
+func (a evaluationAdapter) EvaluateListing(ctx context.Context, listingID uuid.UUID) (*domain.Listing, []domain.CriterionScore, error) {
+	result, err := a.service.EvaluateListing(ctx, listingID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return result.Listing, result.Grades, nil
 }
 
 func (service *AgentService) publishError(sessionID uuid.UUID, err error) {

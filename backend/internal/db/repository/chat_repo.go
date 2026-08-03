@@ -35,6 +35,10 @@ type ChatRepository interface {
 	CreateMessage(ctx context.Context, message *domain.ChatMessage) error
 	// ListMessages returns a session's messages in chronological order.
 	ListMessages(ctx context.Context, sessionID uuid.UUID) ([]domain.ChatMessage, error)
+	// GetMessage returns a single message by ID — used by the tool-call
+	// confirm/reject endpoints (ADR 0009) to read the pending proposal out
+	// of tool_calls.
+	GetMessage(ctx context.Context, id uuid.UUID) (*domain.ChatMessage, error)
 	// UpdateTokenCount sets a session's token_count_estimate from the
 	// summed Provider usage of the Agent turn that just completed on it
 	// (spec 00-03 Layer 6.3 — feeds the chat header's donut chart).
@@ -166,6 +170,19 @@ func (repo *ChatRepo) ListMessages(ctx context.Context, sessionID uuid.UUID) ([]
 		return nil, fmt.Errorf("chat list messages rows: %w", rowsError)
 	}
 	return messages, nil
+}
+
+func (repo *ChatRepo) GetMessage(ctx context.Context, id uuid.UUID) (*domain.ChatMessage, error) {
+	query := `SELECT ` + chatMessageColumns + ` FROM chat_message WHERE id = $1`
+	row := repo.db.QueryRow(ctx, query, id)
+	message, err := scanChatMessageRow(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, &domain.NotFoundError{Entity: "chat_message", ID: id.String()}
+		}
+		return nil, fmt.Errorf("chat get message: %w", err)
+	}
+	return &message, nil
 }
 
 func (repo *ChatRepo) UpdateTokenCount(ctx context.Context, sessionID uuid.UUID, tokenCount int) error {

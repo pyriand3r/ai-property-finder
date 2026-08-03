@@ -41,7 +41,7 @@ func (service *ContextService) UpdateGlobal(ctx context.Context, contentMD strin
 	if err != nil {
 		return nil, err
 	}
-	return service.updateContent(ctx, repo, current, contentMD)
+	return service.updateContent(ctx, repo, current, contentMD, domain.ChangedByUser, nil)
 }
 
 // UpdateProfileContext overwrites a Profile Context's content_md, same
@@ -52,7 +52,30 @@ func (service *ContextService) UpdateProfileContext(ctx context.Context, profile
 	if err != nil {
 		return nil, err
 	}
-	return service.updateContent(ctx, repo, current, contentMD)
+	return service.updateContent(ctx, repo, current, contentMD, domain.ChangedByUser, nil)
+}
+
+// UpdateGlobalFromAgent and UpdateProfileContextFromAgent apply an
+// Agent-proposed update_context change once the user has confirmed it
+// (ADR 0009/0004, Layer 6.5) — same write path as the manual editor above,
+// but the resulting context_revision is attributed changed_by='agent' and
+// linked to the confirming chat_message for the history panel.
+func (service *ContextService) UpdateGlobalFromAgent(ctx context.Context, contentMD string, chatMessageID uuid.UUID) (*domain.Context, error) {
+	repo := repository.NewContextRepo(service.pool)
+	current, err := repo.GetGlobal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return service.updateContent(ctx, repo, current, contentMD, domain.ChangedByAgent, &chatMessageID)
+}
+
+func (service *ContextService) UpdateProfileContextFromAgent(ctx context.Context, profileID uuid.UUID, contentMD string, chatMessageID uuid.UUID) (*domain.Context, error) {
+	repo := repository.NewContextRepo(service.pool)
+	current, err := repo.GetByProfileID(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	return service.updateContent(ctx, repo, current, contentMD, domain.ChangedByAgent, &chatMessageID)
 }
 
 // ListProfileHistory returns a Profile Context's revisions, newest first.
@@ -70,14 +93,17 @@ func (service *ContextService) updateContent(
 	repo *repository.ContextRepo,
 	current *domain.Context,
 	newContentMD string,
+	changedBy domain.ChangedBy,
+	chatMessageID *uuid.UUID,
 ) (*domain.Context, error) {
 	if newContentMD != current.ContentMD {
 		revision := &domain.ContextRevision{
-			ID:        uuid.New(),
-			ContextID: current.ID,
-			ContentMD: current.ContentMD,
-			ChangedBy: domain.ChangedByUser,
-			CreatedAt: time.Now().UTC(),
+			ID:            uuid.New(),
+			ContextID:     current.ID,
+			ContentMD:     current.ContentMD,
+			ChangedBy:     changedBy,
+			ChatMessageID: chatMessageID,
+			CreatedAt:     time.Now().UTC(),
 		}
 		if revisionError := repo.CreateRevision(ctx, revision); revisionError != nil {
 			return nil, revisionError

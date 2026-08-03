@@ -15,10 +15,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// Tools returns the full Tool catalog Layer 6.4 offers the model: enough
-// to read a listing page, save it, and store its photos (spec 00-03 "Tool
-// Catalog"; evaluate_listing/propose_criteria/update_context and the
-// rest land in Layer 6.5/6.6).
+// Tools returns the full Tool catalog offered to the model: reading and
+// saving a listing plus its photos (Layer 6.4), evaluating it against the
+// profile's Criteria, and proposing Criteria/Context changes for the user
+// to confirm (Layer 6.5, spec 00-03 "Tool Catalog"). geocode
+// /list_profile_listings/compute_ranking/read_pdf land in Layer 6.6.
 func Tools() []Tool {
 	return []Tool{
 		{
@@ -84,6 +85,46 @@ func Tools() []Tool {
 				"required": ["listing_id", "image_url"]
 			}`),
 		},
+		{
+			Name:        "evaluate_listing",
+			Description: "Bewertet ein Inserat anhand der aktuellen Kriterien des Profils — vergibt Note A-F pro Kriterium und berechnet den Gesamt-Score. Nur aufrufen wenn das Profil bereits bestätigte Kriterien hat; falls nicht, zuerst propose_criteria nutzen.",
+			InputSchema: json.RawMessage(`{
+				"properties": {
+					"listing_id": {"type": "string", "description": "UUID des zu bewertenden Inserats."}
+				},
+				"required": ["listing_id"]
+			}`),
+		},
+		{
+			Name: "propose_criteria",
+			Description: "Schlägt ein neues oder geändertes Bewertungskriterium vor. Schreibt NICHT direkt in die Datenbank — " +
+				"der Nutzer muss im Chat über eine Confirm-Card bestätigen. Nutze dies beim ersten Inserat eines Profils ohne " +
+				"Kriterien, oder wenn der Nutzer mitten im Gespräch ein neues Bewertungskriterium erwähnt oder ein bestehendes ändern möchte.",
+			InputSchema: json.RawMessage(`{
+				"properties": {
+					"action": {"type": "string", "enum": ["add", "edit"], "description": "add = neues Kriterium, edit = bestehendes ändern."},
+					"criterion_id": {"type": "string", "description": "UUID des zu ändernden Kriteriums. Erforderlich bei action=edit."},
+					"name": {"type": "string"},
+					"description": {"type": "string"},
+					"is_subjective": {"type": "boolean", "description": "true = subjektiv (nur mit LLM-Einschätzung bewertbar), false = objektiv (direkt aus Daten ablesbar)."},
+					"weight": {"type": "integer", "description": "1-5, Standard 1."}
+				},
+				"required": ["action", "name"]
+			}`),
+		},
+		{
+			Name: "update_context",
+			Description: "Schlägt eine Ergänzung des Globalen oder Profil-Kontexts vor (z.B. eine neu gelernte Portal-Regel). " +
+				"Schreibt NICHT direkt — der Nutzer muss im Chat über eine Confirm-Card bestätigen.",
+			InputSchema: json.RawMessage(`{
+				"properties": {
+					"scope": {"type": "string", "enum": ["global", "profile"]},
+					"operation": {"type": "string", "enum": ["append"], "description": "Bisher nur 'append' unterstützt — content wird an den bestehenden Text angehängt."},
+					"content": {"type": "string", "description": "Der anzuhängende Text."}
+				},
+				"required": ["scope", "operation", "content"]
+			}`),
+		},
 	}
 }
 
@@ -115,6 +156,16 @@ type ImageDownloader interface {
 	DownloadImage(ctx context.Context, imageURL string) (*fetch.DownloadedImage, error)
 }
 
+// ListingEvaluator backs evaluate_listing — the same single-shot Grade
+// computation as POST /api/listings/{id}/evaluate (Layer 2.2), expressed
+// with only internal/domain types so internal/agent never needs to import
+// internal/service (which already imports internal/agent for
+// AgentService — importing back would cycle). The service package adapts
+// its *EvaluationService to this interface.
+type ListingEvaluator interface {
+	EvaluateListing(ctx context.Context, listingID uuid.UUID) (*domain.Listing, []domain.CriterionScore, error)
+}
+
 var validImageCategories = map[string]bool{
 	"exterior":    true,
 	"interior":    true,
@@ -134,6 +185,7 @@ type Registry struct {
 	Images     ImageWriter
 	Fetcher    PageFetcher
 	Downloader ImageDownloader
+	Evaluator  ListingEvaluator
 	DataDir    string
 
 	touchedListingID *uuid.UUID
@@ -157,6 +209,12 @@ func (r *Registry) Dispatch(ctx context.Context, call ToolCall) (string, bool) {
 		return r.saveListing(ctx, call.Arguments)
 	case "download_image":
 		return r.downloadImage(ctx, call.Arguments)
+	case "evaluate_listing":
+		return r.evaluateListing(ctx, call.Arguments)
+	case "propose_criteria":
+		return r.proposeCriteria(call.Arguments)
+	case "update_context":
+		return r.updateContext(call.Arguments)
 	default:
 		return errorJSON("unbekanntes Tool: " + call.Name), true
 	}
@@ -391,6 +449,113 @@ func (r *Registry) downloadImage(ctx context.Context, raw json.RawMessage) (stri
 		"status":   "ok",
 		"image_id": imageID.String(),
 		"path":     "/media/" + filepath.ToSlash(relPath),
+	}), false
+}
+
+func (r *Registry) evaluateListing(ctx context.Context, raw json.RawMessage) (string, bool) {
+	var args struct {
+		ListingID uuid.UUID `json:"listing_id"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil || args.ListingID == uuid.Nil {
+		return errorJSON("listing_id ist erforderlich"), true
+	}
+
+	listing, err := r.Listings.GetByID(ctx, args.ListingID)
+	if err != nil {
+		return errorJSON(err.Error()), true
+	}
+	if listing.ProfileID != r.ProfileID {
+		return errorJSON("Inserat gehört nicht zu diesem Profil"), true
+	}
+
+	updated, scores, err := r.Evaluator.EvaluateListing(ctx, args.ListingID)
+	if err != nil {
+		return errorJSON(err.Error()), true
+	}
+
+	r.touchedListingID = &updated.ID
+	grades := make([]map[string]any, len(scores))
+	for i, score := range scores {
+		grades[i] = map[string]any{
+			"criterion_id": score.CriterionID,
+			"grade":        score.Grade,
+			"reasoning":    score.Reasoning,
+		}
+	}
+	return mustJSON(map[string]any{
+		"status":        "ok",
+		"listing_id":    updated.ID.String(),
+		"overall_score": updated.OverallScore,
+		"grades":        grades,
+	}), false
+}
+
+// proposeCriteria validates the shape of a Criterion proposal and returns
+// pending_confirmation without writing anything (ADR 0009/0004) — the
+// proposal itself lives in the tool call's arguments, already persisted
+// verbatim in chat_message.tool_calls by the caller (AgentService), and is
+// only applied once the user confirms via
+// POST /api/chat/messages/{id}/tool-calls/{idx}/confirm.
+func (r *Registry) proposeCriteria(raw json.RawMessage) (string, bool) {
+	var args struct {
+		Action       string  `json:"action"`
+		CriterionID  *string `json:"criterion_id"`
+		Name         string  `json:"name"`
+		Description  string  `json:"description"`
+		IsSubjective bool    `json:"is_subjective"`
+		Weight       *int    `json:"weight"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return errorJSON("ungültige Argumente: " + err.Error()), true
+	}
+	if args.Action != "add" && args.Action != "edit" {
+		return errorJSON("action muss 'add' oder 'edit' sein"), true
+	}
+	if strings.TrimSpace(args.Name) == "" {
+		return errorJSON("name ist erforderlich"), true
+	}
+	if args.Action == "edit" && (args.CriterionID == nil || strings.TrimSpace(*args.CriterionID) == "") {
+		return errorJSON("criterion_id ist erforderlich bei action=edit"), true
+	}
+	if args.Weight != nil && (*args.Weight < 1 || *args.Weight > 5) {
+		return errorJSON("weight muss zwischen 1 und 5 liegen"), true
+	}
+
+	verb := "Vorgeschlagen"
+	if args.Action == "edit" {
+		verb = "Änderung vorgeschlagen"
+	}
+	return mustJSON(map[string]any{
+		"status":  "pending_confirmation",
+		"summary": fmt.Sprintf("%s: Kriterium %q — ⚠️ Noch nicht aktiv, Bestätigung ausstehend.", verb, args.Name),
+	}), false
+}
+
+// updateContext validates the shape of a Context proposal and returns
+// pending_confirmation without writing anything — same pattern as
+// proposeCriteria.
+func (r *Registry) updateContext(raw json.RawMessage) (string, bool) {
+	var args struct {
+		Scope     string `json:"scope"`
+		Operation string `json:"operation"`
+		Content   string `json:"content"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return errorJSON("ungültige Argumente: " + err.Error()), true
+	}
+	if args.Scope != "global" && args.Scope != "profile" {
+		return errorJSON("scope muss 'global' oder 'profile' sein"), true
+	}
+	if args.Operation != "append" {
+		return errorJSON("operation muss 'append' sein"), true
+	}
+	if strings.TrimSpace(args.Content) == "" {
+		return errorJSON("content darf nicht leer sein"), true
+	}
+
+	return mustJSON(map[string]any{
+		"status":  "pending_confirmation",
+		"summary": fmt.Sprintf("Kontext-Ergänzung vorgeschlagen (%s) — ⚠️ Noch nicht aktiv, Bestätigung ausstehend.", args.Scope),
 	}), false
 }
 
