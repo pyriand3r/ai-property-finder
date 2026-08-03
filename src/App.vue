@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { darkTheme, NConfigProvider, NDialogProvider, NMessageProvider } from 'naive-ui';
+import {
+  darkTheme,
+  NConfigProvider,
+  NDialogProvider,
+  NGlobalStyle,
+  NMessageProvider,
+} from 'naive-ui';
 
 import { usePreferredDark } from '@/composables/usePreferredDark';
 
@@ -8,6 +14,7 @@ const prefersDark = usePreferredDark();
 
 <template>
   <NConfigProvider :theme="prefersDark ? darkTheme : null">
+    <NGlobalStyle />
     <NMessageProvider>
       <NDialogProvider>
         <RouterView />
