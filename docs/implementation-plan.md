@@ -247,6 +247,12 @@ Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) 
   - Spec: [[../docs/spec/01_mvp/01-11-listing-notes]]
   - **Test:** curl gegen neue Endpoints, dann manueller Klick-Durchlauf.
 
+- [ ] **RF.5 — Chat-Feedback-Fixes**
+  - Turn-In-Progress-Indikator: `useChat.ts`-Flag ab erfolgreichem POST bis zum ersten Live-Signal (`chat.text_delta`/`chat.tool_progress`/`chat.message`/`chat.turn_error`) für den Turn; `ChatMessageList.vue` zeigt währenddessen einen animierten Platzhalter, auch bei stillen Lücken zwischen Tool-Calls innerhalb eines Turns.
+  - Unicode-Escape-Bug (Vorschlagstext zeigt `\uXXXX` statt Umlauten): bei frischem Live-Test nicht reproduzierbar — Spec dokumentiert offene Diagnoseschritte statt eines Fixes.
+  - Spec: [[../docs/spec/01_mvp/01-12-chat-feedback-fixes]]
+  - **Test:** Nachricht senden → Indikator erscheint sofort, verschwindet bei erstem Text/Tool-Progress; Multi-Roundtrip-Turn auslösen → Indikator erscheint erneut bei Lücke zwischen Tool-Calls. Unicode-Bug bleibt offen bis reproduziert.
+
 ---
 
 ## Layer 7: Restliche Views
@@ -317,11 +323,11 @@ Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) 
                                                   │
                                                   └──→ 6.1 ──→ 6.2 ──→ 6.3 ──→ 6.4 ──→ 6.5 ──→ 6.6
                                                                                             │
-                                                                                            └──→ RF.1 ──→ RF.2 ──→ RF.3 ──→ RF.4
-                                                                                                                              │
-                                                                                                                              ├──→ 7.1 ──→ 7.2 ──→ 7.3
-                                                                                                                              │
-                                                                                                                              └──→ 8.x (parallel)
+                                                                                            └──→ RF.1 ──→ RF.2 ──→ RF.3 ──→ RF.4 ──→ RF.5
+                                                                                                                                       │
+                                                                                                                                       ├──→ 7.1 ──→ 7.2 ──→ 7.3
+                                                                                                                                       │
+                                                                                                                                       └──→ 8.x (parallel)
 ```
 
 Layer 7 kann parallel zu Layer 6 laufen — die Views nutzen die REST-APIs aus Layer 1-3 und die UI-Patterns aus Layer 5. 7.2 (Context Editor) kann bei Bedarf vorgezogen werden, um das Agent-Verhalten ab 6.3 im UI statt per curl zu steuern.
