@@ -216,6 +216,39 @@ Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt
 
 ---
 
+## Review-Fixes (Zwischenschritt vor Layer 7)
+
+Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) gefundene Bugs und UX-Lücken. Keiner der Punkte war in einem späteren Layer eingeplant (geprüft gegen den gesamten Plan) — alles hier ist ungeplante Nacharbeit, kein Vorziehen künftiger Arbeit. Eigene Nummerierung (`RF.x`), damit Layer 7/8 nicht umnummeriert werden müssen.
+
+- [ ] **RF.1 — Chat-Zuverlässigkeit: Confirm-Card-Status + Budget-Limit-Fortsetzung**
+  - Confirm-Card-Status (`confirmed`/`rejected`) wird in `chat_message.tool_calls` JSONB persistiert statt nur lokaler Frontend-State — überlebt Tab-Wechsel/Reload. Confirm/Reject werden idempotent (409 bei erneuter Aktion). Siehe ADR 0017.
+  - `budgetExhausted`-Zweig in `loop.go` persistiert nur Text (Roundtrip-Text + Limit-Hinweis), keine nicht-dispatchten `tool_use`-Blöcke mehr — verhindert ungültige Replay-History, die "weitermachen" bisher wirkungslos machte.
+  - Spec: [[../docs/spec/01_mvp/01-09-chat-reliability-fixes]]
+  - **Test:** Vorschlag bestätigen → Tab wechseln/reload → Card zeigt weiterhin "Übernommen". `llm.max_llm_roundtrips` testweise niedrig setzen, Limit auslösen, "weitermachen" antworten → Agent macht tatsächlich weiter.
+
+- [ ] **RF.2 — Token-Donut Lesbarkeit**
+  - `TokenDonut.vue`: Ring-Größe/Stroke-Width angepasst, damit der Füllstand auf einen Blick erkennbar ist.
+  - Spec: [[../docs/spec/01_mvp/01-01-chat-interface#Layout]]
+  - **Test:** Visueller Check in `npm run dev`.
+
+- [ ] **RF.3 — Listing List/Detail View Überarbeitung**
+  - Master-Detail-Split (Liste links, Detail rechts) in der "Liste"-Tab statt Navigation auf separate Seite; `/listings/:id`-Route bleibt für Deep-Links (Chat-Card) erhalten.
+  - Titelbild-Thumbnails in Liste und Detail-Ansicht.
+  - Optionale, persistente Pro-Kriterium-Score-Spalten in der Liste (localStorage je Profil).
+  - Bewertungstabelle an den Anfang der Detail-Ansicht, Status prominent im Header statt im Formularraster.
+  - Explizites Bearbeiten/Speichern/Abbrechen statt Auto-Save pro Feld — bündelt Änderungen in einem PATCH-Call.
+  - Quell-URL als klickbarer Link im Anzeige-Modus.
+  - Spec: [[../docs/spec/01_mvp/01-10-listing-views-overhaul]] (ersetzt Teile von 01-05 § List View und 01-07 § Editing Behaviour)
+  - **Test:** siehe Verification-Abschnitt der Spec.
+
+- [ ] **RF.4 — Listing-Notizen (neues Feature)**
+  - Volles CRUD auf der bereits existierenden `listing_note`-Tabelle (Migration ergänzt `updated_at`): Repository, Service, API (`/api/listings/{id}/notes`, `/api/notes/{id}`), Frontend-Cards mit "Neue Notiz"/Bearbeiten/Löschen.
+  - Ausdrücklich getrennt von `seller_notes` (Feld zum Verkäufer, bleibt unverändert).
+  - Spec: [[../docs/spec/01_mvp/01-11-listing-notes]]
+  - **Test:** curl gegen neue Endpoints, dann manueller Klick-Durchlauf.
+
+---
+
 ## Layer 7: Restliche Views
 
 - [ ] **7.1 — Map View**
@@ -284,9 +317,11 @@ Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt
                                                   │
                                                   └──→ 6.1 ──→ 6.2 ──→ 6.3 ──→ 6.4 ──→ 6.5 ──→ 6.6
                                                                                             │
-                                                                                            ├──→ 7.1 ──→ 7.2 ──→ 7.3
-                                                                                            │
-                                                                                            └──→ 8.x (parallel)
+                                                                                            └──→ RF.1 ──→ RF.2 ──→ RF.3 ──→ RF.4
+                                                                                                                              │
+                                                                                                                              ├──→ 7.1 ──→ 7.2 ──→ 7.3
+                                                                                                                              │
+                                                                                                                              └──→ 8.x (parallel)
 ```
 
 Layer 7 kann parallel zu Layer 6 laufen — die Views nutzen die REST-APIs aus Layer 1-3 und die UI-Patterns aus Layer 5. 7.2 (Context Editor) kann bei Bedarf vorgezogen werden, um das Agent-Verhalten ab 6.3 im UI statt per curl zu steuern.

@@ -61,13 +61,15 @@ One row per Search Profile (`context.scope = 'profile'`), empty by default. Grow
 
 Agent-proposed Context changes are **never applied silently**. The `update_context` tool call ([[../00_infrastructure_setup/00-03-llm-agent-integration#Tool Catalogue]]) validates the proposal and returns `{"status": "pending_confirmation", ...}` without writing to `context.content_md`. The full proposal lives in `chat_message.tool_calls` JSONB — no separate staging table. The chat turn renders a diff card (current text vs. proposed change) with **Übernehmen** / **Verwerfen** buttons.
 
-On **Übernehmen**, the frontend calls `POST /api/chat/messages/{msg_id}/tool-calls/{call_idx}/confirm`. The backend reads the tool-call arguments from `chat_message`, validates (409 if the base text changed since the proposal), writes `context.content_md`, and creates a `context_revision` row with `changed_by = 'agent'`.
+On **Übernehmen**, the frontend calls `POST /api/chat/messages/{msg_id}/tool-calls/{call_idx}/confirm`. The backend reads the tool-call arguments from `chat_message`, appends onto the **current** `context.content_md` (fetched fresh at confirm time, not the text as it was when proposed), and creates a `context_revision` row with `changed_by = 'agent'` linked to the confirming `chat_message`. Append is the only supported operation, so there's no base-text staleness check to perform — appending onto whatever the current text is can never lose data, unlike a hypothetical replace operation would.
 
 On **Verwerfen**, `POST .../reject` — no state change.
 
+Both endpoints are idempotent: once a call has been confirmed or rejected, acting on it again returns `409 Conflict` instead of silently re-applying or no-op'ing. The Confirm-Card's Übernehmen/Verwerfen buttons reflect this persisted status — reopening the Chat tab or reloading the page shows the card's actual resolved state, not a reset-to-pending button pair ([[../../docs/adr/0017-tool-call-status-in-jsonb]]).
+
 Direct user edits in the editor write immediately (no confirmation needed) and produce a `context_revision` row with `changed_by = 'user'`.
 
-Full rationale: [[../../docs/adr/0009-proposal-pending-in-tool-calls]].
+Full rationale: [[../../docs/adr/0009-proposal-pending-in-tool-calls]], [[../../docs/adr/0017-tool-call-status-in-jsonb]].
 
 ---
 

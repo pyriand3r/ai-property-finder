@@ -37,7 +37,7 @@ _Avoid_: Global config, system instructions
 
 **Profile Context**:
 A Context File owned by exactly one Search Profile. Holds profile-specific instructions the user would otherwise repeat every session — e.g. "for Swedish listings, always check water/sewage and follow the Booli broker link." Directly analogous to the "Arbeitsanweisungen für zukünftige Sessions" section maintained today in [[../immobilienplan-schweden-portugal-oesterreich/schweden/00_readme]]. Appended after the Global Context in the Agent's system prompt; more specific instructions here override more general ones in the Global Context.
-_Avoid_: Profile config, profile notes (Notes are a different, unstructured per-Listing concept inherited from the old model)
+_Avoid_: Profile config, profile notes (see [[#Listing Note]] — a different, per-Listing concept)
 
 **Portal Rule**:
 A Context File fragment (living in Global or Profile Context — not a separate structured table) describing how to handle listings from a specific domain: which secondary link to follow (e.g. "Läs mer hos mäklaren"), what fields typically hide only on the broker page, anti-bot quirks. Interpreted by the Agent at runtime via natural language, not compiled into portal-specific scraper code — this is the key architectural break from [[../dev-property-finder/docs/adr/0007-scraping-anti-bot-strategy|dev-property-finder ADR 0007]] and [[../dev-property-finder/docs/adr/0008-html-reduction-pipeline|ADR 0008]].
@@ -49,7 +49,11 @@ _Avoid_: Input, origin
 
 **Listing Document**:
 The long-form, human-readable write-up the Agent produces per Listing — original-language excerpt, German translation, criteria evaluation table, pros/cons versus other Listings in the profile, broker-page details. Stored as structured Markdown in `listing.document_md` (see [[spec/00_infrastructure_setup/00-02-database-schema]]) and rendered in the Listing detail view. This is the direct counterpart of today's per-Inserat `.md` file in the Obsidian vault — the difference is it lives inside one `listing` row instead of being the row.
-_Avoid_: Description (Description remains the shorter structured field inherited from the old model — see [[../dev-property-finder/CONTEXT#Listing|dev-property-finder Listing]]), notes (Notes are separate, user-authored)
+_Avoid_: Description (Description remains the shorter structured field inherited from the old model — see [[../dev-property-finder/CONTEXT#Listing|dev-property-finder Listing]]), notes (see [[#Listing Note]] — a separate, user-authored concept)
+
+**Listing Note**:
+A freeform, timestamped note the user writes about a Listing itself — "called the agent, viewing Saturday," "neighbor mentioned the roof was redone in 2019." Any number per Listing, each independently created/edited/deleted. Stored in `listing_note` (see [[spec/00_infrastructure_setup/00-02-database-schema]]) and shown in the Listing detail view as individual cards ([[spec/01_mvp/01-11-listing-notes]]).
+_Avoid_: Notes (ambiguous — see below), Verkäufer-Notizen/seller notes (that's `listing.seller_notes`, a single field about the seller/contact person, not this)
 
 **Ranking**:
 The user-facing, ordered view of all "active" Listings in a Search Profile, driven by Score. Each Listing carries an AI-written per-listing one-liner (`listing.kurzfazit`), and the profile holds an overall comparison summary (`search_profile.ranking_summary`). Both are regenerated on user request (chat instruction or button), not automatically. Mirrors the Rangliste section of the reference workflow's `00_readme.md`.

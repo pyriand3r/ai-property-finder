@@ -25,16 +25,16 @@ Every field the Agent writes must be traceable and correctable outside the chat.
 
 ## Listing Detail View
 
-Plain form view of every structured field (title, price, sizes, address, coordinates, seller info, status, notes) plus a rendered view of `document_md` and the Criteria grade grid — same layout intent as [[../../dev-property-finder/spec/01_mvp/01-12-rate-listing-criteria#Detail View|dev-property-finder's detail view]], with `document_md` added above the grade grid.
+Plain form view of every structured field (title, price, sizes, address, coordinates, seller info including `seller_notes`) plus a rendered view of `document_md`, the Criteria grade grid, and — distinct from `seller_notes` — the Listing's own freeform Notes ([[01-11-listing-notes]]). `status` sits in the page header, not the field grid; the grade grid sits above the form, not below `document_md` — see [[01-10-listing-views-overhaul]] for the full layout and the reasoning (evaluation results are what most visits are checking).
 
-Reachable both from List/Ranking/Map and via the inline card in a chat turn (see [[01-01-chat-interface]]).
+Reachable via a master-detail split alongside the List View, as a standalone full-page route for deep links (chat inline card, bookmarks), and via the inline card in a chat turn (see [[01-01-chat-interface]], [[01-10-listing-views-overhaul]]).
 
 ---
 
 ## Editing Behaviour
 
-- Any field edit saves immediately (no separate "save" step for the form as a whole — matches the rest of the app's low-friction feel)
-- Editing a field appends its name to `listing.user_confirmed_fields` ([[../00_infrastructure_setup/00-02-database-schema#listing]])
+- Editing is explicit: a "Bearbeiten" button switches the form into an editable state; "Speichern" batches every field changed since Bearbeiten into one `PATCH` call, "Abbrechen" discards the draft. Not save-on-blur-per-field — see [[01-10-listing-views-overhaul]] for why this changed from the original save-immediately design (low-friction per-field autosave read as unpredictable once the form had eighteen fields across several sections)
+- Editing a field appends its name to `listing.user_confirmed_fields` ([[../00_infrastructure_setup/00-02-database-schema#listing]]) — still computed per field that actually changed value, just at Speichern time across the whole batch instead of per blur event
 - A subsequent Agent Follow-Up Instruction that touches a `user_confirmed_fields` entry asks for confirmation before overwriting it ("Preis wurde von dir manuell auf 310.000 kr gesetzt — soll ich das überschreiben?") instead of silently clobbering a manual correction. Fields never manually touched are updated freely
 - Editing any structured field that participates in Criteria evaluation sets `listing.needs_reevaluation = true`. The user triggers re-evaluation manually from the detail view button or the list view banner ([[../../docs/adr/0015-manual-bulk-reevaluation]]).
 - Editing `document_md` directly is also supported (plain Markdown textarea) — it does not itself trigger re-evaluation, since it's prose, not a structured field
