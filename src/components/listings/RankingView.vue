@@ -3,6 +3,7 @@ import { NAlert, NButton, NCard, NEmpty, NList, NListItem, NSpin, NTag, NText } 
 import { computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { useListingThumbnails } from '@/composables/useListingThumbnails';
 import { useRanking } from '@/composables/useRanking';
 
 import type { Listing } from '@/types/listing';
@@ -38,6 +39,8 @@ const ranked = computed(() =>
     .sort((a, b) => (b.overall_score ?? 0) - (a.overall_score ?? 0)),
 );
 
+const { thumbnails } = useListingThumbnails(() => ranked.value);
+
 function openListing(listingId: string) {
   router.push({ name: 'listing-detail', params: { listingId } });
 }
@@ -62,6 +65,13 @@ function openListing(listingId: string) {
         <NListItem v-for="(listing, index) in ranked" :key="listing.id">
           <div class="ranking-row" @click="openListing(listing.id)">
             <NTag round type="primary" class="ranking-rank">{{ index + 1 }}</NTag>
+            <img
+              v-if="thumbnails.get(listing.id)"
+              :src="thumbnails.get(listing.id) ?? ''"
+              class="ranking-thumb"
+              alt=""
+            />
+            <div v-else class="ranking-thumb-placeholder" />
             <div class="ranking-row-main">
               <NText strong>{{ listing.title }}</NText>
               <NText v-if="listing.kurzfazit" depth="3" class="ranking-kurzfazit">
@@ -102,6 +112,22 @@ function openListing(listingId: string) {
 }
 
 .ranking-rank {
+  flex-shrink: 0;
+}
+
+.ranking-thumb {
+  width: 100px;
+  height: 100px;
+  border-radius: 0.375rem;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.ranking-thumb-placeholder {
+  width: 100px;
+  height: 100px;
+  border-radius: 0.375rem;
+  background: var(--n-color-target, rgba(128, 128, 128, 0.15));
   flex-shrink: 0;
 }
 

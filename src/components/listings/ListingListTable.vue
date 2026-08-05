@@ -2,6 +2,8 @@
 import { NDataTable, NIcon, NInputNumber, NSelect, NSpace, NTag, NTooltip } from 'naive-ui';
 import { computed, h, shallowRef } from 'vue';
 
+import { useListingThumbnails } from '@/composables/useListingThumbnails';
+
 import type { Listing, ListingStatus } from '@/types/listing';
 import type { DataTableColumns } from 'naive-ui';
 
@@ -46,7 +48,20 @@ function selectListing(listingId: string) {
   emit('select', listingId);
 }
 
+const { thumbnails } = useListingThumbnails(() => props.listings);
+
 const columns: DataTableColumns<Listing> = [
+  {
+    title: '',
+    key: 'thumbnail',
+    width: 108,
+    render: (row) => {
+      const url = thumbnails.value.get(row.id);
+      return url
+        ? h('img', { src: url, class: 'listing-list-thumb', alt: '' })
+        : h('div', { class: 'listing-list-thumb-placeholder' });
+    },
+  },
   {
     title: '',
     key: 'needs_reevaluation',
@@ -148,5 +163,20 @@ const columns: DataTableColumns<Listing> = [
 
 :deep(.listing-list-row-selected td) {
   background-color: var(--n-color-target, rgba(128, 128, 128, 0.15));
+}
+
+:deep(.listing-list-thumb) {
+  width: 100px;
+  height: 100px;
+  border-radius: 0.375rem;
+  object-fit: cover;
+  display: block;
+}
+
+:deep(.listing-list-thumb-placeholder) {
+  width: 100px;
+  height: 100px;
+  border-radius: 0.375rem;
+  background: var(--n-color-target, rgba(128, 128, 128, 0.15));
 }
 </style>

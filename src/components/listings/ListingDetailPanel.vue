@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { NAlert, NButton, NH1, NSpin, NTag } from 'naive-ui';
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 
 import ListingDocument from '@/components/listings/ListingDocument.vue';
 import ListingForm from '@/components/listings/ListingForm.vue';
 import ListingGradeGrid from '@/components/listings/ListingGradeGrid.vue';
 import { useListingDetail } from '@/composables/useListingDetail';
+import { useListingThumbnails } from '@/composables/useListingThumbnails';
 
 import type { ListingInput } from '@/api/listings';
 
@@ -21,6 +22,11 @@ const { listing, grades, loading, saving, evaluating, error, fetchAll, saveField
   useListingDetail(props.listingId);
 
 onMounted(fetchAll);
+
+const { thumbnails } = useListingThumbnails(() => (listing.value ? [listing.value] : []));
+const thumbnailUrl = computed(() =>
+  listing.value ? (thumbnails.value.get(listing.value.id) ?? null) : null,
+);
 
 function handleSave(patch: ListingInput) {
   void saveField(patch);
@@ -44,6 +50,8 @@ function handleEvaluate() {
             Neu bewerten
           </NButton>
         </div>
+
+        <img v-if="thumbnailUrl" :src="thumbnailUrl" class="listing-detail-thumb" alt="" />
 
         <section class="listing-detail-section">
           <ListingForm :listing="listing" @save="handleSave" />
@@ -74,6 +82,15 @@ function handleEvaluate() {
   display: flex;
   align-items: center;
   gap: 1rem;
+}
+
+.listing-detail-thumb {
+  width: 100%;
+  max-height: 360px;
+  border-radius: 0.5rem;
+  object-fit: cover;
+  display: block;
+  margin-top: 1rem;
 }
 
 .listing-detail-section {
