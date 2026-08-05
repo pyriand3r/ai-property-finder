@@ -60,41 +60,57 @@ function saveStatus() {
       </NFormItem>
     </NGridItem>
 
-    <NFormItem label="Preis">
-      <NInputNumber v-model:value="draft.price" @blur="saveIfChanged('price')" />
-    </NFormItem>
-    <NFormItem label="Währung">
-      <NInput v-model:value="draft.price_currency" @blur="saveIfChanged('price_currency')" />
-    </NFormItem>
+    <NGridItem>
+      <NFormItem label="Preis">
+        <NInputNumber v-model:value="draft.price" @blur="saveIfChanged('price')" />
+      </NFormItem>
+    </NGridItem>
+    <NGridItem>
+      <NFormItem label="Währung">
+        <NInput v-model:value="draft.price_currency" @blur="saveIfChanged('price_currency')" />
+      </NFormItem>
+    </NGridItem>
 
-    <NFormItem label="Wohnfläche (m²)">
-      <NInputNumber
-        v-model:value="draft.property_size_m2"
-        @blur="saveIfChanged('property_size_m2')"
-      />
-    </NFormItem>
-    <NFormItem label="Grundstück (m²)">
-      <NInputNumber v-model:value="draft.plot_size_m2" @blur="saveIfChanged('plot_size_m2')" />
-    </NFormItem>
+    <NGridItem>
+      <NFormItem label="Wohnfläche (m²)">
+        <NInputNumber
+          v-model:value="draft.property_size_m2"
+          @blur="saveIfChanged('property_size_m2')"
+        />
+      </NFormItem>
+    </NGridItem>
+    <NGridItem>
+      <NFormItem label="Grundstück (m²)">
+        <NInputNumber v-model:value="draft.plot_size_m2" @blur="saveIfChanged('plot_size_m2')" />
+      </NFormItem>
+    </NGridItem>
 
     <NGridItem :span="2">
       <NFormItem label="Adresse">
         <NInput v-model:value="draft.address" @blur="saveIfChanged('address')" />
       </NFormItem>
     </NGridItem>
-    <NFormItem label="Region">
-      <NInput v-model:value="draft.region" @blur="saveIfChanged('region')" />
-    </NFormItem>
-    <NFormItem label="Land">
-      <NInput v-model:value="draft.country" @blur="saveIfChanged('country')" />
-    </NFormItem>
+    <NGridItem>
+      <NFormItem label="Region">
+        <NInput v-model:value="draft.region" @blur="saveIfChanged('region')" />
+      </NFormItem>
+    </NGridItem>
+    <NGridItem>
+      <NFormItem label="Land">
+        <NInput v-model:value="draft.country" @blur="saveIfChanged('country')" />
+      </NFormItem>
+    </NGridItem>
 
-    <NFormItem label="Breitengrad">
-      <NInputNumber v-model:value="draft.latitude" @blur="saveIfChanged('latitude')" />
-    </NFormItem>
-    <NFormItem label="Längengrad">
-      <NInputNumber v-model:value="draft.longitude" @blur="saveIfChanged('longitude')" />
-    </NFormItem>
+    <NGridItem>
+      <NFormItem label="Breitengrad">
+        <NInputNumber v-model:value="draft.latitude" @blur="saveIfChanged('latitude')" />
+      </NFormItem>
+    </NGridItem>
+    <NGridItem>
+      <NFormItem label="Längengrad">
+        <NInputNumber v-model:value="draft.longitude" @blur="saveIfChanged('longitude')" />
+      </NFormItem>
+    </NGridItem>
 
     <NGridItem :span="2">
       <NFormItem label="Beschreibung">
@@ -107,30 +123,42 @@ function saveStatus() {
       </NFormItem>
     </NGridItem>
 
-    <NFormItem label="Status">
-      <NSelect v-model:value="draft.status" :options="statusOptions" @update:value="saveStatus" />
-    </NFormItem>
-    <NFormItem v-if="draft.status === 'rejected'" label="Ablehnungsgrund">
-      <NInput v-model:value="draft.rejection_comment" @blur="saveStatus" />
-    </NFormItem>
+    <NGridItem>
+      <NFormItem label="Status">
+        <NSelect v-model:value="draft.status" :options="statusOptions" @update:value="saveStatus" />
+      </NFormItem>
+    </NGridItem>
+    <NGridItem v-if="draft.status === 'rejected'">
+      <NFormItem label="Ablehnungsgrund">
+        <NInput v-model:value="draft.rejection_comment" @blur="saveStatus" />
+      </NFormItem>
+    </NGridItem>
 
-    <NFormItem label="Verkäufer">
-      <NInput v-model:value="draft.seller_name" @blur="saveIfChanged('seller_name')" />
-    </NFormItem>
-    <NFormItem label="Telefon">
-      <NInput v-model:value="draft.seller_phone" @blur="saveIfChanged('seller_phone')" />
-    </NFormItem>
-    <NFormItem label="E-Mail">
-      <NInput v-model:value="draft.seller_email" @blur="saveIfChanged('seller_email')" />
-    </NFormItem>
-    <NFormItem label="Letzter Kontakt">
-      <NDatePicker
-        v-model:formatted-value="draft.last_contact_at"
-        value-format="yyyy-MM-dd'T'HH:mm:ss'Z'"
-        type="date"
-        @update:formatted-value="saveIfChanged('last_contact_at')"
-      />
-    </NFormItem>
+    <NGridItem>
+      <NFormItem label="Verkäufer">
+        <NInput v-model:value="draft.seller_name" @blur="saveIfChanged('seller_name')" />
+      </NFormItem>
+    </NGridItem>
+    <NGridItem>
+      <NFormItem label="Telefon">
+        <NInput v-model:value="draft.seller_phone" @blur="saveIfChanged('seller_phone')" />
+      </NFormItem>
+    </NGridItem>
+    <NGridItem>
+      <NFormItem label="E-Mail">
+        <NInput v-model:value="draft.seller_email" @blur="saveIfChanged('seller_email')" />
+      </NFormItem>
+    </NGridItem>
+    <NGridItem>
+      <NFormItem label="Letzter Kontakt">
+        <NDatePicker
+          v-model:formatted-value="draft.last_contact_at"
+          value-format="yyyy-MM-dd'T'HH:mm:ss'Z'"
+          type="date"
+          @update:formatted-value="saveIfChanged('last_contact_at')"
+        />
+      </NFormItem>
+    </NGridItem>
     <NGridItem :span="2">
       <NFormItem label="Notizen zum Verkäufer">
         <NInput
