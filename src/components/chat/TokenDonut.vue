@@ -30,8 +30,8 @@ const status = computed(() => {
         type="circle"
         :percentage="percentage"
         :status="status"
-        :stroke-width="14"
-        style="width: 40px"
+        :stroke-width="8"
+        style="width: 56px"
       />
     </template>
     {{ tokenCountEstimate ?? 0 }} / {{ CONTEXT_WINDOW_TOKENS }} Tokens
