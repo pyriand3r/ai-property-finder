@@ -47,8 +47,6 @@ onMounted(async () => {
 
 <style scoped>
 .profile-shell {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: 2rem 2rem;
 }
 </style>

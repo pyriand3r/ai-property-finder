@@ -17,7 +17,9 @@ const prefersDark = usePreferredDark();
     <NGlobalStyle />
     <NMessageProvider>
       <NDialogProvider>
-        <RouterView />
+        <RouterView v-slot="{ Component, route }">
+          <component :is="Component" :key="route.fullPath" />
+        </RouterView>
       </NDialogProvider>
     </NMessageProvider>
   </NConfigProvider>

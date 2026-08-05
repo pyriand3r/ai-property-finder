@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { NDataTable, NIcon, NInputNumber, NSelect, NSpace, NTag, NTooltip } from 'naive-ui';
 import { computed, h, shallowRef } from 'vue';
-import { useRouter } from 'vue-router';
 
 import type { Listing, ListingStatus } from '@/types/listing';
 import type { DataTableColumns } from 'naive-ui';
 
 const props = defineProps<{
   listings: readonly Listing[];
+  selectedListingId?: string | null;
 }>();
 
-const router = useRouter();
+const emit = defineEmits<{
+  select: [listingId: string];
+}>();
 
 const statusOptions: { label: string; value: ListingStatus }[] = [
   { label: 'Neu', value: 'new' },
@@ -40,8 +42,8 @@ const filteredListings = computed(() =>
   }),
 );
 
-function openListing(listingId: string) {
-  router.push({ name: 'listing-detail', params: { listingId } });
+function selectListing(listingId: string) {
+  emit('select', listingId);
 }
 
 const columns: DataTableColumns<Listing> = [
@@ -65,7 +67,17 @@ const columns: DataTableColumns<Listing> = [
     title: 'Titel',
     key: 'title',
     sorter: 'default',
-    render: (row) => h('a', { onClick: () => openListing(row.id) }, row.title),
+    render: (row) =>
+      h(
+        'a',
+        {
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation();
+            selectListing(row.id);
+          },
+        },
+        row.title,
+      ),
   },
   {
     title: 'Status',
@@ -117,12 +129,24 @@ const columns: DataTableColumns<Listing> = [
       <NInputNumber v-model:value="priceMax" placeholder="Preis max." style="width: 140px" />
     </NSpace>
 
-    <NDataTable :columns="columns" :data="filteredListings" :row-key="(row: Listing) => row.id" />
+    <NDataTable
+      :columns="columns"
+      :data="filteredListings"
+      :row-key="(row: Listing) => row.id"
+      :row-class-name="
+        (row: Listing) => (row.id === selectedListingId ? 'listing-list-row-selected' : '')
+      "
+      :row-props="(row: Listing) => ({ onClick: () => selectListing(row.id) })"
+    />
   </div>
 </template>
 
 <style scoped>
 .listing-list-filters {
   margin-bottom: 1rem;
+}
+
+:deep(.listing-list-row-selected td) {
+  background-color: var(--n-color-target, rgba(128, 128, 128, 0.15));
 }
 </style>
