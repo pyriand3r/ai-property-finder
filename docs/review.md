@@ -1,0 +1,22 @@
+- Chat-Cards stehen nachdem man aus dem Chat-Tag geht und später zurück zum Chat kommt bzw. nach einem Seiten-Refresh wieder auf unentschieden, obwohl man sie vorher angenommen/abgelehnt hat
+- "Da das Profil noch keine Bewertungskriterien hat, schlage ich passende Kriterien vor, statt zu bewerten: [Limit von 5 LLM-Anfragen erreicht — fasse den Stand zusammen und frag, ob weitergemacht werden soll.]"
+    - habe mit `weitermachen` geantwortet, LLM hat nichts gemacht
+- Session-Token Füllstands Donut-Chart ist mit dem Icon in der Mitte nur sehr schlecht erkennbar. Das Icon kleiner oder nur Icon ohne Hintergrund besser, damit man den Chart sehen kann
+- Inserate-Liste
+    - kein Titelbild sichtbar. Insgesamt nirgends Bilder sichtbar außer im Chat das Titelbild einmal
+    - Gut fände ich es, wenn die Detail-Ansicht eines Inserats direkt neben der Liste stehen würde. Also links Liste, rechts Detail-Ansicht. Dann könnte man schneller durch die Inserate gehen
+    - Optional sollen die einzelnen Kriterien mit Score einblendbar sein, für jedes Kriterium eine optionale eigene Spalte, soll auch persistent sein
+- Detail-Ansicht
+    - Bewertungstabelle nach ganz oben
+    - "Bearbeiten" und "Speichern" Button für die gesamte Ansicht, nicht automatisches speichern. Buttons sollen oben rechts in der Ecke stehen.
+    - Notizen sollen als einzelne Cards hinzufügbar sein. Nicht ein einzelnes Notizfeld, dass immer weiter befüllt wird, sondern einzelne, eigenstädige Notiz-Objekte, die einzeln erstellt/bearbeitet/gelöscht werden können. Button "Neue Notiz" und Cards mit Icons oben Rechts in der Ecke für Bearbeiten und Löschen
+    - Quell-URL soll in Ansichts-Modus ein klickbarer Link sein
+    - Es fehlen diverse Felder, die (noch) nicht als eigenständige Felder angezeigt werden:
+        - lat / long
+        - plot_size_m2
+        - price
+        - region
+        - property_size_m2
+        - seller_name
+        - status (should be present on top)
+        - title_image
