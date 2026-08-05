@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"propertyfinder/internal/db"
@@ -39,6 +40,11 @@ type ChatRepository interface {
 	// confirm/reject endpoints (ADR 0009) to read the pending proposal out
 	// of tool_calls.
 	GetMessage(ctx context.Context, id uuid.UUID) (*domain.ChatMessage, error)
+	// UpdateToolCalls overwrites a message's tool_calls column — used by
+	// the confirm/reject endpoints to record a proposal's resolved status
+	// in place (ADR 0017), so it survives a reload instead of resetting to
+	// pending every time the Confirm-Card remounts.
+	UpdateToolCalls(ctx context.Context, id uuid.UUID, toolCalls json.RawMessage) error
 	// UpdateTokenCount sets a session's token_count_estimate from the
 	// summed Provider usage of the Agent turn that just completed on it
 	// (spec 00-03 Layer 6.3 — feeds the chat header's donut chart).
@@ -183,6 +189,18 @@ func (repo *ChatRepo) GetMessage(ctx context.Context, id uuid.UUID) (*domain.Cha
 		return nil, fmt.Errorf("chat get message: %w", err)
 	}
 	return &message, nil
+}
+
+func (repo *ChatRepo) UpdateToolCalls(ctx context.Context, id uuid.UUID, toolCalls json.RawMessage) error {
+	const query = `UPDATE chat_message SET tool_calls = $2 WHERE id = $1`
+	result, err := repo.db.Exec(ctx, query, id, toolCalls)
+	if err != nil {
+		return fmt.Errorf("chat update tool calls: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return &domain.NotFoundError{Entity: "chat_message", ID: id.String()}
+	}
+	return nil
 }
 
 func (repo *ChatRepo) UpdateTokenCount(ctx context.Context, sessionID uuid.UUID, tokenCount int) error {

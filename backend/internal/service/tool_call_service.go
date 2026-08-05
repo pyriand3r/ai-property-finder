@@ -31,54 +31,91 @@ func NewToolCallService(pool *pgxpool.Pool) *ToolCallService {
 }
 
 // Confirm applies the tool call at callIndex within messageID's tool_calls
-// array. Returns the entity that was written (*domain.Criterion or
-// *domain.Context) — the handler serializes whichever it gets back.
+// array and records "confirmed" on it (ADR 0017). Returns the entity that
+// was written (*domain.Criterion or *domain.Context) — the handler
+// serializes whichever it gets back.
 func (service *ToolCallService) Confirm(ctx context.Context, messageID uuid.UUID, callIndex int) (any, error) {
-	message, call, err := service.loadToolCall(ctx, messageID, callIndex)
+	message, calls, call, err := service.loadToolCall(ctx, messageID, callIndex)
 	if err != nil {
 		return nil, err
 	}
+
+	var result any
 	switch call.Name {
 	case "propose_criteria":
-		return service.confirmProposeCriteria(ctx, message, call)
+		result, err = service.confirmProposeCriteria(ctx, message, call)
 	case "update_context":
-		return service.confirmUpdateContext(ctx, message, call)
+		result, err = service.confirmUpdateContext(ctx, message, call)
 	default:
 		return nil, &domain.ValidationError{Field: "tool", Message: "Tool-Call ist kein Vorschlag mit Bestätigung: " + call.Name}
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	if statusErr := service.markToolCallStatus(ctx, message, calls, callIndex, "confirmed"); statusErr != nil {
+		return nil, statusErr
+	}
+	return result, nil
 }
 
-// Reject validates that callIndex names a confirmable proposal and
-// otherwise does nothing — per ADR 0009, rejection is implicit in not
-// confirming; this endpoint exists so the frontend has a clean call to
-// dismiss the card.
+// Reject validates that callIndex names a confirmable, still-pending
+// proposal and records "rejected" on it (ADR 0017) — no other state
+// change; per ADR 0009 the rejection itself is just not confirming.
 func (service *ToolCallService) Reject(ctx context.Context, messageID uuid.UUID, callIndex int) error {
-	_, call, err := service.loadToolCall(ctx, messageID, callIndex)
+	message, calls, call, err := service.loadToolCall(ctx, messageID, callIndex)
 	if err != nil {
 		return err
 	}
 	if call.Name != "propose_criteria" && call.Name != "update_context" {
 		return &domain.ValidationError{Field: "tool", Message: "Tool-Call ist kein Vorschlag mit Bestätigung: " + call.Name}
 	}
-	return nil
+	return service.markToolCallStatus(ctx, message, calls, callIndex, "rejected")
 }
 
-func (service *ToolCallService) loadToolCall(ctx context.Context, messageID uuid.UUID, callIndex int) (*domain.ChatMessage, agent.StoredToolCall, error) {
-	message, err := repository.NewChatRepo(service.pool).GetMessage(ctx, messageID)
+// loadToolCall reads messageID's tool_calls array and returns the whole
+// parsed array (so a caller can mutate and rewrite it) alongside the
+// requested entry. Returns 409 if that entry was already confirmed or
+// rejected — confirm/reject are idempotent from the caller's perspective,
+// never silently re-applying an append or no-op'ing a second reject.
+func (service *ToolCallService) loadToolCall(ctx context.Context, messageID uuid.UUID, callIndex int) (message *domain.ChatMessage, calls []agent.StoredToolCall, call agent.StoredToolCall, err error) {
+	message, err = repository.NewChatRepo(service.pool).GetMessage(ctx, messageID)
 	if err != nil {
-		return nil, agent.StoredToolCall{}, err
+		return nil, nil, agent.StoredToolCall{}, err
 	}
 	if message.Role != domain.ChatRoleAssistant || len(message.ToolCalls) == 0 {
-		return nil, agent.StoredToolCall{}, &domain.ValidationError{Field: "message_id", Message: "Nachricht hat keine Tool-Calls"}
+		return nil, nil, agent.StoredToolCall{}, &domain.ValidationError{Field: "message_id", Message: "Nachricht hat keine Tool-Calls"}
 	}
-	var calls []agent.StoredToolCall
 	if unmarshalErr := json.Unmarshal(message.ToolCalls, &calls); unmarshalErr != nil {
-		return nil, agent.StoredToolCall{}, &domain.ValidationError{Field: "message_id", Message: "Tool-Calls konnten nicht gelesen werden"}
+		return nil, nil, agent.StoredToolCall{}, &domain.ValidationError{Field: "message_id", Message: "Tool-Calls konnten nicht gelesen werden"}
 	}
 	if callIndex < 0 || callIndex >= len(calls) {
-		return nil, agent.StoredToolCall{}, &domain.NotFoundError{Entity: "tool_call", ID: fmt.Sprintf("%s[%d]", messageID, callIndex)}
+		return nil, nil, agent.StoredToolCall{}, &domain.NotFoundError{Entity: "tool_call", ID: fmt.Sprintf("%s[%d]", messageID, callIndex)}
 	}
-	return message, calls[callIndex], nil
+	call = calls[callIndex]
+	if call.Status != "" {
+		return nil, nil, agent.StoredToolCall{}, &domain.ConflictError{Message: "Vorschlag wurde bereits " + statusVerbGerman(call.Status)}
+	}
+	return message, calls, call, nil
+}
+
+func statusVerbGerman(status string) string {
+	if status == "confirmed" {
+		return "bestätigt"
+	}
+	return "verworfen"
+}
+
+// markToolCallStatus writes status onto calls[callIndex] and persists the
+// whole array back — the only field ever mutated post-insert on an
+// otherwise immutable tool_calls row (ADR 0017).
+func (service *ToolCallService) markToolCallStatus(ctx context.Context, message *domain.ChatMessage, calls []agent.StoredToolCall, callIndex int, status string) error {
+	calls[callIndex].Status = status
+	updated, err := json.Marshal(calls)
+	if err != nil {
+		return fmt.Errorf("marshal tool_calls: %w", err)
+	}
+	return repository.NewChatRepo(service.pool).UpdateToolCalls(ctx, message.ID, updated)
 }
 
 func (service *ToolCallService) confirmProposeCriteria(ctx context.Context, message *domain.ChatMessage, call agent.StoredToolCall) (*domain.Criterion, error) {

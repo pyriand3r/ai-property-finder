@@ -157,8 +157,15 @@ func (loop *Loop) Run(ctx context.Context, req TurnRequest, onEvent OnEvent, onR
 			text.WriteString(note)
 			// The cutoff note is surfaced as this roundtrip's own text —
 			// visible in chat history exactly where the turn stopped —
-			// rather than only appended to TurnResult.Text.
-			assistant := Message{Role: "assistant", Content: append(assistantBlocks, ContentBlock{Type: ContentBlockText, Text: note})}
+			// rather than only appended to TurnResult.Text. Persisted as
+			// text-only: toolCalls were requested but never dispatched (no
+			// budget left to run dispatchAll), so there's no matching
+			// tool_result. Including their tool_use blocks here would leave
+			// an assistant message the next turn's history replay can't
+			// satisfy — Claude requires every tool_use to have a result in
+			// the immediately following message — breaking "weitermachen"
+			// (spec 01-09 "weitermachen after budget-limit").
+			assistant := Message{Role: "assistant", Content: assistantResponseBlocks(roundtripText+note, nil)}
 			onRoundtrip(RoundtripOutcome{Assistant: assistant})
 			return TurnResult{Text: text.String(), Usage: usage}, nil
 		}

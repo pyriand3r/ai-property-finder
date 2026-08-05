@@ -18,6 +18,10 @@ export interface StoredToolCall {
   id: string;
   name: string;
   input: unknown;
+  /** Set only once the user has actioned this call's Confirm-Card —
+   * absent/undefined means still pending (ADR 0017). Only meaningful for
+   * propose_criteria/update_context; every other tool never has this. */
+  status?: 'confirmed' | 'rejected';
 }
 
 /** propose_criteria tool-call arguments (backend/internal/agent/tools.go). */

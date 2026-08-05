@@ -69,6 +69,7 @@ const visibleMessages = computed(() =>
           :call-index="index"
           :tool-name="call.name as 'propose_criteria' | 'update_context'"
           :input="call.input"
+          :status="call.status"
         />
       </div>
     </div>

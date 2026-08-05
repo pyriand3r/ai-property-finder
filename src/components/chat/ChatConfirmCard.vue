@@ -18,11 +18,15 @@ const props = defineProps<{
   callIndex: number;
   toolName: 'propose_criteria' | 'update_context';
   input: unknown;
+  /** The call's persisted status (ADR 0017) — initializes the card's
+   * displayed state so a reload/remount shows what actually happened
+   * instead of resetting to the button pair. */
+  status?: 'confirmed' | 'rejected';
 }>();
 
 type Status = 'pending' | 'confirmed' | 'rejected';
 
-const status = shallowRef<Status>('pending');
+const status = shallowRef<Status>(props.status ?? 'pending');
 const busy = shallowRef(false);
 const error = shallowRef<string | null>(null);
 

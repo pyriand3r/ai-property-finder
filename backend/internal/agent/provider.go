@@ -164,6 +164,11 @@ type StoredToolCall struct {
 	ID    string          `json:"id"`
 	Name  string          `json:"name"`
 	Input json.RawMessage `json:"input"`
+	// Status is set only for a propose_criteria/update_context call once
+	// the user has acted on its Confirm-Card — "" (absent) means still
+	// pending, "confirmed" or "rejected" are terminal (ADR 0017). Every
+	// other tool's calls never have this set.
+	Status string `json:"status,omitempty"`
 }
 
 // StoredToolResult is the JSON shape of chat_message.tool_result for a

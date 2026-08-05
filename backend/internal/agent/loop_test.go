@@ -184,6 +184,16 @@ func TestLoop_Run_StopsAtRoundtripLimitWithPendingToolCall(t *testing.T) {
 	if len(roundtrips[1].Results) != 0 {
 		t.Errorf("second (budget-exhausted) roundtrip has %d Results, want 0 (never dispatched)", len(roundtrips[1].Results))
 	}
+	// Regression guard (spec 01-09 "weitermachen after budget-limit"): the
+	// budget-exhausted roundtrip's persisted Assistant message must not
+	// contain a tool_use block for the call that never got dispatched —
+	// replaying that on the next turn (no matching tool_result exists) is
+	// rejected by Claude's API and left the Agent unable to continue.
+	for _, block := range roundtrips[1].Assistant.Content {
+		if block.Type == ContentBlockToolUse {
+			t.Errorf("budget-exhausted roundtrip's Assistant.Content contains a tool_use block (%+v), want text only", block)
+		}
+	}
 }
 
 func TestLoop_Run_PropagatesProviderError(t *testing.T) {
