@@ -265,11 +265,13 @@ Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) 
   - Spec: [[../docs/spec/01_mvp/01-06-map-view]]
   - **Test:** Listing mit Koordinaten (manuell in 5.3 oder via Agent aus 6.6) → Karte-Tab → Marker sichtbar, farbcodiert → Marker klicken → Popup mit Thumbnail erscheint, rechte Spalte zeigt Detail-Ansicht
 
-- [ ] **7.2 — Context Editor**
-  - `ContextEditorView.vue` — Markdown-Textarea mit Preview
-  - History-Panel (context_revision-Liste) mit Wiederherstellen
-  - Global Context ueber Settings-Einstieg, Profile Context ueber Profil-Tab
-  - **Test:** Context oeffnen → Text aendern → speichern → History zeigt Revision → Agent (6.3+) beruecksichtigt neuen Context im naechsten Turn
+- [x] **7.2 — Context Editor**
+  - `ContextEditor.vue` — Markdown-Textarea (Bearbeiten → Speichern/Abbrechen), Preview via marked+DOMPurify im Anzeige-Modus
+  - History-Panel (context_revision-Liste) mit Wiederherstellen (Confirm-Dialog, neuer Revision-Snapshot vor dem Zurücksetzen)
+  - Backend: `GET /api/context/global/history`, `POST .../revisions/{id}/restore` (global + profile) — Restore prüft, dass die Revision zum Ziel-Context gehört
+  - Global Context über Link auf der Profilliste (`/context`), Profile Context über Profil-Tab
+  - Spec: [[../docs/spec/01_mvp/01-02-context-files]]
+  - **Test:** Context öffnen → Text ändern → speichern → History zeigt Revision → Wiederherstellen setzt alten Text zurück (curl-verifiziert, inkl. 400 bei Revision aus falschem Context) → Agent liest Context frisch pro Turn (agent_service.go, unverändert seit Layer 6.3)
 
 - [ ] **7.3 — Image Gallery im Detail View**
   - Thumbnail-Raster, Kategorie-Badges

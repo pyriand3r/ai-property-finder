@@ -88,6 +88,60 @@ func (service *ContextService) ListProfileHistory(ctx context.Context, profileID
 	return repo.ListRevisions(ctx, current.ID)
 }
 
+// ListGlobalHistory returns the Global Context's revisions, newest first.
+func (service *ContextService) ListGlobalHistory(ctx context.Context) ([]domain.ContextRevision, error) {
+	repo := repository.NewContextRepo(service.pool)
+	current, err := repo.GetGlobal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return repo.ListRevisions(ctx, current.ID)
+}
+
+// RestoreGlobal overwrites the Global Context with a past revision's
+// content_md — a "Wiederherstellen" click in the History panel (spec
+// 01-02). Writes a new revision snapshotting the pre-restore text, same as
+// any other user edit; restoring is just an edit whose new text happens to
+// come from history, not the textarea.
+func (service *ContextService) RestoreGlobal(ctx context.Context, revisionID uuid.UUID) (*domain.Context, error) {
+	repo := repository.NewContextRepo(service.pool)
+	current, err := repo.GetGlobal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return service.restoreFrom(ctx, repo, current, revisionID)
+}
+
+// RestoreProfileContext is RestoreGlobal for a Profile Context.
+func (service *ContextService) RestoreProfileContext(ctx context.Context, profileID, revisionID uuid.UUID) (*domain.Context, error) {
+	repo := repository.NewContextRepo(service.pool)
+	current, err := repo.GetByProfileID(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	return service.restoreFrom(ctx, repo, current, revisionID)
+}
+
+// restoreFrom fetches revisionID and applies its content_md onto current,
+// after checking the revision actually belongs to current — without this,
+// a revision id from a different Context (another profile's history, or
+// Global's) could be replayed onto the wrong one.
+func (service *ContextService) restoreFrom(
+	ctx context.Context,
+	repo *repository.ContextRepo,
+	current *domain.Context,
+	revisionID uuid.UUID,
+) (*domain.Context, error) {
+	revision, err := repo.GetRevisionByID(ctx, revisionID)
+	if err != nil {
+		return nil, err
+	}
+	if revision.ContextID != current.ID {
+		return nil, &domain.ValidationError{Field: "revision_id", Message: "Revision gehört nicht zu diesem Context"}
+	}
+	return service.updateContent(ctx, repo, current, revision.ContentMD, domain.ChangedByUser, nil)
+}
+
 func (service *ContextService) updateContent(
 	ctx context.Context,
 	repo *repository.ContextRepo,

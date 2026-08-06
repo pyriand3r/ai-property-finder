@@ -75,9 +75,31 @@ Full rationale: [[../../docs/adr/0009-proposal-pending-in-tool-calls]], [[../../
 
 ## Editor
 
-- Plain Markdown textarea with preview toggle — no rich structure enforced, mirroring the freeform nature of the reference `AGENT.md`-style files
-- History panel lists `context_revision` rows newest-first with a one-line diff summary and a **Wiederherstellen** action per row
-- Profile Context editor is reachable from the profile's Chat view (tab); Global Context editor is reachable from a top-level Settings-adjacent entry point, not nested under any one profile
+`ContextEditor.vue` (Layer 7.2) — shared by both scopes via `useContextEditor.ts`, a composable
+taking the four operations (fetch/update/history/restore) as injected functions rather than
+duplicating load/save/error state per scope.
+
+- View mode renders `content_md` as Markdown (`marked` + `DOMPurify`, same pipeline as
+  `ListingDocument.vue`'s Listing Document preview); **Bearbeiten** switches to a raw-Markdown
+  `NInput` textarea with explicit **Speichern**/**Abbrechen** — no preview *toggle* while editing,
+  matching the Bearbeiten/Speichern/Abbrechen convention introduced for `ListingForm.vue`
+  ([[01-10-listing-views-overhaul]]) rather than a three-state edit/preview/view switch
+- History panel lists `context_revision` rows newest-first, each showing a **Nutzer**/**Agent**
+  tag (`changed_by`), the timestamp, and a **Wiederherstellen** action. Wiederherstellen asks for
+  confirmation first (same `useDialog()` pattern as `ChatView.vue`'s "Neue Session starten?"),
+  since it overwrites the current text — though nothing is actually lost: restoring is implemented
+  as an ordinary edit whose new text happens to come from history, so the pre-restore text is
+  itself snapshotted as a new revision, same as any other change
+- `POST /api/context/global/revisions/{revisionId}/restore` and
+  `POST /api/profiles/{profileId}/context/revisions/{revisionId}/restore` — the backend checks the
+  revision's `context_id` matches the target Context before applying it (`400` otherwise), so a
+  revision id from one Context (e.g. another profile's history) can't be replayed onto a different
+  one
+- Profile Context editor is reachable from the profile's Chat view (`ProfileContextPanel.vue` in
+  the "Context" tab, `ProfileShellView.vue`); Global Context editor
+  (`GlobalContextView.vue`, route `/context`) is reachable from a "Globaler Kontext" link on the
+  profile list page — no dedicated Settings shell exists yet, so this is the pragmatic
+  Settings-adjacent entry point for now, not nested under any one profile
 
 ---
 

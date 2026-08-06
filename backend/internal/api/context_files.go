@@ -88,3 +88,48 @@ func (handler *ContextHandler) History(writer http.ResponseWriter, request *http
 	}
 	writeJSON(writer, http.StatusOK, revisions)
 }
+
+// GlobalHistory handles GET /api/context/global/history.
+func (handler *ContextHandler) GlobalHistory(writer http.ResponseWriter, request *http.Request) {
+	revisions, err := handler.service.ListGlobalHistory(request.Context())
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, revisions)
+}
+
+// RestoreGlobal handles POST /api/context/global/revisions/{revisionId}/restore.
+func (handler *ContextHandler) RestoreGlobal(writer http.ResponseWriter, request *http.Request) {
+	revisionID, ok := parseUUID(writer, request, "revisionId")
+	if !ok {
+		return
+	}
+
+	contextRow, err := handler.service.RestoreGlobal(request.Context(), revisionID)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, contextRow)
+}
+
+// RestoreProfile handles
+// POST /api/profiles/{profileId}/context/revisions/{revisionId}/restore.
+func (handler *ContextHandler) RestoreProfile(writer http.ResponseWriter, request *http.Request) {
+	profileID, ok := parseUUID(writer, request, "profileId")
+	if !ok {
+		return
+	}
+	revisionID, ok := parseUUID(writer, request, "revisionId")
+	if !ok {
+		return
+	}
+
+	contextRow, err := handler.service.RestoreProfileContext(request.Context(), profileID, revisionID)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, contextRow)
+}

@@ -24,6 +24,11 @@ type ContextRepository interface {
 	CreateRevision(ctx context.Context, revision *domain.ContextRevision) error
 	// ListRevisions returns a context's revisions, newest first.
 	ListRevisions(ctx context.Context, contextID uuid.UUID) ([]domain.ContextRevision, error)
+	// GetRevisionByID returns a single revision row, used by Restore to look
+	// up the historical content_md — and, critically, to check ContextID
+	// before applying it, so a revision from one Context can't be replayed
+	// onto a different one.
+	GetRevisionByID(ctx context.Context, revisionID uuid.UUID) (*domain.ContextRevision, error)
 }
 
 // ContextRepo is the pgx-backed implementation of ContextRepository.
@@ -158,6 +163,32 @@ ORDER BY created_at DESC
 		return nil, fmt.Errorf("context revision rows: %w", rowsError)
 	}
 	return revisions, nil
+}
+
+// GetRevisionByID returns a single context_revision row.
+func (repo *ContextRepo) GetRevisionByID(ctx context.Context, revisionID uuid.UUID) (*domain.ContextRevision, error) {
+	const query = `
+SELECT id, context_id, content_md, changed_by, chat_message_id, created_at
+FROM context_revision
+WHERE id = $1
+`
+	row := repo.db.QueryRow(ctx, query, revisionID)
+	var revision domain.ContextRevision
+	err := row.Scan(
+		&revision.ID,
+		&revision.ContextID,
+		&revision.ContentMD,
+		&revision.ChangedBy,
+		&revision.ChatMessageID,
+		&revision.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, &domain.NotFoundError{Entity: "context_revision", ID: revisionID.String()}
+		}
+		return nil, fmt.Errorf("context get revision: %w", err)
+	}
+	return &revision, nil
 }
 
 func scanContextRow(scanner interface {

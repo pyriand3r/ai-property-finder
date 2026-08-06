@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NAlert, NCollapseTransition, NH1, NSpin } from 'naive-ui';
+import { NAlert, NButton, NCollapseTransition, NH1, NSpin } from 'naive-ui';
 import { useMessage } from 'naive-ui';
 import { onMounted, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
@@ -69,7 +69,10 @@ async function handleDelete(profileId: string) {
 
 <template>
   <main class="profile-list-view">
-    <NH1>Property Finder</NH1>
+    <div class="profile-list-header">
+      <NH1>Property Finder</NH1>
+      <NButton text @click="router.push({ name: 'global-context' })"> Globaler Kontext </NButton>
+    </div>
 
     <ProfileCreateForm :creating="creating" @create="handleCreate" />
 
@@ -110,6 +113,12 @@ async function handleDelete(profileId: string) {
   max-width: 720px;
   margin: 0 auto;
   padding: 2rem 1rem;
+}
+
+.profile-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .profile-list-error {

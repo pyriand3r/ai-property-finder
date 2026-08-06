@@ -90,6 +90,8 @@ func (server *Server) Router() http.Handler {
 
 	timed.Get("/api/context/global", server.context.GetGlobal)
 	timed.Put("/api/context/global", server.context.PutGlobal)
+	timed.Get("/api/context/global/history", server.context.GlobalHistory)
+	timed.Post("/api/context/global/revisions/{revisionId}/restore", server.context.RestoreGlobal)
 
 	timed.Route("/api/profiles", func(r chi.Router) {
 		r.Get("/", server.profile.List)
@@ -103,6 +105,7 @@ func (server *Server) Router() http.Handler {
 			r.Get("/context", server.context.GetProfile)
 			r.Put("/context", server.context.PutProfile)
 			r.Get("/context/history", server.context.History)
+			r.Post("/context/revisions/{revisionId}/restore", server.context.RestoreProfile)
 
 			r.Get("/criteria", server.criterion.List)
 			r.Post("/criteria", server.criterion.Create)

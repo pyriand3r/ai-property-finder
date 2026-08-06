@@ -20,5 +20,10 @@ export const router = createRouter({
       component: () => import('@/views/ListingDetailView.vue'),
       props: true,
     },
+    {
+      path: '/context',
+      name: 'global-context',
+      component: () => import('@/views/GlobalContextView.vue'),
+    },
   ],
 });

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { NButton, NEmpty, NH1, NTabPane, NTabs } from 'naive-ui';
+import { NButton, NH1, NTabPane, NTabs } from 'naive-ui';
 import { defineAsyncComponent, onMounted, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { getProfile } from '@/api/profiles';
 import ChatView from '@/components/chat/ChatView.vue';
+import ProfileContextPanel from '@/components/context/ProfileContextPanel.vue';
 import CriteriaEditor from '@/components/criteria/CriteriaEditor.vue';
 import ListingsPanel from '@/components/listings/ListingsPanel.vue';
 
@@ -40,7 +41,7 @@ onMounted(async () => {
         <ChatView :profile-id="profileId" />
       </NTabPane>
       <NTabPane name="context" tab="Context">
-        <NEmpty description="Context-Editor kommt in Layer 7" />
+        <ProfileContextPanel :profile-id="profileId" />
       </NTabPane>
       <NTabPane name="criteria" tab="Kriterien">
         <CriteriaEditor :profile-id="profileId" />
