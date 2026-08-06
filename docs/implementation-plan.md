@@ -257,11 +257,13 @@ Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) 
 
 ## Layer 7: Restliche Views
 
-- [ ] **7.1 — Map View**
-  - OpenLayers + OSM-Karte
-  - Marker pro Listing mit Koordinaten, farbcodiert nach Status
-  - Popup mit Titel, Preis, Score
-  - **Test:** Listing mit Koordinaten (manuell in 5.3 oder via Agent aus 6.6) → Map View → Marker sichtbar → Popup klickbar
+- [x] **7.1 — Map View**
+  - OpenLayers + OSM-Karte, neuer "Karte"-Tab in `ProfileShellView.vue`, lazy geladen (`defineAsyncComponent`)
+  - Master-Detail-Split wie List View: Karte links, `ListingDetailPanel` rechts (`ListingSplitPane.vue`, geteilt mit der Inserate-Liste)
+  - Marker pro Listing mit Koordinaten, farbcodiert nach Status (`src/utils/listingStatus.ts`)
+  - Marker-Klick: wählt Listing für die rechte Spalte aus **und** öffnet ein kleines Popup am Marker mit Titel, Preis, Score, 100x100-Thumbnail
+  - Spec: [[../docs/spec/01_mvp/01-06-map-view]]
+  - **Test:** Listing mit Koordinaten (manuell in 5.3 oder via Agent aus 6.6) → Karte-Tab → Marker sichtbar, farbcodiert → Marker klicken → Popup mit Thumbnail erscheint, rechte Spalte zeigt Detail-Ansicht
 
 - [ ] **7.2 — Context Editor**
   - `ContextEditorView.vue` — Markdown-Textarea mit Preview

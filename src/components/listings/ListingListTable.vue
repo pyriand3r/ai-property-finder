@@ -17,6 +17,7 @@ import { listCriteria } from '@/api/criteria';
 import { useListingGrades } from '@/composables/useListingGrades';
 import { useListingThumbnails } from '@/composables/useListingThumbnails';
 import { gradeColor } from '@/utils/gradeColor';
+import { statusOptions } from '@/utils/listingStatus';
 
 import type { Criterion } from '@/types/criterion';
 import type { Listing, ListingStatus } from '@/types/listing';
@@ -31,15 +32,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [listingId: string];
 }>();
-
-const statusOptions: { label: string; value: ListingStatus }[] = [
-  { label: 'Neu', value: 'new' },
-  { label: 'Wartend', value: 'waiting' },
-  { label: 'In Verhandlung', value: 'in_negotiation' },
-  { label: 'Besichtigt', value: 'visited' },
-  { label: 'Abgelehnt', value: 'rejected' },
-  { label: 'Archiviert', value: 'archived' },
-];
 
 const statusFilter = shallowRef<ListingStatus | null>(null);
 const scoreMin = shallowRef<number | null>(null);

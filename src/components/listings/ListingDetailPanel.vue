@@ -7,6 +7,7 @@ import ListingForm from '@/components/listings/ListingForm.vue';
 import ListingGradeGrid from '@/components/listings/ListingGradeGrid.vue';
 import { useListingDetail } from '@/composables/useListingDetail';
 import { useListingThumbnails } from '@/composables/useListingThumbnails';
+import { statusOptions } from '@/utils/listingStatus';
 
 import type { ListingInput } from '@/api/listings';
 import type { ListingStatus } from '@/types/listing';
@@ -36,15 +37,6 @@ function handleSave(patch: ListingInput) {
 function handleEvaluate() {
   void evaluate();
 }
-
-const statusOptions: { label: string; value: ListingStatus }[] = [
-  { label: 'Neu', value: 'new' },
-  { label: 'Wartend', value: 'waiting' },
-  { label: 'In Verhandlung', value: 'in_negotiation' },
-  { label: 'Besichtigt', value: 'visited' },
-  { label: 'Abgelehnt', value: 'rejected' },
-  { label: 'Archiviert', value: 'archived' },
-];
 
 // status/rejection_comment moved out of ListingForm's field grid into the
 // header (spec 01-10 — "prominent, same tier as needs_reevaluation") and

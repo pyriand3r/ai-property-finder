@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { NButton, NEmpty, NH1, NTabPane, NTabs } from 'naive-ui';
-import { onMounted, shallowRef } from 'vue';
+import { defineAsyncComponent, onMounted, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { getProfile } from '@/api/profiles';
 import ChatView from '@/components/chat/ChatView.vue';
 import CriteriaEditor from '@/components/criteria/CriteriaEditor.vue';
 import ListingsPanel from '@/components/listings/ListingsPanel.vue';
+
+// OpenLayers is a heavy dependency (~300kB) only the Karte tab needs — load
+// it lazily so every other tab (Chat, Kriterien, Inserate) doesn't pay for
+// it up front.
+const ListingsMapPanel = defineAsyncComponent(
+  () => import('@/components/listings/ListingsMapPanel.vue'),
+);
 
 import type { Profile } from '@/types/profile';
 
@@ -40,6 +47,9 @@ onMounted(async () => {
       </NTabPane>
       <NTabPane name="listings" tab="Inserate">
         <ListingsPanel :profile-id="profileId" />
+      </NTabPane>
+      <NTabPane name="map" tab="Karte">
+        <ListingsMapPanel :profile-id="profileId" />
       </NTabPane>
     </NTabs>
   </main>
