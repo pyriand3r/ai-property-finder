@@ -16,6 +16,8 @@ Where it goes:
 | Feature/system behaviour, schemas, API shapes | the matching file under `docs/spec/` |
 | A new term, or a renamed/retired one | `docs/CONTEXT.md` glossary |
 | Build order or plan changes | `docs/implementation-plan.md` |
+| A bug found while working on something else (not what you were asked to fix) | `docs/buglist.md` — write it there **first**, before investigating or fixing, unless told to fix it now |
+| A feature/improvement idea found while working on something else | `docs/ideas.md` — cross-reference every spec/ADR/layer/file the idea touches or depends on |
 | Longer-form notes that fit no file above | new file under `docs/`, linked from `docs/00_readme.md` |
 
 Rules:
