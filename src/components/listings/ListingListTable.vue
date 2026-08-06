@@ -177,8 +177,12 @@ const columns = computed<DataTableColumns<Listing>>(() => [
   ...criteria.value
     .filter((criterion) => visibleCriterionIds.value.has(criterion.id))
     .map((criterion) => ({
-      title: criterion.name,
+      // Criterion names are often too long for a reasonably narrow column
+      // ("Infrastruktur & Erschließung") — rotate the header text instead
+      // of letting it force the column wide or wrap awkwardly.
+      title: () => h('span', { class: 'listing-list-grade-title' }, criterion.name),
       key: `grade:${criterion.id}`,
+      width: 48,
       render: (row: Listing) => {
         const grade = grades.value
           .get(row.id)
@@ -259,6 +263,13 @@ const columns = computed<DataTableColumns<Listing>>(() => [
   border-radius: 0.375rem;
   object-fit: cover;
   display: block;
+}
+
+:deep(.listing-list-grade-title) {
+  display: inline-block;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
 }
 
 :deep(.listing-list-thumb-placeholder) {
