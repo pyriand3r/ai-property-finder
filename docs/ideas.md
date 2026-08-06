@@ -23,6 +23,25 @@ Move an entry to **Done** once implemented, linking the commit/spec that did it.
 
 ## Open
 
+### Give each ProfileShellView tab its own route so F5 doesn't reset to Chat
+
+- **Where noticed**: 2026-08-06, user feedback — reloading the page (F5) always lands back on the
+  Chat tab, even if Kontext/Kriterien/Inserate was open.
+- **What**: `ProfileShellView.vue`'s `NTabs` (`type="line"`, `default-value="chat"`) has no
+  `v-model:value` and isn't synced to the route at all — tab selection is purely local component
+  state, lost on every reload. Only the profile itself is routable (`/profiles/:profileId`, see
+  `src/router/index.ts`); Chat/Context/Kriterien/Inserate are not.
+- **Depends on / touches**: `src/router/index.ts` (the single `profile-shell` route needs a tab
+  segment, e.g. `/profiles/:profileId/:tab?` with `tab` restricted to
+  `chat|context|criteria|listings`, defaulting to `chat` when absent — matches the four
+  `NTabPane name="..."` values already used in `ProfileShellView.vue`). `ProfileShellView.vue`
+  itself needs `NTabs` bound via `v-model:value` initialized from the route param and pushing a
+  route change (probably `router.replace`, not `push`, so tab-switching doesn't spam browser
+  history) on tab change. Note the "Context" tab (`NTabPane name="context"`) is currently just an
+  `NEmpty` placeholder — "Context-Editor kommt in Layer 7" — so this idea is independent of
+  Layer 7 landing, but Layer 7's Context Editor work should route through whatever `tab` param
+  scheme this introduces rather than needing its own later.
+
 ### Translate List View's Status column to German
 
 - **Where noticed**: 2026-08-06, live-verifying [[spec/01_mvp/01-10-listing-views-overhaul]] in the
