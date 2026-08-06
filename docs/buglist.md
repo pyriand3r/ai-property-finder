@@ -23,6 +23,29 @@ of deleting the history of what it took to find and fix it.
 
 ## Open
 
+### Split-pane detail scroll falls through to page scroll near the bottom
+
+- **Found**: 2026-08-06, reported by the user scrolling a long Listing in the master-detail split
+  ([[spec/01_mvp/01-10-listing-views-overhaul]] § Master-Detail Split Layout).
+- **Symptom**: scrolling inside the right-hand detail pane (`ListingDetailPanel.vue`) works
+  correctly for roughly the first 3/4 of its content — the list and header stay in place, only the
+  detail pane scrolls. Near the end of the detail content, scrolling stops staying contained and
+  the whole page starts scrolling instead.
+- **Root cause (hypothesis, not confirmed)**: `.listings-panel-split-detail` in
+  `ListingsPanel.vue` is `position: sticky` with `max-height: calc(100vh - 2rem)` and
+  `overflow-y: auto` — the intended pattern for an independently-scrolling sticky pane. But a
+  `position: sticky` element can only stay stuck within the bounds of its **containing block**
+  (here, the `.listings-panel-split` flex row). Since the pane's own max-height is set to nearly a
+  full viewport, its containing block ends up almost exactly as tall as the pane itself, leaving
+  very little scroll room between "the pane's own internal overflow-y:auto content finishes
+  scrolling" and "the containing block's bottom edge is reached, so the sticky positioning gives
+  up and the page takes over the scroll." That matches the reported "fine for 3/4, then the whole
+  page scrolls" symptom.
+- **Status**: open, unfixed. A fix likely needs to give `.listings-panel-split` a height tied to
+  the viewport (not just its content) so the sticky pane has room to fully stick, or restructure
+  the split away from `position: sticky` toward a fixed-height flex/grid shell with independent
+  scroll regions (a more typical split-pane layout).
+
 ### Quell-URL link color hard to read in dark mode
 
 - **Found**: 2026-08-06, reported by the user after the clickable source link shipped
