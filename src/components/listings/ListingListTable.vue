@@ -1,13 +1,29 @@
 <script setup lang="ts">
-import { NDataTable, NIcon, NInputNumber, NSelect, NSpace, NTag, NTooltip } from 'naive-ui';
-import { computed, h, shallowRef } from 'vue';
+import {
+  NButton,
+  NCheckbox,
+  NDataTable,
+  NIcon,
+  NInputNumber,
+  NPopover,
+  NSelect,
+  NSpace,
+  NTag,
+  NTooltip,
+} from 'naive-ui';
+import { computed, h, onMounted, shallowRef } from 'vue';
 
+import { listCriteria } from '@/api/criteria';
+import { useListingGrades } from '@/composables/useListingGrades';
 import { useListingThumbnails } from '@/composables/useListingThumbnails';
+import { gradeColor } from '@/utils/gradeColor';
 
+import type { Criterion } from '@/types/criterion';
 import type { Listing, ListingStatus } from '@/types/listing';
 import type { DataTableColumns } from 'naive-ui';
 
 const props = defineProps<{
+  profileId: string;
   listings: readonly Listing[];
   selectedListingId?: string | null;
 }>();
@@ -50,7 +66,44 @@ function selectListing(listingId: string) {
 
 const { thumbnails } = useListingThumbnails(() => props.listings);
 
-const columns: DataTableColumns<Listing> = [
+// Optional per-criterion score columns (review #6, spec 01-10). Off by
+// default (no bulk grades endpoint — turning one on means an N+1 fetch, see
+// useListingGrades) and persisted per profile, since criteria differ
+// between profiles and a saved column set from one wouldn't make sense on
+// another.
+const criteria = shallowRef<Criterion[]>([]);
+const visibleCriterionIds = shallowRef<Set<string>>(new Set());
+const columnsStorageKey = `listing-list-grade-columns:${props.profileId}`;
+
+onMounted(async () => {
+  criteria.value = await listCriteria(props.profileId);
+  const stored = localStorage.getItem(columnsStorageKey);
+  if (stored) {
+    try {
+      visibleCriterionIds.value = new Set(JSON.parse(stored) as string[]);
+    } catch {
+      visibleCriterionIds.value = new Set();
+    }
+  }
+});
+
+function toggleCriterionColumn(criterionId: string, visible: boolean) {
+  const next = new Set(visibleCriterionIds.value);
+  if (visible) {
+    next.add(criterionId);
+  } else {
+    next.delete(criterionId);
+  }
+  visibleCriterionIds.value = next;
+  localStorage.setItem(columnsStorageKey, JSON.stringify([...next]));
+}
+
+const { grades } = useListingGrades(
+  () => props.listings,
+  () => visibleCriterionIds.value.size > 0,
+);
+
+const columns = computed<DataTableColumns<Listing>>(() => [
   {
     title: '',
     key: 'thumbnail',
@@ -121,13 +174,33 @@ const columns: DataTableColumns<Listing> = [
     defaultSortOrder: 'descend',
     render: (row) => row.overall_score?.toFixed(0) ?? '—',
   },
+  ...criteria.value
+    .filter((criterion) => visibleCriterionIds.value.has(criterion.id))
+    .map((criterion) => ({
+      title: criterion.name,
+      key: `grade:${criterion.id}`,
+      render: (row: Listing) => {
+        const grade = grades.value
+          .get(row.id)
+          ?.find((entry) => entry.criterion_id === criterion.id)?.grade;
+        return grade
+          ? h(
+              NTag,
+              { color: { color: gradeColor[grade], textColor: 'white' }, round: true },
+              {
+                default: () => grade,
+              },
+            )
+          : '—';
+      },
+    })),
   {
     title: 'Angelegt',
     key: 'created_at',
     sorter: (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
     render: (row) => new Date(row.created_at).toLocaleDateString('de-DE'),
   },
-];
+]);
 </script>
 
 <template>
@@ -142,6 +215,21 @@ const columns: DataTableColumns<Listing> = [
       />
       <NInputNumber v-model:value="scoreMin" placeholder="Score min." style="width: 140px" />
       <NInputNumber v-model:value="priceMax" placeholder="Preis max." style="width: 140px" />
+
+      <NPopover trigger="click" placement="bottom-start">
+        <template #trigger>
+          <NButton>Spalten</NButton>
+        </template>
+        <NSpace vertical>
+          <NCheckbox
+            v-for="criterion in criteria"
+            :key="criterion.id"
+            :checked="visibleCriterionIds.has(criterion.id)"
+            :label="criterion.name"
+            @update:checked="(checked) => toggleCriterionColumn(criterion.id, checked)"
+          />
+        </NSpace>
+      </NPopover>
     </NSpace>
 
     <NDataTable

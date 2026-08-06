@@ -1,20 +1,13 @@
 <script setup lang="ts">
 import { NEmpty, NTable, NTag } from 'naive-ui';
 
+import { gradeColor } from '@/utils/gradeColor';
+
 import type { ListingGrade } from '@/types/grade';
 
 defineProps<{
   grades: readonly ListingGrade[];
 }>();
-
-const gradeColor: Record<ListingGrade['grade'], string> = {
-  A: '#18a058',
-  B: '#36ad6a',
-  C: '#f0a020',
-  D: '#e88080',
-  E: '#d03050',
-  F: '#a01030',
-};
 </script>
 
 <template>

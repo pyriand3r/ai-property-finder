@@ -30,6 +30,7 @@ onMounted(fetchListings);
           <div class="listings-panel-split">
             <div class="listings-panel-split-list">
               <ListingListTable
+                :profile-id="profileId"
                 :listings="listings"
                 :selected-listing-id="selectedListingId"
                 @select="(id) => (selectedListingId = id)"
