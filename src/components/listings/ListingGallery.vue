@@ -76,6 +76,7 @@ function confirmDelete(image: ListingImage) {
               circle
               :type="image.id === titleImageId ? 'warning' : 'default'"
               class="listing-gallery-star"
+              :class="{ 'listing-gallery-star-unselected': image.id !== titleImageId }"
               :title="image.id === titleImageId ? 'Titelbild' : 'Als Titelbild festlegen'"
               @click.stop="handleSetTitleImage(image)"
             >
@@ -140,6 +141,25 @@ function confirmDelete(image: ListingImage) {
   position: absolute;
   bottom: 0.375rem;
   right: 0.375rem;
+}
+
+/* Default NButton "default" type is too low-contrast against arbitrary
+   photo content — give the unselected star and delete button an always-
+   visible dark backdrop, filling with a solid accent color on hover (same
+   treatment as the selected/warning-type star already gets from Naive UI). */
+.listing-gallery-star-unselected,
+.listing-gallery-delete {
+  background: rgba(0, 0, 0, 0.45) !important;
+  color: #fff !important;
+  border: none !important;
+}
+
+.listing-gallery-star-unselected:hover {
+  background: #f0a020 !important;
+}
+
+.listing-gallery-delete:hover {
+  background: #d03050 !important;
 }
 </style>
 
