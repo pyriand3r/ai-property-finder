@@ -142,3 +142,14 @@ function confirmDelete(image: ListingImage) {
   right: 0.375rem;
 }
 </style>
+
+<!-- Unscoped on purpose: NImageGroup's preview overlay is teleported to
+     <body>, outside this component's scoped-style reach. Naive UI hardcodes
+     the backdrop at rgba(0,0,0,.3) in its own component styles (not exposed
+     as a theme token — checked imageProps/themeOverrides, only toolbar
+     colors are configurable), so overriding it needs a plain global rule. -->
+<style>
+.n-image-preview-container {
+  background: rgba(0, 0, 0, 0.85) !important;
+}
+</style>
