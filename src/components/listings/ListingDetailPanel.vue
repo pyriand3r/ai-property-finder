@@ -4,6 +4,7 @@ import { computed, onMounted, reactive, watch } from 'vue';
 
 import ListingDocument from '@/components/listings/ListingDocument.vue';
 import ListingForm from '@/components/listings/ListingForm.vue';
+import ListingGallery from '@/components/listings/ListingGallery.vue';
 import ListingGradeGrid from '@/components/listings/ListingGradeGrid.vue';
 import { useListingDetail } from '@/composables/useListingDetail';
 import { useListingThumbnails } from '@/composables/useListingThumbnails';
@@ -103,6 +104,15 @@ function saveStatus() {
 
         <section class="listing-detail-section">
           <ListingForm :listing="listing" @save="handleSave" />
+        </section>
+
+        <section class="listing-detail-section">
+          <h3>Bilder</h3>
+          <ListingGallery
+            :listing-id="listing.id"
+            :title-image-id="listing.title_image_id"
+            @changed="fetchAll"
+          />
         </section>
 
         <section class="listing-detail-section">

@@ -273,11 +273,12 @@ Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) 
   - Spec: [[../docs/spec/01_mvp/01-02-context-files]]
   - **Test:** Context öffnen → Text ändern → speichern → History zeigt Revision → Wiederherstellen setzt alten Text zurück (curl-verifiziert, inkl. 400 bei Revision aus falschem Context) → Agent liest Context frisch pro Turn (agent_service.go, unverändert seit Layer 6.3)
 
-- [ ] **7.3 — Image Gallery im Detail View**
-  - Thumbnail-Raster, Kategorie-Badges
-  - Stern-Icon fuer Title-Image-Wechsel
-  - Loeschen mit Confirmation
-  - **Test:** Detail-View oeffnen → Galerie zeigt alle Bilder → Stern klicken → Titelbild gewechselt
+- [x] **7.3 — Image Gallery im Detail View**
+  - `ListingGallery.vue` — Thumbnail-Raster, Kategorie-Badges (Außenansicht/Innenaufnahme/Grundriss/Nebengebäude/Sonstiges)
+  - Stern-Icon fuer Title-Image-Wechsel (PATCH `title_image_id`, bereits ADR-0012-konform, kein neuer Endpoint noetig)
+  - Loeschen mit Confirmation (`useDialog`, DELETE `/api/listings/{id}/images/{imageId}`, bereits vorhandener Endpoint)
+  - Spec: [[../docs/adr/0012-image-storage-filesystem-media]]
+  - **Test:** Detail-View oeffnen → Galerie zeigt alle Bilder mit Kategorie-Badge → Stern auf anderem Bild klicken → Titelbild + Header-Thumbnail wechseln (live verifiziert) → Testbild hochgeladen (curl) → Löschen-Icon → Confirm-Dialog → Bild entfernt, Titelbild unveraendert (live verifiziert)
 
 ---
 
