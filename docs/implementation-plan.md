@@ -284,12 +284,13 @@ Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) 
 
 ## Layer 8: Feinschliff
 
-- [ ] **8.1 — Rejection Async Analysis**
-  - Status auf `rejected` → async LLM-Call analysiert Kommentar
-  - `propose_criteria` / `update_context` Vorschlaege
-  - Toast "Vorschlaege im Chat verfuegbar"
-  - **Model:** Claude 3.5 Sonnet · GPT-4o-mini (Single-Shot-Analyse, kein Tool-Use — Haiku waere okay, aber hier ist die Qualitaet der Vorschlaege wichtig)
-  - **Test:** Listing ablehnen mit Kommentar → Toast → Chat oeffnen → Confirm-Cards sichtbar
+- [x] **8.1 — Rejection Async Analysis**
+  - Status auf `rejected` → async LLM-Call analysiert Kommentar (`RejectionAnalysisService`, single-shot wie `EvaluationService`/`RankingService`, kein Tool-Use)
+  - `propose_criteria` / `update_context` Vorschlaege landen als synthetische `chat_message` (role=assistant, `tool_calls` im selben Format wie ein echter Agent-Turn) in der aktiven Session — bestehende Confirm-Card-UI/Endpoints unveraendert wiederverwendet
+  - Toast "Rejection verarbeitet — Vorschlaege im Chat verfuegbar." (`useRejectionAnalysisToast.ts`, SSE-Event `listing.rejection_analyzed`)
+  - **Model:** Claude (ADR 0006 — einziger MVP-Provider; Single-Shot-Analyse, kein Tool-Use)
+  - Spec: [[../docs/spec/01_mvp/01-04-criteria-and-scoring#Rejection Feedback, Reimagined]]
+  - **Test:** Listing per PATCH auf `rejected` mit Kommentar gesetzt (curl + UI) → `update_context`-Vorschlag korrekt erkannt (Makler-Meide-Regel) → Confirm-Card in Chat sichtbar (inkl. Listing-Card) → Übernehmen funktioniert unveraendert → Toast im Browser bestaetigt. golangci-lint/go test clean (inkl. neuer `parseRejectionAnalysis`-Tests).
 
 - [ ] **8.2 — user_confirmed_fields im Agent-Context**
   - Listing-Context-Block vor jedem Turn

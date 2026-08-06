@@ -151,6 +151,156 @@ func parseRanking(raw string, wantCount int) (RankingResult, error) {
 	return RankingResult{Kurzfazits: kurzfazits, Summary: strings.TrimSpace(wire.Summary)}, nil
 }
 
+const rejectionAnalysisSystem = `You analyze why a user rejected a real-estate listing, to see whether the rejection reveals a durable preference not yet captured in their evaluation criteria or profile notes.
+
+You receive: the rejected listing's key facts, the user's rejection comment, the profile's current criteria (with IDs, name, description), and the profile's current context notes (freeform rules the profile already follows).
+
+Decide whether the rejection comment reveals:
+1. A new evaluation criterion that should exist, or an existing one (reference it by its given ID) that should be edited — e.g. "zu teuer für die Grundstücksgröße" might mean a price criterion should weigh land size, or a missing criterion entirely.
+2. A durable rule for how to evaluate or source future listings — e.g. "Makler antwortet nie" might mean a context note about that seller/portal.
+
+Most rejections need NO proposal at all — something like "schon verkauft" or a reason already well covered by existing criteria/context reveals nothing new. Only propose when the comment reveals something durable that isn't already covered. It is completely normal and expected to return two empty arrays.
+
+Return ONLY a JSON object:
+{"criteria_proposals": [{"action": "add"|"edit", "criterion_id": "<existing id, only for edit>", "name": "...", "description": "...", "is_subjective": true|false, "weight": <1-5, optional>}], "context_proposals": [{"scope": "profile", "operation": "append", "content": "..."}]}
+
+No prose outside the JSON, no markdown fences.`
+
+// rawRejectionAnalysis is the wire shape of AnalyzeRejection's response.
+type rawRejectionAnalysis struct {
+	CriteriaProposals []rawCriteriaProposal `json:"criteria_proposals"`
+	ContextProposals  []rawContextProposal  `json:"context_proposals"`
+}
+
+type rawCriteriaProposal struct {
+	Action       string `json:"action"`
+	CriterionID  string `json:"criterion_id"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	IsSubjective bool   `json:"is_subjective"`
+	Weight       *int   `json:"weight"`
+}
+
+type rawContextProposal struct {
+	Scope     string `json:"scope"`
+	Operation string `json:"operation"`
+	Content   string `json:"content"`
+}
+
+// runAnalyzeRejection implements Provider.AnalyzeRejection against any
+// completer.
+func runAnalyzeRejection(
+	ctx context.Context,
+	c completer,
+	listing domain.Listing,
+	rejectionComment string,
+	criteria []domain.Criterion,
+	contextText string,
+) (RejectionAnalysisResult, error) {
+	cfg := c.config()
+
+	var user strings.Builder
+	fmt.Fprintf(&user, "Reasoning language: %s.\n\n", cfg.reasoningLanguage())
+	user.WriteString("Rejected listing:\n")
+	user.WriteString(renderListing(listing))
+	fmt.Fprintf(&user, "\n\nRejection comment: %s\n", strings.TrimSpace(rejectionComment))
+
+	user.WriteString("\nCurrent criteria:\n")
+	if len(criteria) == 0 {
+		user.WriteString("(none)\n")
+	}
+	for _, criterion := range criteria {
+		kind := "objective"
+		if criterion.IsSubjective {
+			kind = "subjective"
+		}
+		fmt.Fprintf(&user, "- id=%s [%s] %s — %s\n", criterion.ID, kind, criterion.Name, criterion.Description)
+	}
+
+	user.WriteString("\nCurrent context notes:\n")
+	if strings.TrimSpace(contextText) == "" {
+		user.WriteString("(none)\n")
+	} else {
+		user.WriteString(contextText)
+		user.WriteString("\n")
+	}
+
+	return callWithRetries(ctx, c, rejectionAnalysisSystem, user.String(), func(raw string) (RejectionAnalysisResult, error) {
+		return parseRejectionAnalysis(raw, criterionIDSet(criteria))
+	})
+}
+
+// criterionIDSet builds the lookup parseRejectionAnalysis uses to validate
+// an "edit" proposal's criterion_id references a real Criterion.
+func criterionIDSet(criteria []domain.Criterion) map[string]bool {
+	ids := make(map[string]bool, len(criteria))
+	for _, criterion := range criteria {
+		ids[criterion.ID.String()] = true
+	}
+	return ids
+}
+
+// parseRejectionAnalysis validates the model's proposals eagerly — an
+// invalid action/scope/operation, or an "edit" referencing an unknown
+// criterion id, is an ErrParse so the corrective retry fires, same as
+// parseGrades/parseRanking's shape checks.
+func parseRejectionAnalysis(raw string, criterionIDs map[string]bool) (RejectionAnalysisResult, error) {
+	value, err := extractFirstJSON(raw)
+	if err != nil {
+		return RejectionAnalysisResult{}, err
+	}
+	var wire rawRejectionAnalysis
+	if err := json.Unmarshal([]byte(value), &wire); err != nil {
+		return RejectionAnalysisResult{}, fmt.Errorf("unmarshal rejection analysis: %w", ErrParse)
+	}
+
+	result := RejectionAnalysisResult{
+		CriteriaProposals: make([]CriteriaProposal, 0, len(wire.CriteriaProposals)),
+		ContextProposals:  make([]ContextProposal, 0, len(wire.ContextProposals)),
+	}
+	for _, proposal := range wire.CriteriaProposals {
+		if proposal.Action != "add" && proposal.Action != "edit" {
+			return RejectionAnalysisResult{}, fmt.Errorf("invalid criteria_proposals action %q: %w", proposal.Action, ErrParse)
+		}
+		if strings.TrimSpace(proposal.Name) == "" {
+			return RejectionAnalysisResult{}, fmt.Errorf("empty criteria_proposals name: %w", ErrParse)
+		}
+		var criterionID *string
+		if proposal.Action == "edit" {
+			if !criterionIDs[proposal.CriterionID] {
+				return RejectionAnalysisResult{}, fmt.Errorf("edit proposal references unknown criterion_id %q: %w", proposal.CriterionID, ErrParse)
+			}
+			id := proposal.CriterionID
+			criterionID = &id
+		}
+		result.CriteriaProposals = append(result.CriteriaProposals, CriteriaProposal{
+			Action:       proposal.Action,
+			CriterionID:  criterionID,
+			Name:         strings.TrimSpace(proposal.Name),
+			Description:  strings.TrimSpace(proposal.Description),
+			IsSubjective: proposal.IsSubjective,
+			Weight:       proposal.Weight,
+		})
+	}
+	for _, proposal := range wire.ContextProposals {
+		if proposal.Scope != "global" && proposal.Scope != "profile" {
+			return RejectionAnalysisResult{}, fmt.Errorf("invalid context_proposals scope %q: %w", proposal.Scope, ErrParse)
+		}
+		if proposal.Operation != "append" {
+			return RejectionAnalysisResult{}, fmt.Errorf("invalid context_proposals operation %q: %w", proposal.Operation, ErrParse)
+		}
+		if strings.TrimSpace(proposal.Content) == "" {
+			return RejectionAnalysisResult{}, fmt.Errorf("empty context_proposals content: %w", ErrParse)
+		}
+		result.ContextProposals = append(result.ContextProposals, ContextProposal{
+			Scope:     proposal.Scope,
+			Operation: proposal.Operation,
+			Content:   strings.TrimSpace(proposal.Content),
+		})
+	}
+	return result, nil
+}
+
 // renderListing serializes the evaluation-relevant listing fields as
 // compact labeled lines, omitting empty optional fields.
 func renderListing(listing domain.Listing) string {

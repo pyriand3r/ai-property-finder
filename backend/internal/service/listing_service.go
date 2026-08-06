@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"propertyfinder/internal/db"
@@ -79,15 +80,18 @@ type ListingPatch struct {
 
 // ListingService orchestrates Listing CRUD (spec 01-07 Layer 2.1).
 type ListingService struct {
-	pool    *pgxpool.Pool
-	dataDir string
+	pool              *pgxpool.Pool
+	dataDir           string
+	rejectionAnalysis *RejectionAnalysisService
 }
 
 // NewListingService constructs a ListingService wired to pool. dataDir is
 // the root of the image storage volume (ADR 0012), used to remove a
-// listing's image directory on delete.
-func NewListingService(pool *pgxpool.Pool, dataDir string) *ListingService {
-	return &ListingService{pool: pool, dataDir: dataDir}
+// listing's image directory on delete. rejectionAnalysis is fired
+// fire-and-forget (Layer 8.1) whenever Update transitions a listing's
+// status to rejected with a comment attached.
+func NewListingService(pool *pgxpool.Pool, dataDir string, rejectionAnalysis *RejectionAnalysisService) *ListingService {
+	return &ListingService{pool: pool, dataDir: dataDir, rejectionAnalysis: rejectionAnalysis}
 }
 
 // List returns a profile's listings, most recently created first,
@@ -180,6 +184,7 @@ func (service *ListingService) Update(ctx context.Context, id uuid.UUID, patch L
 	if err != nil {
 		return nil, err
 	}
+	wasRejected := listing.Status == domain.ListingStatusRejected
 
 	if patch.TitleImageID != nil {
 		image, imageError := repository.NewImageRepo(service.pool).GetByID(ctx, *patch.TitleImageID)
@@ -211,6 +216,25 @@ func (service *ListingService) Update(ctx context.Context, id uuid.UUID, patch L
 	if patch.TitleImageID != nil {
 		listing.TitleImageID = patch.TitleImageID
 	}
+
+	// Fire Layer 8.1's rejection analysis on the transition INTO rejected
+	// only — not on every subsequent save of an already-rejected listing
+	// (e.g. editing the seller phone afterward shouldn't re-fire it).
+	nowRejected := listing.Status == domain.ListingStatusRejected
+	if !wasRejected && nowRejected && listing.RejectionComment != nil && strings.TrimSpace(*listing.RejectionComment) != "" {
+		listingID := listing.ID
+		// Detached from the request context on purpose (ADR 0008
+		// fire-and-forget shape): the goroutine must keep running after
+		// this PATCH response is sent, not get canceled when the request
+		// ends — same reasoning as EvaluationService.ReevaluateAll.
+		//nolint:gosec,contextcheck // G118/non-inherited context: intentional (ADR 0008), not an oversight — see comment above.
+		go func() {
+			if analyzeError := service.rejectionAnalysis.AnalyzeRejection(context.Background(), listingID); analyzeError != nil {
+				slog.Error("rejection analysis failed", "listing_id", listingID, "error", analyzeError)
+			}
+		}()
+	}
+
 	return listing, nil
 }
 

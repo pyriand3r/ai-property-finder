@@ -8,6 +8,7 @@ import ChatView from '@/components/chat/ChatView.vue';
 import ProfileContextPanel from '@/components/context/ProfileContextPanel.vue';
 import CriteriaEditor from '@/components/criteria/CriteriaEditor.vue';
 import ListingsPanel from '@/components/listings/ListingsPanel.vue';
+import { useRejectionAnalysisToast } from '@/composables/useRejectionAnalysisToast';
 
 // OpenLayers is a heavy dependency (~300kB) only the Karte tab needs — load
 // it lazily so every other tab (Chat, Kriterien, Inserate) doesn't pay for
@@ -24,6 +25,8 @@ const props = defineProps<{
 
 const router = useRouter();
 const profile = shallowRef<Profile | null>(null);
+
+useRejectionAnalysisToast(props.profileId);
 
 onMounted(async () => {
   profile.value = await getProfile(props.profileId);

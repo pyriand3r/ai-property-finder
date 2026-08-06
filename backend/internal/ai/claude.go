@@ -91,3 +91,7 @@ func (p *claudeProvider) EvaluateListing(ctx context.Context, listing domain.Lis
 func (p *claudeProvider) GenerateRanking(ctx context.Context, listings []domain.Listing) (RankingResult, error) {
 	return runGenerateRanking(ctx, p, listings)
 }
+
+func (p *claudeProvider) AnalyzeRejection(ctx context.Context, listing domain.Listing, rejectionComment string, criteria []domain.Criterion, contextText string) (RejectionAnalysisResult, error) {
+	return runAnalyzeRejection(ctx, p, listing, rejectionComment, criteria, contextText)
+}

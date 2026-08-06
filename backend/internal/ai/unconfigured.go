@@ -18,3 +18,7 @@ func (unconfiguredProvider) EvaluateListing(context.Context, domain.Listing, []d
 func (unconfiguredProvider) GenerateRanking(context.Context, []domain.Listing) (RankingResult, error) {
 	return RankingResult{}, ErrNotConfigured
 }
+
+func (unconfiguredProvider) AnalyzeRejection(context.Context, domain.Listing, string, []domain.Criterion, string) (RejectionAnalysisResult, error) {
+	return RejectionAnalysisResult{}, ErrNotConfigured
+}

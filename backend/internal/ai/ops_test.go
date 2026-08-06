@@ -132,6 +132,72 @@ func TestParseRanking_MalformedJSON(t *testing.T) {
 	}
 }
 
+func TestParseRejectionAnalysis_WellFormed(t *testing.T) {
+	criteria := testCriteria(1)
+	raw := `{"criteria_proposals":[{"action":"edit","criterion_id":"` + criteria[0].ID.String() + `","name":"Preis-Leistung","description":"neue Beschreibung","is_subjective":false,"weight":3}],"context_proposals":[{"scope":"profile","operation":"append","content":"Makler X antwortet nie, meiden."}]}`
+
+	result, err := parseRejectionAnalysis(raw, criterionIDSet(criteria))
+	if err != nil {
+		t.Fatalf("parseRejectionAnalysis failed: %v", err)
+	}
+	if len(result.CriteriaProposals) != 1 || len(result.ContextProposals) != 1 {
+		t.Fatalf("result = %+v, want exactly one of each proposal type", result)
+	}
+	proposal := result.CriteriaProposals[0]
+	if proposal.Action != "edit" || proposal.CriterionID == nil || *proposal.CriterionID != criteria[0].ID.String() {
+		t.Errorf("criteria proposal = %+v, want edit referencing %v", proposal, criteria[0].ID)
+	}
+	if result.ContextProposals[0].Scope != "profile" || result.ContextProposals[0].Content == "" {
+		t.Errorf("context proposal = %+v, unexpected content", result.ContextProposals[0])
+	}
+}
+
+func TestParseRejectionAnalysis_EmptyProposalsAreValid(t *testing.T) {
+	raw := `{"criteria_proposals":[],"context_proposals":[]}`
+
+	result, err := parseRejectionAnalysis(raw, map[string]bool{})
+	if err != nil {
+		t.Fatalf("parseRejectionAnalysis failed on empty proposals: %v", err)
+	}
+	if len(result.CriteriaProposals) != 0 || len(result.ContextProposals) != 0 {
+		t.Errorf("result = %+v, want both empty", result)
+	}
+}
+
+func TestParseRejectionAnalysis_EditWithUnknownCriterionID(t *testing.T) {
+	raw := `{"criteria_proposals":[{"action":"edit","criterion_id":"` + uuid.NewString() + `","name":"x","description":"y","is_subjective":false}],"context_proposals":[]}`
+
+	_, err := parseRejectionAnalysis(raw, map[string]bool{})
+	if !errors.Is(err, ErrParse) {
+		t.Errorf("expected ErrParse for edit referencing unknown criterion_id, got %v", err)
+	}
+}
+
+func TestParseRejectionAnalysis_InvalidAction(t *testing.T) {
+	raw := `{"criteria_proposals":[{"action":"delete","name":"x","description":"y","is_subjective":false}],"context_proposals":[]}`
+
+	_, err := parseRejectionAnalysis(raw, map[string]bool{})
+	if !errors.Is(err, ErrParse) {
+		t.Errorf("expected ErrParse for invalid action, got %v", err)
+	}
+}
+
+func TestParseRejectionAnalysis_InvalidContextScope(t *testing.T) {
+	raw := `{"criteria_proposals":[],"context_proposals":[{"scope":"listing","operation":"append","content":"x"}]}`
+
+	_, err := parseRejectionAnalysis(raw, map[string]bool{})
+	if !errors.Is(err, ErrParse) {
+		t.Errorf("expected ErrParse for invalid context scope, got %v", err)
+	}
+}
+
+func TestParseRejectionAnalysis_MalformedJSON(t *testing.T) {
+	_, err := parseRejectionAnalysis("not json at all", map[string]bool{})
+	if !errors.Is(err, ErrParse) {
+		t.Errorf("expected ErrParse for non-JSON input, got %v", err)
+	}
+}
+
 func TestRenderListing_OmitsEmptyFields(t *testing.T) {
 	listing := domain.Listing{Title: "Test House"}
 	rendered := renderListing(listing)

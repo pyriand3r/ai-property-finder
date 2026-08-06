@@ -25,6 +25,16 @@ type Provider interface {
 	// already be sorted by Score desc and pre-filtered to those with a
 	// Score (the caller's job, not the model's).
 	GenerateRanking(ctx context.Context, listings []domain.Listing) (RankingResult, error)
+
+	// AnalyzeRejection looks at why a Listing was rejected and decides
+	// whether the comment reveals a durable preference not yet captured —
+	// producing zero or more Criteria/Context proposals (spec 01-04
+	// "Rejection Feedback, Reimagined"). Single-shot, no tools — same
+	// shape as EvaluateListing/GenerateRanking. criteria lets the model
+	// reference an existing Criterion by ID for an "edit" proposal;
+	// contextText is the profile's current Context (spec 01-02), so the
+	// model doesn't propose something already covered.
+	AnalyzeRejection(ctx context.Context, listing domain.Listing, rejectionComment string, criteria []domain.Criterion, contextText string) (RejectionAnalysisResult, error)
 }
 
 // RankingResult is GenerateRanking's output. Kurzfazits has exactly
@@ -32,4 +42,31 @@ type Provider interface {
 type RankingResult struct {
 	Kurzfazits []string
 	Summary    string
+}
+
+// RejectionAnalysisResult is AnalyzeRejection's output — the raw shape of
+// zero or more propose_criteria / update_context proposals (agent/tools.go
+// InputSchema), before the caller turns them into agent.StoredToolCall rows
+// for a synthetic chat_message. Both slices are frequently empty — most
+// rejections reveal nothing new.
+type RejectionAnalysisResult struct {
+	CriteriaProposals []CriteriaProposal
+	ContextProposals  []ContextProposal
+}
+
+// CriteriaProposal mirrors propose_criteria's InputSchema.
+type CriteriaProposal struct {
+	Action       string // "add" | "edit"
+	CriterionID  *string
+	Name         string
+	Description  string
+	IsSubjective bool
+	Weight       *int
+}
+
+// ContextProposal mirrors update_context's InputSchema.
+type ContextProposal struct {
+	Scope     string // "global" | "profile"
+	Operation string // "append" — the only value the tool supports
+	Content   string
 }

@@ -48,12 +48,13 @@ type Server struct {
 // (Layer 6.3).
 func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provider ai.Provider, agentProvider agent.Provider, broker *events.Broker) *Server {
 	evaluationService := service.NewEvaluationService(pool, provider, broker)
+	rejectionAnalysisService := service.NewRejectionAnalysisService(pool, provider, broker)
 	return &Server{
 		config:     &ConfigHandler{llm: llmConfig},
 		profile:    &ProfileHandler{service: service.NewProfileService(pool)},
 		context:    &ContextHandler{service: service.NewContextService(pool)},
 		criterion:  &CriterionHandler{service: service.NewCriterionService(pool)},
-		listing:    &ListingHandler{service: service.NewListingService(pool, dataDir)},
+		listing:    &ListingHandler{service: service.NewListingService(pool, dataDir, rejectionAnalysisService)},
 		evaluation: &EvaluationHandler{service: evaluationService},
 		events:     &EventHandler{broker: broker},
 		image:      &ImageHandler{service: service.NewImageService(pool, dataDir)},
