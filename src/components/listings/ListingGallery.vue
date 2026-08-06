@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NSpin, NTag, useDialog } from 'naive-ui';
+import { NAlert, NButton, NEmpty, NImage, NImageGroup, NSpin, NTag, useDialog } from 'naive-ui';
 import { onMounted } from 'vue';
 
 import { useListingImages } from '@/composables/useListingImages';
@@ -58,33 +58,41 @@ function confirmDelete(image: ListingImage) {
 
     <NSpin :show="loading">
       <NEmpty v-if="images.length === 0" description="Noch keine Bilder vorhanden" />
-      <div v-else class="listing-gallery-grid">
-        <div v-for="image in images" :key="image.id" class="listing-gallery-item">
-          <img :src="`/media/${image.file_path}`" class="listing-gallery-thumb" alt="" />
-          <NTag v-if="image.category" size="small" class="listing-gallery-badge">
-            {{ categoryLabel[image.category] ?? image.category }}
-          </NTag>
-          <NButton
-            size="tiny"
-            circle
-            :type="image.id === titleImageId ? 'warning' : 'default'"
-            class="listing-gallery-star"
-            :title="image.id === titleImageId ? 'Titelbild' : 'Als Titelbild festlegen'"
-            @click="handleSetTitleImage(image)"
-          >
-            {{ image.id === titleImageId ? '★' : '☆' }}
-          </NButton>
-          <NButton
-            size="tiny"
-            circle
-            class="listing-gallery-delete"
-            title="Löschen"
-            @click="confirmDelete(image)"
-          >
-            🗑
-          </NButton>
+      <NImageGroup v-else>
+        <div class="listing-gallery-grid">
+          <div v-for="image in images" :key="image.id" class="listing-gallery-item">
+            <NImage
+              :src="`/media/${image.file_path}`"
+              width="140"
+              height="140"
+              object-fit="cover"
+              class="listing-gallery-thumb"
+            />
+            <NTag v-if="image.category" size="small" class="listing-gallery-badge">
+              {{ categoryLabel[image.category] ?? image.category }}
+            </NTag>
+            <NButton
+              size="tiny"
+              circle
+              :type="image.id === titleImageId ? 'warning' : 'default'"
+              class="listing-gallery-star"
+              :title="image.id === titleImageId ? 'Titelbild' : 'Als Titelbild festlegen'"
+              @click.stop="handleSetTitleImage(image)"
+            >
+              {{ image.id === titleImageId ? '★' : '☆' }}
+            </NButton>
+            <NButton
+              size="tiny"
+              circle
+              class="listing-gallery-delete"
+              title="Löschen"
+              @click.stop="confirmDelete(image)"
+            >
+              🗑
+            </NButton>
+          </div>
         </div>
-      </div>
+      </NImageGroup>
     </NSpin>
   </div>
 </template>
@@ -107,11 +115,13 @@ function confirmDelete(image: ListingImage) {
 }
 
 .listing-gallery-thumb {
-  width: 100%;
-  height: 100%;
-  border-radius: 0.5rem;
-  object-fit: cover;
   display: block;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.listing-gallery-thumb :deep(img) {
+  border-radius: 0.5rem;
 }
 
 .listing-gallery-badge {

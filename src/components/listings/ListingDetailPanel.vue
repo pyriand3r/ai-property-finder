@@ -103,16 +103,16 @@ function saveStatus() {
         </section>
 
         <section class="listing-detail-section">
-          <ListingForm :listing="listing" @save="handleSave" />
-        </section>
-
-        <section class="listing-detail-section">
           <h3>Bilder</h3>
           <ListingGallery
             :listing-id="listing.id"
             :title-image-id="listing.title_image_id"
             @changed="fetchAll"
           />
+        </section>
+
+        <section class="listing-detail-section">
+          <ListingForm :listing="listing" @save="handleSave" />
         </section>
 
         <section class="listing-detail-section">
