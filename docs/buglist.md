@@ -23,6 +23,20 @@ of deleting the history of what it took to find and fix it.
 
 ## Open
 
+### Quell-URL link color hard to read in dark mode
+
+- **Found**: 2026-08-06, reported by the user after the clickable source link shipped
+  ([[spec/01_mvp/01-10-listing-views-overhaul]] § Detail View: Clickable Source Link).
+- **Symptom**: the `<a>` tag rendering `listing.source_url` in view mode
+  (`ListingForm.vue`) has no explicit color styling — it renders in the browser's default link
+  blue, which is a dark, low-contrast blue against this app's dark theme.
+- **Root cause**: `ListingForm.vue`'s Quell-URL `<a>` was added with `target="_blank" rel="noopener"`
+  only, no class/style — never themed. The app has an existing dark/light theme setup
+  (`usePreferredDark` composable, `NConfigProvider :theme`) that other components style against
+  (e.g. `var(--n-color-target, ...)` fallbacks in `ListingListTable.vue`/`RankingView.vue`), this
+  link just never got the same treatment.
+- **Status**: open, unfixed.
+
 ### Criterion names show literal `&amp;` instead of `&`
 
 - **Found**: 2026-08-06, live-verifying the Detail View grade grid ([[spec/01_mvp/01-10-listing-views-overhaul]])
