@@ -48,6 +48,41 @@ let vectorSource: VectorSource | null = null;
 let vectorLayer: VectorLayer | null = null;
 let currentSelectedId: string | null = null;
 
+// Popup opens on hover after a short delay (not immediately on hover, and
+// not on click at all — click only selects the Listing for the right
+// pane). The hide delay lets the pointer travel from the marker onto the
+// popup itself without it flickering shut in between.
+const HOVER_OPEN_DELAY_MS = 400;
+const HOVER_CLOSE_DELAY_MS = 150;
+let hoveredListingId: string | null = null;
+let hoverOpenTimer: ReturnType<typeof setTimeout> | null = null;
+let hoverCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let pointerOverPopup = false;
+
+function clearHoverTimers() {
+  if (hoverOpenTimer !== null) {
+    clearTimeout(hoverOpenTimer);
+    hoverOpenTimer = null;
+  }
+  if (hoverCloseTimer !== null) {
+    clearTimeout(hoverCloseTimer);
+    hoverCloseTimer = null;
+  }
+}
+
+function openPopup(listing: Listing, feature: Feature) {
+  popupListing.value = listing;
+  overlay!.setPosition((feature.getGeometry() as Point).getCoordinates());
+}
+
+function scheduleClosePopup() {
+  hoverCloseTimer = setTimeout(() => {
+    if (!pointerOverPopup) {
+      closePopup();
+    }
+  }, HOVER_CLOSE_DELAY_MS);
+}
+
 function markerStyle(feature: FeatureLike): Style {
   const listing = feature.get('listing') as Listing;
   const isSelected = listing.id === currentSelectedId;
@@ -113,18 +148,42 @@ onMounted(() => {
   map.on('click', (event) => {
     const feature = map!.forEachFeatureAtPixel(event.pixel, (found) => found);
     if (feature) {
-      const listing = feature.get('listing') as Listing;
-      popupListing.value = listing;
-      overlay!.setPosition((feature.getGeometry() as Point).getCoordinates());
-      emit('select', listing.id);
-    } else {
-      popupListing.value = null;
-      overlay!.setPosition(undefined);
+      emit('select', (feature.get('listing') as Listing).id);
     }
+  });
+
+  map.on('pointermove', (event) => {
+    const feature = map!.forEachFeatureAtPixel(event.pixel, (found) => found) as
+      | Feature
+      | undefined;
+    const listing = feature?.get('listing') as Listing | undefined;
+    map!.getTargetElement().style.cursor = listing ? 'pointer' : '';
+
+    if (listing?.id === hoveredListingId) {
+      return;
+    }
+    hoveredListingId = listing?.id ?? null;
+    clearHoverTimers();
+
+    if (listing && feature) {
+      hoverOpenTimer = setTimeout(() => openPopup(listing, feature), HOVER_OPEN_DELAY_MS);
+    } else {
+      scheduleClosePopup();
+    }
+  });
+
+  popupContainer.value.addEventListener('mouseenter', () => {
+    pointerOverPopup = true;
+    clearHoverTimers();
+  });
+  popupContainer.value.addEventListener('mouseleave', () => {
+    pointerOverPopup = false;
+    scheduleClosePopup();
   });
 });
 
 onBeforeUnmount(() => {
+  clearHoverTimers();
   map?.setTarget(undefined);
   map = null;
 });
@@ -145,7 +204,13 @@ watch(
 
 function closePopup() {
   popupListing.value = null;
+  hoveredListingId = null;
   overlay?.setPosition(undefined);
+}
+
+function handleCloseClick() {
+  clearHoverTimers();
+  closePopup();
 }
 </script>
 
@@ -154,7 +219,9 @@ function closePopup() {
     <div ref="mapContainer" class="listing-map-canvas"></div>
     <div ref="popupContainer" class="listing-map-popup" :class="{ 'is-visible': popupListing }">
       <template v-if="popupListing">
-        <button type="button" class="listing-map-popup-close" @click="closePopup">&times;</button>
+        <button type="button" class="listing-map-popup-close" @click="handleCloseClick">
+          &times;
+        </button>
         <img
           v-if="thumbnails.get(popupListing.id)"
           :src="thumbnails.get(popupListing.id) ?? ''"
