@@ -37,6 +37,29 @@ of deleting the history of what it took to find and fix it.
   escaped string was persisted as-is, rather than escaping only ever happening at render time.
 - **Status**: open, unfixed.
 
+### Stale "Bewertungstabelle" placeholder at the bottom of the Listing Document
+
+- **Found**: 2026-08-06, reported by the user while reviewing the Detail View after
+  [[spec/01_mvp/01-10-listing-views-overhaul]] shipped.
+- **Symptom**: the Detail View still shows a "Bewertungstabelle" heading with the placeholder text
+  "(wird nach Kriterien-Bewertung durch evaluate_listing ergänzt)" at the very bottom, inside the
+  rendered `document_md` (`ListingDocument.vue`) — even though the real, structured grade grid
+  (`ListingGradeGrid.vue`) now renders at the *top* of the panel per 01-10's "Grade Table First"
+  change.
+- **Root cause (likely)**: `document_md` is Agent-generated prose that itself embeds a
+  "## Bewertungstabelle" section by design — see the system prompt instructions in
+  `backend/internal/agent/context_builder.go` (lines ~35, ~70) and the seeded global context
+  default in `backend/internal/db/migrations/000002_seed_global_context_defaults.up.sql` ("-
+  Bewertungstabelle pro Kriterium"). That embedded section was always meant to be *the* grade
+  display before 01-10 introduced the separate structured `ListingGradeGrid.vue` fed from
+  `listing_criterion_grade` rows. 01-10 moved the structured grid to the top but never updated the
+  Agent's document-generation instructions to drop (or stop populating) its own embedded copy —
+  now there are two Bewertungstabelle sections, one live or a stale placeholder, and one likely
+  redundant with the real grid once evaluated.
+- **Status**: open, unfixed. Needs a decision: either stop instructing the Agent to embed its own
+  Bewertungstabelle section in `document_md` (since `ListingGradeGrid.vue` is now the source of
+  truth), or keep it but make clear it's redundant/for-the-original-text-context only.
+
 ### Unicode escape sequences displayed literally in Confirm-Card
 
 - **Found**: reported during Layer 6 review; full write-up in
