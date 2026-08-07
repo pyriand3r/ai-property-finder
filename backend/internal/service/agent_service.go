@@ -13,6 +13,7 @@ import (
 	"propertyfinder/internal/fetch"
 	"propertyfinder/internal/geocode"
 	"propertyfinder/internal/pdf"
+	"slices"
 	"strings"
 	"time"
 
@@ -96,6 +97,17 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 		return
 	}
 
+	listingContextMD := ""
+	if listingID := currentListingID(history); listingID != nil {
+		if listing, listingErr := repository.NewListingRepo(service.pool).GetByID(ctx, *listingID); listingErr == nil {
+			listingContextMD = agent.BuildListingContextBlock(*listing)
+		}
+		// A lookup failure here (deleted listing, etc.) isn't fatal to the
+		// turn — the block is a proactive nicety, save_listing's own
+		// skip/force_overwrite logic (ADR 0016) still protects the fields
+		// even without it.
+	}
+
 	tools := agent.Tools()
 	registry := &agent.Registry{
 		ProfileID:  session.ProfileID,
@@ -114,7 +126,7 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 		Dispatch:            registry.Dispatch,
 	}
 	req := agent.TurnRequest{
-		System:   agent.BuildSystemPrompt(len(tools) > 0, agent.EffectiveMaxLLMRoundtrips(service.llm.MaxLLMRoundtrips), globalContext.ContentMD, profileContext.ContentMD),
+		System:   agent.BuildSystemPrompt(len(tools) > 0, agent.EffectiveMaxLLMRoundtrips(service.llm.MaxLLMRoundtrips), globalContext.ContentMD, profileContext.ContentMD, listingContextMD),
 		Messages: service.provider.FormatMessages(history),
 		Tools:    tools,
 	}
@@ -308,6 +320,24 @@ func humanizeToolResult(toolName, resultJSON string, isError bool) string {
 	default:
 		return toolName
 	}
+}
+
+// currentListingID returns the listing_id of the most recent message in
+// history that has one — the Agent's notion of "what Listing are we
+// currently discussing" (ADR 0016, Layer 8.2), used to inject that
+// Listing's confirmed-fields block. Unlike attachedPDFPath, this scans the
+// whole history backward rather than just the last row: a Listing's
+// listing_id is only ever set on an assistant message that touched it via
+// save_listing/download_image (agent.Registry.TouchedListingID), not on
+// the triggering user message itself. nil once the session has never
+// touched a Listing.
+func currentListingID(history []domain.ChatMessage) *uuid.UUID {
+	for _, message := range slices.Backward(history) {
+		if message.ListingID != nil {
+			return message.ListingID
+		}
+	}
+	return nil
 }
 
 // attachedPDFPath returns the triggering user message's attachment_path if

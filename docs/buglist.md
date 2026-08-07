@@ -23,6 +23,29 @@ of deleting the history of what it took to find and fix it.
 
 ## Open
 
+### A chat session's history can end up with a dangling `tool_use` again, breaking every future turn in it
+
+- **Found**: 2026-08-07, live-verifying Layer 8.2 (Listing-Context-Block) — sending a new message
+  in an existing active session ("Schweden" profile, session `e278bb0a-45f7-41e3-a748-76656f1cba0d`).
+- **Symptom**: the turn fails outright with a 400 from the Claude API:
+  `messages.10: tool_use ids were found without tool_result blocks immediately after`. Every
+  subsequent message sent to that same session fails the same way — the session is permanently
+  stuck until "Neue Session" is used, since the invalid history is replayed on every turn.
+- **Confirmed via `docker compose logs`**: `agent: turn failed for session ...: POST
+  "https://api.anthropic.com/v1/messages": 400 Bad Request ... tool_use ids were found without
+  tool_result blocks immediately after: 20af33ee-f72b-4ac8-95bc-50b8f763d401`.
+- **Root cause**: not yet investigated. This is the same *symptom* as the bug
+  [[spec/01_mvp/01-09-chat-reliability-fixes]] fixed (RF.1 — dangling `tool_use` blocks from the
+  budget-exhausted branch of `loop.go`), but that fix specifically targeted the
+  roundtrip-limit-hit path, and this session had already been through a lot of ad-hoc live-testing
+  turns (fetch_url 403s, geocode, download_image validation errors, etc.) — the dangling call could
+  be from a different, still-unfixed path where a tool_use gets persisted without ever being
+  dispatched or without its result being persisted (e.g. a turn that errored/was interrupted
+  mid-dispatch), or it could be stale data from before RF.1 shipped that's simply never been
+  replayed again until now. Needs a fresh repro to tell which.
+- **Status**: open, unfixed — worked around for the Layer 8.2 verification by starting a new
+  session instead of debugging the corrupted one in place.
+
 ### Split-pane detail scroll falls through to page scroll near the bottom
 
 - **Found**: 2026-08-06, reported by the user scrolling a long Listing in the master-detail split

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"propertyfinder/internal/domain"
 	"strings"
 )
 
@@ -91,11 +92,12 @@ ob du weitermachen sollst.`
 
 // BuildSystemPrompt assembles the system prompt in the fixed order from
 // spec 00-03 "Context Assembly Detail": preamble, Global Context, Profile
-// Context. hasTools gates the Tool-dependent preamble sections (see
-// systemPreambleTools); maxRoundtrips fills the "Grenzen" section so the
-// model knows its own budget for this turn. Empty Context Files are
-// omitted rather than sent as blank blocks.
-func BuildSystemPrompt(hasTools bool, maxRoundtrips int, globalContextMD, profileContextMD string) []ContentBlock {
+// Context, then — if listingContextMD is non-empty — the current Listing's
+// confirmed-fields block (ADR 0016, Layer 8.2). hasTools gates the Tool-
+// dependent preamble sections (see systemPreambleTools); maxRoundtrips
+// fills the "Grenzen" section so the model knows its own budget for this
+// turn. Empty blocks are omitted rather than sent blank.
+func BuildSystemPrompt(hasTools bool, maxRoundtrips int, globalContextMD, profileContextMD, listingContextMD string) []ContentBlock {
 	var preamble strings.Builder
 	preamble.WriteString(systemPreambleIntro)
 	if hasTools {
@@ -111,5 +113,108 @@ func BuildSystemPrompt(hasTools bool, maxRoundtrips int, globalContextMD, profil
 	if strings.TrimSpace(profileContextMD) != "" {
 		blocks = append(blocks, ContentBlock{Type: ContentBlockText, Text: profileContextMD})
 	}
+	if strings.TrimSpace(listingContextMD) != "" {
+		blocks = append(blocks, ContentBlock{Type: ContentBlockText, Text: listingContextMD})
+	}
 	return blocks
+}
+
+// confirmableListingFields is every field name save_listing's
+// force_overwrite skip logic protects (agent/tools.go applyListingFields)
+// — the same set BuildListingContextBlock renders, in the same order, so
+// the block the Agent reads and the fields save_listing actually protects
+// never drift apart.
+var confirmableListingFields = []string{
+	"title", "source_url", "price", "price_currency", "property_size_m2",
+	"plot_size_m2", "address", "region", "country", "latitude", "longitude",
+	"description", "seller_name", "seller_phone", "seller_email", "seller_notes",
+}
+
+// BuildListingContextBlock renders the "Aktuelles Inserat" block (ADR
+// 0016) — the current value of every manually confirmed field, so the
+// Agent knows upfront (before attempting save_listing) which fields are
+// locked and what they're currently set to, rather than only finding out
+// reactively from a skipped_fields tool result. Empty when
+// listing.UserConfirmedFields is empty — callers should skip appending it
+// in that case (BuildSystemPrompt already omits blank blocks either way).
+func BuildListingContextBlock(listing domain.Listing) string {
+	if len(listing.UserConfirmedFields) == 0 {
+		return ""
+	}
+	confirmed := make(map[string]bool, len(listing.UserConfirmedFields))
+	for _, field := range listing.UserConfirmedFields {
+		confirmed[field] = true
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "## Aktuelles Inserat (%s)\n", listing.Title)
+	b.WriteString("Manuell bestätigte Felder — nur nach expliziter Zustimmung überschreiben:\n")
+	for _, field := range confirmableListingFields {
+		if !confirmed[field] {
+			continue
+		}
+		if value := listingFieldValue(listing, field); value != "" {
+			fmt.Fprintf(&b, "- %s: %s\n", field, value)
+		}
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// listingFieldValue renders one confirmable field's current value in
+// plain text, "" if unset. Field names/set matches
+// confirmableListingFields exactly.
+func listingFieldValue(listing domain.Listing, field string) string {
+	switch field {
+	case "title":
+		return listing.Title
+	case "source_url":
+		return derefStr(listing.SourceURL)
+	case "price":
+		if listing.Price == nil {
+			return ""
+		}
+		return strings.TrimSpace(fmt.Sprintf("%.0f %s", *listing.Price, derefStr(listing.PriceCurrency)))
+	case "price_currency":
+		return derefStr(listing.PriceCurrency)
+	case "property_size_m2":
+		return derefFloat(listing.PropertySizeM2)
+	case "plot_size_m2":
+		return derefFloat(listing.PlotSizeM2)
+	case "address":
+		return derefStr(listing.Address)
+	case "region":
+		return derefStr(listing.Region)
+	case "country":
+		return derefStr(listing.Country)
+	case "latitude":
+		return derefFloat(listing.Latitude)
+	case "longitude":
+		return derefFloat(listing.Longitude)
+	case "description":
+		return derefStr(listing.Description)
+	case "seller_name":
+		return derefStr(listing.SellerName)
+	case "seller_phone":
+		return derefStr(listing.SellerPhone)
+	case "seller_email":
+		return derefStr(listing.SellerEmail)
+	case "seller_notes":
+		return derefStr(listing.SellerNotes)
+	default:
+		return ""
+	}
+}
+
+func derefStr(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func derefFloat(v *float64) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%.2f", *v)
 }

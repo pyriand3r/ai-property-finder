@@ -292,12 +292,13 @@ Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) 
   - Spec: [[../docs/spec/01_mvp/01-04-criteria-and-scoring#Rejection Feedback, Reimagined]]
   - **Test:** Listing per PATCH auf `rejected` mit Kommentar gesetzt (curl + UI) → `update_context`-Vorschlag korrekt erkannt (Makler-Meide-Regel) → Confirm-Card in Chat sichtbar (inkl. Listing-Card) → Übernehmen funktioniert unveraendert → Toast im Browser bestaetigt. golangci-lint/go test clean (inkl. neuer `parseRejectionAnalysis`-Tests).
 
-- [ ] **8.2 — user_confirmed_fields im Agent-Context**
-  - Listing-Context-Block vor jedem Turn
-  - `save_listing` skipped gesperrte Felder
-  - `force_overwrite` nach User-Bestaetigung
-  - **Model:** Claude 3.5 Sonnet · GPT-4o (Modell muss Kontext-Block mit gesperrten Feldern korrekt lesen und befolgen)
-  - **Test:** Preis manuell editieren (5.3, setzt Flag via 2.1) → Agent: "nicht ueberschrieben" → User: "ueberschreib" → Preis aktualisiert
+- [x] **8.2 — user_confirmed_fields im Agent-Context**
+  - Listing-Context-Block vor jedem Turn (`BuildListingContextBlock`, `context_builder.go`) — "aktuelles Inserat" ermittelt aus der juengsten `listing_id` in der Session-History (`currentListingID`, `agent_service.go`)
+  - `save_listing` skipped gesperrte Felder (bereits seit ADR 0016 vorhanden)
+  - `force_overwrite` nach User-Bestaetigung (bereits seit ADR 0016 vorhanden)
+  - **Model:** Claude (ADR 0006 — einziger MVP-Provider)
+  - Spec: [[../docs/adr/0016-user-confirmed-fields-agent-context]]
+  - **Test:** Live gegen echte Claude API (neue Chat-Session wegen kaputter alter Session, siehe Buglist): Preis manuell auf 315.000 SEK gesetzt → direkte Nachfrage "welche Felder gesperrt?" beantwortet der Agent ungefragt korrekt mit exaktem Wert (kein Tool-Call, Block kam nachweislich im System-Prompt an) → Region manuell gesperrt, vage Bitte um Änderung → Agent lehnt ab, fragt nach ("nicht überschrieben") → DB bestätigt unveraendert → "Ja, überschreib." → Agent aktualisiert per `force_overwrite`, Feld korrekt aus `user_confirmed_fields` entfernt, DB bestätigt Änderung. golangci-lint/go vet/go test clean (inkl. neuer `context_builder_test.go`).
 
 - [ ] **8.3 — "Neue Session" mit Warnung + Disable**
   - Button deaktiviert waehrend Turn laeuft
