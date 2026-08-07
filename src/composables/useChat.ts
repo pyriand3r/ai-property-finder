@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, readonly, shallowRef } from 'vue';
 
 import * as chatApi from '@/api/chat';
+import { hasPendingConfirmCard } from '@/utils/chat';
 
 import type { ChatMessage, ChatSession } from '@/types/chat';
 
@@ -59,6 +60,16 @@ function parseSSEPayload<T>(event: Event): T | null {
  * session accepts new messages — the backend enforces this (409), this
  * composable also exposes `canSend` so the UI can disable the input
  * instead of letting the user hit that error.
+ *
+ * `turnInProgress` (Layer 8.3) is true from the moment `send()`'s POST
+ * succeeds until `chat.message`/`chat.turn_error` arrives — wider than
+ * `sending` (which only covers the POST itself, near-instant per ADR
+ * 0008's fire-and-forget shape) and doesn't have `sending`'s gap before
+ * the first live SSE signal, unlike reconstructing it from
+ * streamingText/toolProgress would. Used to disable "Neue Session" while
+ * a turn is running. `hasPendingConfirmCards` is true when the current
+ * session has a Confirm-Card no one has acted on yet — used to adjust
+ * that same dialog's warning text (spec 01-01, ADR 0009).
  */
 export function useChat(profileId: string) {
   const sessions = shallowRef<ChatSession[]>([]);
@@ -69,6 +80,7 @@ export function useChat(profileId: string) {
   const error = shallowRef<string | null>(null);
   const streamingText = shallowRef('');
   const toolProgress = shallowRef<string | null>(null);
+  const turnInProgress = shallowRef(false);
 
   let eventSource: EventSource | null = null;
 
@@ -76,6 +88,7 @@ export function useChat(profileId: string) {
   const canSend = computed(
     () => currentSessionId.value !== null && currentSessionId.value === activeSession.value?.id,
   );
+  const hasPendingConfirmCards = computed(() => messages.value.some(hasPendingConfirmCard));
   const displayMessages = computed<ChatMessage[]>(() => {
     const liveContent = streamingText.value || toolProgress.value;
     if (!liveContent || !currentSessionId.value) {
@@ -120,9 +133,35 @@ export function useChat(profileId: string) {
     }
   }
 
+  /** Patches one tool_call's status in the local message cache in place
+   * (Layer 8.3) — ChatConfirmCard.vue only keeps its own local `status`
+   * ref for its own display, it has no way to update this composable's
+   * `messages` on its own. Without this, `hasPendingConfirmCards` would
+   * stay stale (still counting an already-resolved card as pending) until
+   * the next full fetchMessages() call, which could be an entire turn
+   * away or never if the session goes quiet. */
+  function markToolCallResolved(
+    messageId: string,
+    callIndex: number,
+    status: 'confirmed' | 'rejected',
+  ) {
+    messages.value = messages.value.map((message) => {
+      if (message.id !== messageId || !message.tool_calls) {
+        return message;
+      }
+      return {
+        ...message,
+        tool_calls: message.tool_calls.map((call, index) =>
+          index === callIndex ? { ...call, status } : call,
+        ),
+      };
+    });
+  }
+
   async function selectSession(sessionId: string) {
     streamingText.value = '';
     toolProgress.value = null;
+    turnInProgress.value = false;
     currentSessionId.value = sessionId;
     await fetchMessages();
   }
@@ -141,6 +180,7 @@ export function useChat(profileId: string) {
         attachmentPath,
       );
       messages.value = [...messages.value, message];
+      turnInProgress.value = true;
     } catch (sendError) {
       error.value = sendError instanceof Error ? sendError.message : String(sendError);
       throw sendError;
@@ -159,6 +199,7 @@ export function useChat(profileId: string) {
     messages.value = [];
     streamingText.value = '';
     toolProgress.value = null;
+    turnInProgress.value = false;
   }
 
   /** Refetches sessions only, to pick up token_count_estimate after a turn
@@ -194,6 +235,7 @@ export function useChat(profileId: string) {
       if (payload && payload.session_id === currentSessionId.value) {
         streamingText.value = '';
         toolProgress.value = null;
+        turnInProgress.value = false;
         void fetchMessages();
         void refreshTokenCount();
       }
@@ -203,6 +245,7 @@ export function useChat(profileId: string) {
       if (payload && payload.session_id === currentSessionId.value) {
         streamingText.value = '';
         toolProgress.value = null;
+        turnInProgress.value = false;
         error.value = payload.message;
       }
     });
@@ -216,13 +259,16 @@ export function useChat(profileId: string) {
     currentSessionId: readonly(currentSessionId),
     activeSession,
     canSend,
+    hasPendingConfirmCards,
     messages: displayMessages,
     loading: readonly(loading),
     sending: readonly(sending),
+    turnInProgress: readonly(turnInProgress),
     error: readonly(error),
     fetchSessions,
     selectSession,
     send,
     startNewSession,
+    markToolCallResolved,
   };
 }

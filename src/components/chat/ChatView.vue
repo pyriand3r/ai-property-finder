@@ -17,13 +17,16 @@ const {
   currentSessionId,
   activeSession,
   canSend,
+  hasPendingConfirmCards,
   messages,
   sending,
+  turnInProgress,
   error,
   fetchSessions,
   selectSession,
   send,
   startNewSession,
+  markToolCallResolved,
 } = useChat(props.profileId);
 
 onMounted(fetchSessions);
@@ -43,14 +46,29 @@ function handleSend(content: string, attachmentPath?: string) {
   void send(content, attachmentPath);
 }
 
+function handleCallResolved(
+  messageId: string,
+  callIndex: number,
+  status: 'confirmed' | 'rejected',
+) {
+  markToolCallResolved(messageId, callIndex, status);
+}
+
 function handleNewSession() {
-  // Layer 6.1: simple confirmation only — the "an open Confirm-Card would
-  // be lost" warning and in-flight-turn disable come with Layer 8.3, once
-  // Confirm-Cards and a real in-flight Agent turn exist to warn about.
+  // Layer 8.3: the button itself is disabled while turnInProgress, so this
+  // only ever fires between turns — no separate "a turn is running" guard
+  // needed here. The Confirm-Card warning is additive, not a replacement:
+  // an open proposal isn't lost (it's still reachable/actionable via the
+  // old session in the dropdown, ToolCallService doesn't gate on session
+  // active-ness), just easy to forget about once a new session starts.
+  const content = hasPendingConfirmCards.value
+    ? 'Es gibt noch unbeantwortete Vorschläge (Confirm-Cards) im aktuellen Verlauf. Sie bleiben ' +
+      'über die alte Session im Dropdown erreichbar, werden aber nicht automatisch in die neue ' +
+      'Session übernommen. Der bisherige Verlauf bleibt erhalten, die KI startet mit leerem Kontext.'
+    : 'Der bisherige Verlauf bleibt als Chat-Verlauf erhalten, aber die KI startet mit leerem Kontext.';
   dialog.warning({
     title: 'Neue Session starten?',
-    content:
-      'Der bisherige Verlauf bleibt als Chat-Verlauf erhalten, aber die KI startet mit leerem Kontext.',
+    content,
     positiveText: 'Neue Session starten',
     negativeText: 'Abbrechen',
     onPositiveClick: () => void startNewSession(),
@@ -68,12 +86,12 @@ function handleNewSession() {
         @update:value="selectSession"
       />
       <TokenDonut :token-count-estimate="activeSession?.token_count_estimate" />
-      <NButton @click="handleNewSession">Neue Session</NButton>
+      <NButton :disabled="turnInProgress" @click="handleNewSession">Neue Session</NButton>
     </div>
 
     <NAlert v-if="error" type="error" :title="error" class="chat-view-error" />
 
-    <ChatMessageList :messages="messages" />
+    <ChatMessageList :messages="messages" @call-resolved="handleCallResolved" />
 
     <ChatInput :disabled="!canSend" :sending="sending" @send="handleSend" />
   </div>

@@ -300,11 +300,12 @@ Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) 
   - Spec: [[../docs/adr/0016-user-confirmed-fields-agent-context]]
   - **Test:** Live gegen echte Claude API (neue Chat-Session wegen kaputter alter Session, siehe Buglist): Preis manuell auf 315.000 SEK gesetzt → direkte Nachfrage "welche Felder gesperrt?" beantwortet der Agent ungefragt korrekt mit exaktem Wert (kein Tool-Call, Block kam nachweislich im System-Prompt an) → Region manuell gesperrt, vage Bitte um Änderung → Agent lehnt ab, fragt nach ("nicht überschrieben") → DB bestätigt unveraendert → "Ja, überschreib." → Agent aktualisiert per `force_overwrite`, Feld korrekt aus `user_confirmed_fields` entfernt, DB bestätigt Änderung. golangci-lint/go vet/go test clean (inkl. neuer `context_builder_test.go`).
 
-- [ ] **8.3 — "Neue Session" mit Warnung + Disable**
-  - Button deaktiviert waehrend Turn laeuft
-  - Dialog warnt bei offenen Confirm-Cards
-  - Alte Sessions (read-only, `ended_at` gesetzt) als Dropdown einsehbar
-  - **Test:** Turn laeuft → Button grau → Confirm-Card offen → "Neue Session" klicken → Warnung erscheint
+- [x] **8.3 — "Neue Session" mit Warnung + Disable**
+  - Button deaktiviert waehrend Turn laeuft (`turnInProgress` in `useChat.ts`, gesetzt zwischen erfolgreichem POST und `chat.message`/`chat.turn_error`)
+  - Dialog warnt bei offenen Confirm-Cards (`hasPendingConfirmCards`, geteilte Helper in `src/utils/chat.ts`)
+  - Alte Sessions (read-only, `ended_at` gesetzt) als Dropdown einsehbar (bereits seit Layer 6.1 vorhanden)
+  - Bugfix waehrend Live-Verifikation gefunden: `ChatConfirmCard.vue`s `status` war rein lokaler State — Uebernehmen/Verwerfen aktualisierte nie `useChat.ts`s `messages`, wodurch `hasPendingConfirmCards` nach Aufloesung einer Card veraltet blieb. Fix: `ChatConfirmCard.vue` emitted `resolved`, `ChatMessageList.vue` reicht es mit Message-ID + Call-Index als `callResolved` weiter, `useChat.ts` bekommt `markToolCallResolved` zum In-Place-Patchen von `messages`.
+  - **Test:** `turnInProgress` per MutationObserver zeitstempelbelegt bestaetigt (disabled:true bei Turnstart, disabled:false 8.04s spaeter bei Turnende, immun gegen eigene Tool-Roundtrip-Latenz). Confirm-Card ("Testkriterium 8.3b") im Browser verworfen → sofort "Neue Session" geklickt → Dialog zeigt korrekt den einfachen Text ohne Pending-Warnung (vorher: Warnung blieb faelschlich stehen). oxlint/oxfmt/vue-tsc/`npm run build` clean, Docker-Rebuild.
 
 - [ ] **8.4 — Stop-Button + Fehlende-Antwort-Handling**
   - Stop setzt Cancel-Flag, laufender Tool-Call laeuft zu Ende

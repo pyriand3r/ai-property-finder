@@ -24,6 +24,16 @@ const props = defineProps<{
   status?: 'confirmed' | 'rejected';
 }>();
 
+const emit = defineEmits<{
+  /** Fires right after a successful confirm/reject — this component only
+   * keeps its own local `status` for its own display; without this event
+   * the parent's message list (useChat.ts) has no way to know the call is
+   * no longer pending, which matters for anything deriving state from it
+   * (Layer 8.3's "Neue Session" warning checks for pending Confirm-Cards
+   * across the whole session). */
+  resolved: [status: 'confirmed' | 'rejected'];
+}>();
+
 type Status = 'pending' | 'confirmed' | 'rejected';
 
 const status = shallowRef<Status>(props.status ?? 'pending');
@@ -52,6 +62,7 @@ async function confirm() {
   try {
     await confirmToolCall(props.messageId, props.callIndex);
     status.value = 'confirmed';
+    emit('resolved', 'confirmed');
   } catch (confirmError) {
     error.value = confirmError instanceof Error ? confirmError.message : String(confirmError);
   } finally {
@@ -65,6 +76,7 @@ async function reject() {
   try {
     await rejectToolCall(props.messageId, props.callIndex);
     status.value = 'rejected';
+    emit('resolved', 'rejected');
   } catch (rejectError) {
     error.value = rejectError instanceof Error ? rejectError.message : String(rejectError);
   } finally {

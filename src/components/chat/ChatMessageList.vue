@@ -4,11 +4,19 @@ import { computed, nextTick, useTemplateRef, watch } from 'vue';
 
 import ChatConfirmCard from '@/components/chat/ChatConfirmCard.vue';
 import ChatListingCard from '@/components/chat/ChatListingCard.vue';
+import { confirmableCalls } from '@/utils/chat';
 
-import type { ChatMessage, StoredToolCall } from '@/types/chat';
+import type { ChatMessage } from '@/types/chat';
 
 const props = defineProps<{
   messages: readonly ChatMessage[];
+}>();
+
+const emit = defineEmits<{
+  /** Bubbles ChatConfirmCard's resolved event up with enough identity
+   * (message id + tool_calls index) for the parent to patch its own
+   * message cache — see useChat.ts markToolCallResolved (Layer 8.3). */
+  callResolved: [messageId: string, callIndex: number, status: 'confirmed' | 'rejected'];
 }>();
 
 const listRef = useTemplateRef<HTMLDivElement>('list');
@@ -23,17 +31,6 @@ watch(
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-}
-
-const CONFIRMABLE_TOOLS = new Set(['propose_criteria', 'update_context']);
-
-/** Confirm-Card-worthy tool calls, paired with their index in tool_calls
- * — the confirm/reject endpoint addresses a call by that array index, so
- * it must survive filtering (spec 00-03/ADR 0009, Layer 6.5). */
-function confirmableCalls(message: ChatMessage): { call: StoredToolCall; index: number }[] {
-  return (message.tool_calls ?? [])
-    .map((call, index) => ({ call, index }))
-    .filter(({ call }) => CONFIRMABLE_TOOLS.has(call.name));
 }
 
 /** Every roundtrip's assistant message is persisted (Layer 6.5), not just
@@ -70,6 +67,7 @@ const visibleMessages = computed(() =>
           :tool-name="call.name as 'propose_criteria' | 'update_context'"
           :input="call.input"
           :status="call.status"
+          @resolved="(status) => emit('callResolved', message.id, index, status)"
         />
       </div>
     </div>
