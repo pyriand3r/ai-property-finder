@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NAlert, NButton, NSelect, useDialog } from 'naive-ui';
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, shallowRef } from 'vue';
 
 import ChatInput from '@/components/chat/ChatInput.vue';
 import ChatMessageList from '@/components/chat/ChatMessageList.vue';
@@ -18,6 +18,7 @@ const {
   activeSession,
   canSend,
   hasPendingConfirmCards,
+  missingReply,
   messages,
   sending,
   turnInProgress,
@@ -25,11 +26,28 @@ const {
   fetchSessions,
   selectSession,
   send,
+  stop,
+  retryLastMessage,
   startNewSession,
   markToolCallResolved,
 } = useChat(props.profileId);
 
 onMounted(fetchSessions);
+
+const stopping = shallowRef(false);
+
+async function handleStop() {
+  stopping.value = true;
+  try {
+    await stop();
+  } finally {
+    stopping.value = false;
+  }
+}
+
+function handleRetry() {
+  void retryLastMessage();
+}
 
 const sessionOptions = computed(() =>
   sessions.value.map((session) => ({
@@ -86,12 +104,20 @@ function handleNewSession() {
         @update:value="selectSession"
       />
       <TokenDonut :token-count-estimate="activeSession?.token_count_estimate" />
+      <NButton v-if="turnInProgress" :loading="stopping" :disabled="stopping" @click="handleStop">
+        Stop
+      </NButton>
       <NButton :disabled="turnInProgress" @click="handleNewSession">Neue Session</NButton>
     </div>
 
     <NAlert v-if="error" type="error" :title="error" class="chat-view-error" />
 
-    <ChatMessageList :messages="messages" @call-resolved="handleCallResolved" />
+    <ChatMessageList
+      :messages="messages"
+      :missing-reply="missingReply"
+      @call-resolved="handleCallResolved"
+      @retry="handleRetry"
+    />
 
     <ChatInput :disabled="!canSend" :sending="sending" @send="handleSend" />
   </div>

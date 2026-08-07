@@ -122,6 +122,16 @@ func (loop *Loop) Run(ctx context.Context, req TurnRequest, onEvent OnEvent, onR
 	toolCallsUsed := 0
 
 	for roundtrip := 1; roundtrip <= maxRoundtrips; roundtrip++ {
+		// Checked before every roundtrip, not just once: this is the only
+		// place a "stop" (spec 01-01) can take effect between roundtrips —
+		// e.g. right after a tool call finished dispatching (dispatchAll
+		// deliberately ignores ctx cancellation so an in-flight tool call
+		// always runs to completion, see below).
+		if ctx.Err() != nil {
+			//nolint:nilerr // ctx.Err() here means "stop requested" (spec 01-01), not a turn failure — stopped() intentionally reports nil error so the caller's chat.message path runs instead of chat.turn_error.
+			return loop.stopped(&text, usage, "", onRoundtrip), nil
+		}
+
 		events, err := loop.Provider.Chat(ctx, ChatRequest{
 			System:   req.System,
 			Messages: messages,
@@ -136,6 +146,19 @@ func (loop *Loop) Run(ctx context.Context, req TurnRequest, onEvent OnEvent, onR
 		usage.InputTokens += roundtripUsage.InputTokens
 		usage.OutputTokens += roundtripUsage.OutputTokens
 		if streamErr != nil {
+			if errors.Is(streamErr, context.Canceled) {
+				// The model was still streaming its reply (no tool_use
+				// blocks committed to messages yet) when "stop" fired —
+				// treat like any other mid-turn stop: persist what arrived
+				// as a normal roundtrip, not a turn_error. Any tool_use
+				// blocks drainChat did parse before the cancellation are
+				// intentionally dropped by not passing toolCalls through —
+				// they were never dispatched, so including them would leave
+				// a dangling tool_use a later turn's history replay can't
+				// satisfy (same reasoning as the budget-exhausted branch
+				// below).
+				return loop.stopped(&text, usage, roundtripText, onRoundtrip), nil
+			}
 			text.WriteString(roundtripText)
 			return TurnResult{Text: text.String(), Usage: usage}, streamErr
 		}
@@ -228,10 +251,18 @@ func assistantResponseBlocks(text string, toolCalls []ToolCall) []ContentBlock {
 // content blocks for the next roundtrip's user turn and the raw outcomes
 // for the caller to persist.
 func (loop *Loop) dispatchAll(ctx context.Context, calls []ToolCall) ([]ContentBlock, []ToolOutcome) {
+	// context.WithoutCancel: a "stop" click (spec 01-01) must let any tool
+	// call currently executing run to completion — Dispatch implementations
+	// use ctx for real I/O (fetch_url's HTTP GET, save_listing's DB write),
+	// so passing the cancellable ctx through here would abort a write
+	// mid-flight instead of just skipping the *next* one. Run's own
+	// cancellation check (top of the roundtrip loop) still stops further
+	// LLM requests once this whole batch finishes.
+	dispatchCtx := context.WithoutCancel(ctx)
 	blocks := make([]ContentBlock, 0, len(calls))
 	outcomes := make([]ToolOutcome, 0, len(calls))
 	for _, call := range calls {
-		resultText, isError := loop.dispatch(ctx, call)
+		resultText, isError := loop.dispatch(dispatchCtx, call)
 		blocks = append(blocks, ContentBlock{
 			Type:            ContentBlockToolResult,
 			ToolResultForID: call.ID,
@@ -252,4 +283,24 @@ func (loop *Loop) dispatch(ctx context.Context, call ToolCall) (string, bool) {
 
 func limitReachedNote(maxRoundtrips int) string {
 	return fmt.Sprintf("\n\n[Limit von %d LLM-Anfragen erreicht — fasse den Stand zusammen und frag, ob weitergemacht werden soll.]", maxRoundtrips)
+}
+
+// stopped finalizes a turn ended by the "stop" control (spec 01-01, ADR
+// 0008: cancellation flag, not a rollback): persists one last synthetic
+// roundtrip — pendingRoundtripText (whatever the current roundtrip had
+// streamed before it was cut off, empty if cancellation was noticed between
+// roundtrips) plus a short note, text only, never a tool_use block — and
+// returns a nil error so the caller treats this exactly like a normal
+// turn end (its own chat.message, not chat.turn_error): an intentional stop
+// is not a failure.
+func (loop *Loop) stopped(text *strings.Builder, usage Usage, pendingRoundtripText string, onRoundtrip OnRoundtrip) TurnResult {
+	messageText := pendingRoundtripText + stoppedNote()
+	text.WriteString(messageText)
+	assistant := Message{Role: "assistant", Content: assistantResponseBlocks(messageText, nil)}
+	onRoundtrip(RoundtripOutcome{Assistant: assistant})
+	return TurnResult{Text: text.String(), Usage: usage}
+}
+
+func stoppedNote() string {
+	return "\n\n[Abgebrochen durch Nutzer.]"
 }

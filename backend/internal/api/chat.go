@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"propertyfinder/internal/domain"
 	"propertyfinder/internal/service"
 )
 
@@ -94,4 +95,33 @@ func (handler *ChatHandler) SendMessage(writer http.ResponseWriter, request *htt
 		return
 	}
 	writeJSON(writer, http.StatusAccepted, message)
+}
+
+// StopTurn handles
+// POST /api/profiles/{profileId}/chat/sessions/{sessionId}/stop — spec
+// 01-01's "stop" control. Sets the in-flight turn's cancellation flag; any
+// tool call currently executing still runs to completion (ADR 0008,
+// AgentService.StopTurn). 404 if no turn is currently running for this
+// session — a harmless race with the turn finishing on its own, not an
+// error worth surfacing.
+func (handler *ChatHandler) StopTurn(writer http.ResponseWriter, request *http.Request) {
+	profileID, ok := parseUUID(writer, request, "profileId")
+	if !ok {
+		return
+	}
+	sessionID, ok := parseUUID(writer, request, "sessionId")
+	if !ok {
+		return
+	}
+
+	stopped, err := handler.agent.StopTurn(request.Context(), profileID, sessionID)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	if !stopped {
+		writeError(writer, &domain.NotFoundError{Entity: "chat_turn", ID: sessionID.String()})
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
 }

@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, readonly, shallowRef } from 'vue';
 
 import * as chatApi from '@/api/chat';
+import { ApiError } from '@/api/http';
 import { hasPendingConfirmCard } from '@/utils/chat';
 
 import type { ChatMessage, ChatSession } from '@/types/chat';
@@ -61,6 +62,14 @@ function parseSSEPayload<T>(event: Event): T | null {
  * composable also exposes `canSend` so the UI can disable the input
  * instead of letting the user hit that error.
  *
+ * `missingReply` (Layer 8.4, ADR 0008) is true when the session's last
+ * message is a user message with no follow-up at all — only reachable via
+ * a server restart mid-turn, since a "stop" click always leaves its own
+ * wrap-up assistant message (agent.Loop.stopped). Drives the "Antwort
+ * fehlt — erneut senden?" button; `retryLastMessage` re-sends that same
+ * user message's content as a new message rather than editing history
+ * (spec 01-01: editing/deleting past messages is out of scope).
+ *
  * `turnInProgress` (Layer 8.3) is true from the moment `send()`'s POST
  * succeeds until `chat.message`/`chat.turn_error` arrives — wider than
  * `sending` (which only covers the POST itself, near-instant per ADR
@@ -89,6 +98,10 @@ export function useChat(profileId: string) {
     () => currentSessionId.value !== null && currentSessionId.value === activeSession.value?.id,
   );
   const hasPendingConfirmCards = computed(() => messages.value.some(hasPendingConfirmCard));
+  const missingReply = computed(() => {
+    const last = messages.value[messages.value.length - 1];
+    return !turnInProgress.value && last?.role === 'user';
+  });
   const displayMessages = computed<ChatMessage[]>(() => {
     const liveContent = streamingText.value || toolProgress.value;
     if (!liveContent || !currentSessionId.value) {
@@ -189,6 +202,35 @@ export function useChat(profileId: string) {
     }
   }
 
+  /** Spec 01-01 "stop" control: sets the backend turn's cancellation flag.
+   * Doesn't clear turnInProgress itself — agent.Loop.stopped()'s wrap-up
+   * roundtrip still fires chat.message like any other turn end, so the SSE
+   * handler is the single place that flag ever clears, same as before. A
+   * 404 (StopTurn's harmless race with the turn ending on its own) is
+   * swallowed rather than surfaced as a user-facing error. */
+  async function stop() {
+    if (!currentSessionId.value) {
+      return;
+    }
+    try {
+      await chatApi.stopTurn(profileId, currentSessionId.value);
+    } catch (stopError) {
+      if (!(stopError instanceof ApiError) || stopError.status !== 404) {
+        error.value = stopError instanceof Error ? stopError.message : String(stopError);
+      }
+    }
+  }
+
+  /** Re-sends the last (reply-less) user message's content as a new
+   * message — the "Antwort fehlt — erneut senden?" button (missingReply). */
+  async function retryLastMessage() {
+    const last = messages.value[messages.value.length - 1];
+    if (!last || last.role !== 'user') {
+      return;
+    }
+    await send(last.content, last.attachment_path);
+  }
+
   async function startNewSession() {
     const session = await chatApi.startSession(profileId);
     sessions.value = [
@@ -260,6 +302,7 @@ export function useChat(profileId: string) {
     activeSession,
     canSend,
     hasPendingConfirmCards,
+    missingReply,
     messages: displayMessages,
     loading: readonly(loading),
     sending: readonly(sending),
@@ -268,6 +311,8 @@ export function useChat(profileId: string) {
     fetchSessions,
     selectSession,
     send,
+    stop,
+    retryLastMessage,
     startNewSession,
     markToolCallResolved,
   };

@@ -120,6 +120,7 @@ func (server *Server) Router() http.Handler {
 			r.Post("/chat/sessions", server.chat.StartSession)
 			r.Get("/chat/sessions/{sessionId}/messages", server.chat.ListMessages)
 			r.Post("/chat/sessions/{sessionId}/messages", server.chat.SendMessage)
+			r.Post("/chat/sessions/{sessionId}/stop", server.chat.StopTurn)
 		})
 	})
 

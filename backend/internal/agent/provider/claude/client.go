@@ -295,8 +295,16 @@ func translateStream(stream *ssestream.Stream[anthropic.MessageStreamEventUnion]
 }
 
 func classifyStreamError(err error) error {
-	if errors.Is(err, context.DeadlineExceeded) {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
 		return context.DeadlineExceeded
+	case errors.Is(err, context.Canceled):
+		// Normalized so Loop.Run can distinguish an intentional "stop"
+		// (spec 01-01) from a real Provider error with a plain
+		// errors.Is(err, context.Canceled) check, regardless of how deep
+		// net/http/ssestream wrapped the underlying cancellation.
+		return context.Canceled
+	default:
+		return err
 	}
-	return err
 }

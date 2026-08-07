@@ -15,6 +15,7 @@ import (
 	"propertyfinder/internal/pdf"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,6 +39,9 @@ type AgentService struct {
 	broker     *events.Broker
 	llm        config.LLM
 	dataDir    string
+
+	turnsMu sync.Mutex
+	turns   map[uuid.UUID]context.CancelFunc
 }
 
 // NewAgentService constructs an AgentService wired to pool, provider (the
@@ -50,7 +54,10 @@ type AgentService struct {
 // POST /api/listings/{id}/evaluate endpoint (Layer 2.2), not a second one,
 // so there's exactly one place that single-shot Grade logic lives.
 func NewAgentService(pool *pgxpool.Pool, provider agent.Provider, broker *events.Broker, llm config.LLM, dataDir string, evaluation *EvaluationService) *AgentService {
-	return &AgentService{pool: pool, chat: NewChatService(pool), evaluation: evaluation, provider: provider, broker: broker, llm: llm, dataDir: dataDir}
+	return &AgentService{
+		pool: pool, chat: NewChatService(pool), evaluation: evaluation, provider: provider, broker: broker, llm: llm, dataDir: dataDir,
+		turns: make(map[uuid.UUID]context.CancelFunc),
+	}
 }
 
 // SendMessage persists the user's message synchronously — so a message is
@@ -61,14 +68,69 @@ func NewAgentService(pool *pgxpool.Pool, provider agent.Provider, broker *events
 // caller (the HTTP handler) returns as soon as this call returns; the
 // reply streams over the SSE broker and lands as a chat_message once the
 // turn ends.
+//
+//nolint:contextcheck // non-inherited context (ADR 0008): the goroutine's turnCtx is deliberately derived from context.Background(), not ctx — see comment above.
 func (service *AgentService) SendMessage(ctx context.Context, profileID, sessionID uuid.UUID, content string, attachmentPath *string) (*domain.ChatMessage, error) {
 	message, err := service.chat.SendMessage(ctx, profileID, sessionID, content, attachmentPath)
 	if err != nil {
 		return nil, err
 	}
-	//nolint:gosec,contextcheck // G118/non-inherited context: intentional (ADR 0008), not an oversight — see comment above.
-	go service.runTurn(context.Background(), sessionID)
+	// turnCtx is cancelable (unlike the plain context.Background() the rest
+	// of ADR 0008 still applies) so StopTurn can implement spec 01-01's
+	// "stop" control without tearing down the fire-and-forget shape: a
+	// closed browser tab still doesn't cut the turn short, but an explicit
+	// Stop click does. Registered synchronously, before this method
+	// returns — a Stop click racing the HTTP response for this very
+	// SendMessage call must always find the turn already registered.
+	turnCtx, cancel := context.WithCancel(context.Background())
+	service.registerTurn(sessionID, cancel)
+	go func() {
+		defer service.unregisterTurn(sessionID)
+		defer cancel()
+		service.runTurn(turnCtx, sessionID)
+	}()
 	return message, nil
+}
+
+func (service *AgentService) registerTurn(sessionID uuid.UUID, cancel context.CancelFunc) {
+	service.turnsMu.Lock()
+	defer service.turnsMu.Unlock()
+	service.turns[sessionID] = cancel
+}
+
+func (service *AgentService) unregisterTurn(sessionID uuid.UUID) {
+	service.turnsMu.Lock()
+	defer service.turnsMu.Unlock()
+	delete(service.turns, sessionID)
+}
+
+// StopTurn cancels sessionID's in-flight Agent turn (spec 01-01 "stop"
+// control): Loop.Run notices ctx.Err() at the next roundtrip boundary and
+// wraps the turn up as a normal (not error) turn end — any tool call
+// currently executing still runs to completion (agent.Loop.dispatchAll
+// deliberately detaches from this cancellation). Validates sessionID
+// belongs to profileID first, same ownership check ChatService.SendMessage
+// applies, so one profile can't cancel another's turn by guessing a session
+// ID. Returns (false, nil) if no turn is currently running for sessionID —
+// expected and harmless if the turn finished naturally in the race with the
+// user's click; the handler reports that as 404 rather than an error.
+func (service *AgentService) StopTurn(ctx context.Context, profileID, sessionID uuid.UUID) (bool, error) {
+	session, err := repository.NewChatRepo(service.pool).GetSession(ctx, sessionID)
+	if err != nil {
+		return false, err
+	}
+	if session.ProfileID != profileID {
+		return false, &domain.NotFoundError{Entity: "chat_session", ID: sessionID.String()}
+	}
+
+	service.turnsMu.Lock()
+	cancel, ok := service.turns[sessionID]
+	service.turnsMu.Unlock()
+	if !ok {
+		return false, nil
+	}
+	cancel()
+	return true, nil
 }
 
 func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
@@ -161,8 +223,19 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 		}
 	}
 
+	// persistCtx is deliberately detached from ctx's cancellation (spec
+	// 01-01 "stop" control): onRoundtrip's DB write must still succeed for
+	// the roundtrip that observes the cancellation and wraps the turn up
+	// (agent.Loop.stopped) — using ctx itself there would hand pgx an
+	// already-canceled context and the INSERT would fail outright with
+	// "context canceled", silently losing the stop note and, worse, never
+	// firing chat.message, which would leave the frontend's turnInProgress
+	// flag stuck forever. ADR 0008 is explicit that already-produced
+	// results are kept, not rolled back, on a stop — that has to include
+	// the wrap-up message a stop itself produces.
+	persistCtx := context.WithoutCancel(ctx)
 	onRoundtrip := func(outcome agent.RoundtripOutcome) {
-		service.persistRoundtrip(ctx, chatRepo, sessionID, registry, outcome)
+		service.persistRoundtrip(persistCtx, chatRepo, sessionID, registry, outcome)
 	}
 
 	result, err := loop.Run(ctx, req, onEvent, onRoundtrip)
@@ -178,9 +251,18 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 		return
 	}
 
-	tokenCount := result.Usage.InputTokens + result.Usage.OutputTokens
-	if updateErr := chatRepo.UpdateTokenCount(ctx, sessionID, tokenCount); updateErr != nil {
-		log.Printf("agent: update token count for session %s: %v", sessionID, updateErr)
+	// tokenCount == 0 only happens when "stop" (spec 01-01) cut the turn
+	// off before any roundtrip's ChatEventDone ever reported real usage —
+	// UpdateTokenCount SETs (not adds) the session's estimate from the
+	// latest turn's own reported total (each turn resends the full
+	// history, so its input_tokens already reflects the whole
+	// conversation so far); writing 0 here would wipe out a real prior
+	// estimate for no reason other than this particular turn never got far
+	// enough to measure anything.
+	if tokenCount := result.Usage.InputTokens + result.Usage.OutputTokens; tokenCount > 0 {
+		if updateErr := chatRepo.UpdateTokenCount(persistCtx, sessionID, tokenCount); updateErr != nil {
+			log.Printf("agent: update token count for session %s: %v", sessionID, updateErr)
+		}
 	}
 }
 

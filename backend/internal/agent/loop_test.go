@@ -205,3 +205,100 @@ func TestLoop_Run_PropagatesProviderError(t *testing.T) {
 		t.Errorf("Run error = %v, want errBoom", err)
 	}
 }
+
+// TestLoop_Run_StopsBetweenRoundtripsOnCancel covers the "stop" control
+// (spec 01-01) taking effect right after a tool call finished dispatching:
+// Dispatch itself cancels ctx (standing in for a Stop click arriving while
+// the tool call was running) and also asserts the ctx it received is NOT
+// canceled — proving dispatchAll's context.WithoutCancel detached it, so
+// the in-flight call ran to completion rather than observing the
+// cancellation. Run must then notice ctx.Err() before starting a second
+// roundtrip and wrap up cleanly (nil error, not a turn_error).
+func TestLoop_Run_StopsBetweenRoundtripsOnCancel(t *testing.T) {
+	provider := &fakeProvider{
+		batches: [][]ChatEvent{
+			{
+				{Type: ChatEventToolCallRequest, ToolCall: &ToolCall{ID: "call_1", Name: "fetch_url", Arguments: json.RawMessage(`{}`)}},
+				{Type: ChatEventDone, Usage: &Usage{InputTokens: 1, OutputTokens: 1}},
+			},
+			// A second batch would prove the bug if Run ever consumed it —
+			// fakeProvider.Chat panics via index-out-of-range if called a
+			// third time, but two batches lets us assert calls == 1 below
+			// without a slice-bounds risk if the stop check fails to fire.
+			{{Type: ChatEventDone}},
+		},
+	}
+	var cancel context.CancelFunc
+	dispatchSawCanceledCtx := false
+	loop := &Loop{
+		Provider: provider,
+		Dispatch: func(ctx context.Context, _ ToolCall) (string, bool) {
+			cancel()
+			dispatchSawCanceledCtx = ctx.Err() != nil
+			return `{}`, false
+		},
+	}
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	cancel = cancelFunc
+	var roundtrips []RoundtripOutcome
+	result, err := loop.Run(ctx, TurnRequest{}, func(ChatEvent) {},
+		func(r RoundtripOutcome) { roundtrips = append(roundtrips, r) },
+	)
+	if err != nil {
+		t.Fatalf("Run returned error: %v, want nil (a stop is not a turn error)", err)
+	}
+	if dispatchSawCanceledCtx {
+		t.Error("Dispatch observed a canceled ctx — dispatchAll must detach via context.WithoutCancel so an in-flight tool call runs to completion")
+	}
+	if provider.calls != 1 {
+		t.Errorf("Provider.Chat called %d times, want 1 (no further roundtrip once ctx is canceled)", provider.calls)
+	}
+	if want := "[Abgebrochen durch Nutzer.]"; !strings.Contains(result.Text, want) {
+		t.Errorf("Text = %q, want it to contain %q", result.Text, want)
+	}
+	if len(roundtrips) != 2 {
+		t.Fatalf("onRoundtrip fired %d times, want 2 (the dispatched roundtrip + the stopped wrap-up)", len(roundtrips))
+	}
+	if len(roundtrips[0].Results) != 1 {
+		t.Errorf("first roundtrip has %d Results, want 1 (the tool call ran to completion)", len(roundtrips[0].Results))
+	}
+	for _, block := range roundtrips[1].Assistant.Content {
+		if block.Type == ContentBlockToolUse {
+			t.Errorf("stopped wrap-up roundtrip's Assistant.Content contains a tool_use block (%+v), want text only", block)
+		}
+	}
+}
+
+// TestLoop_Run_StopsMidStream covers "stop" firing while the model is still
+// streaming its reply (no tool_use blocks committed yet): the Provider's
+// event stream ends with a ChatEvent carrying context.Canceled, mirroring
+// what classifyStreamError normalizes a genuinely canceled HTTP request to.
+func TestLoop_Run_StopsMidStream(t *testing.T) {
+	provider := &fakeProvider{
+		batches: [][]ChatEvent{
+			{
+				{Type: ChatEventTextDelta, Text: "Teil"},
+				{Error: context.Canceled},
+			},
+		},
+	}
+	loop := &Loop{Provider: provider}
+
+	var roundtrips []RoundtripOutcome
+	result, err := loop.Run(context.Background(), TurnRequest{}, func(ChatEvent) {},
+		func(r RoundtripOutcome) { roundtrips = append(roundtrips, r) },
+	)
+	if err != nil {
+		t.Fatalf("Run returned error: %v, want nil (a stop is not a turn error)", err)
+	}
+	if want := "Teil\n\n[Abgebrochen durch Nutzer.]"; result.Text != want {
+		t.Errorf("Text = %q, want %q", result.Text, want)
+	}
+	if len(roundtrips) != 1 {
+		t.Fatalf("onRoundtrip fired %d times, want 1", len(roundtrips))
+	}
+	if len(roundtrips[0].Assistant.Content) != 1 || roundtrips[0].Assistant.Content[0].Type != ContentBlockText {
+		t.Errorf("Assistant.Content = %+v, want one text block only", roundtrips[0].Assistant.Content)
+	}
+}

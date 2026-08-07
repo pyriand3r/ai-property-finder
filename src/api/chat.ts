@@ -30,3 +30,10 @@ export function sendMessage(
     attachment_path: attachmentPath,
   });
 }
+
+/** Cancels the session's in-flight Agent turn (spec 01-01 "stop" control,
+ * Layer 8.4). 404 if no turn is currently running — a harmless race with
+ * the turn ending on its own that callers can ignore. */
+export function stopTurn(profileId: string, sessionId: string) {
+  return http.post<void>(`/api/profiles/${profileId}/chat/sessions/${sessionId}/stop`);
+}

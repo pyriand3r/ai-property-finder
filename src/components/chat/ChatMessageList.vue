@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NEmpty, NText } from 'naive-ui';
+import { NButton, NEmpty, NText } from 'naive-ui';
 import { computed, nextTick, useTemplateRef, watch } from 'vue';
 
 import ChatConfirmCard from '@/components/chat/ChatConfirmCard.vue';
@@ -10,6 +10,10 @@ import type { ChatMessage } from '@/types/chat';
 
 const props = defineProps<{
   messages: readonly ChatMessage[];
+  /** True when the last message is a user message with no follow-up at all
+   * (useChat.ts missingReply, Layer 8.4/ADR 0008) — renders the "Antwort
+   * fehlt — erneut senden?" button below it. */
+  missingReply?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -17,6 +21,9 @@ const emit = defineEmits<{
    * (message id + tool_calls index) for the parent to patch its own
    * message cache — see useChat.ts markToolCallResolved (Layer 8.3). */
   callResolved: [messageId: string, callIndex: number, status: 'confirmed' | 'rejected'];
+  /** "Antwort fehlt" button clicked — parent calls useChat.ts
+   * retryLastMessage (Layer 8.4). */
+  retry: [];
 }>();
 
 const listRef = useTemplateRef<HTMLDivElement>('list');
@@ -71,6 +78,9 @@ const visibleMessages = computed(() =>
         />
       </div>
     </div>
+    <div v-if="missingReply" class="chat-message-missing-reply">
+      <NButton size="small" @click="emit('retry')">Antwort fehlt — erneut senden?</NButton>
+    </div>
   </div>
 </template>
 
@@ -112,5 +122,11 @@ const visibleMessages = computed(() =>
 
 .chat-message-time {
   font-size: 0.7rem;
+}
+
+.chat-message-missing-reply {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0.5rem;
 }
 </style>
