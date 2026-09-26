@@ -54,6 +54,15 @@ export interface ListingImage {
   created_at: string;
 }
 
+/** Mirrors backend/internal/domain.ListingNote JSON. */
+export interface ListingNote {
+  id: string;
+  listing_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Mirrors backend/internal/domain.CriterionScore JSON (evaluate_listing response). */
 export interface CriterionGradeResult {
   criterion_id: string;

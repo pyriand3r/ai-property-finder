@@ -160,6 +160,18 @@ type ListingImage struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ListingNote is a freeform, timestamped note a user attaches to a Listing
+// (spec 01-11, RF.4) — the user's own running notes about the property
+// ("called the agent, viewing booked for Saturday"). Distinct from
+// Listing.SellerNotes, which is a single field about the seller/contact.
+type ListingNote struct {
+	ID        uuid.UUID `json:"id"`
+	ListingID uuid.UUID `json:"listing_id"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // TaskType enumerates the kinds of background tasks the app can run. Only
 // bulk re-evaluation exists so far (spec 01-04 Layer 2.3, ADR 0015); chat
 // turns are fire-and-forget instead (ADR 0008) and don't use this table.

@@ -22,6 +22,7 @@ const {
   messages,
   sending,
   turnInProgress,
+  awaitingSignal,
   error,
   fetchSessions,
   selectSession,
@@ -115,6 +116,7 @@ function handleNewSession() {
     <ChatMessageList
       :messages="messages"
       :missing-reply="missingReply"
+      :awaiting-signal="awaitingSignal"
       @call-resolved="handleCallResolved"
       @retry="handleRetry"
     />

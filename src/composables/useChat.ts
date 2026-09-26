@@ -79,7 +79,25 @@ function parseSSEPayload<T>(event: Event): T | null {
  * a turn is running. `hasPendingConfirmCards` is true when the current
  * session has a Confirm-Card no one has acted on yet — used to adjust
  * that same dialog's warning text (spec 01-01, ADR 0009).
+ *
+ * `awaitingSignal` (RF.5) drives the turn-in-progress placeholder in
+ * `ChatMessageList.vue` — true the instant `send()` succeeds, cleared the
+ * moment any live content shows (`chat.text_delta`/`chat.tool_progress`).
+ * A multi-roundtrip turn can also go silent again mid-turn (an
+ * intermediate tool call finishes and the next roundtrip's first SSE
+ * event hasn't fired yet — there is no backend event marking that
+ * boundary), so it isn't purely event-driven: each live-content event
+ * restarts a short timer that re-sets `awaitingSignal` if nothing new
+ * arrives before it fires. `toolProgress`'s own label already covers a
+ * tool call's own execution window, so `staleGapMs` is set well above
+ * normal delta/progress cadence — this is a fallback for the gap those
+ * labels don't cover, not a replacement for them.
  */
+/** How long a turn can go silent (no `chat.text_delta`/`chat.tool_progress`)
+ * before `awaitingSignal` reappears — comfortably above normal streaming
+ * cadence so a healthy, actively-streaming turn never flickers it on. */
+const STALE_GAP_MS = 1500;
+
 export function useChat(profileId: string) {
   const sessions = shallowRef<ChatSession[]>([]);
   const currentSessionId = shallowRef<string | null>(null);
@@ -90,8 +108,29 @@ export function useChat(profileId: string) {
   const streamingText = shallowRef('');
   const toolProgress = shallowRef<string | null>(null);
   const turnInProgress = shallowRef(false);
+  const awaitingSignal = shallowRef(false);
 
   let eventSource: EventSource | null = null;
+  let staleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearStaleTimer() {
+    if (staleTimer !== null) {
+      clearTimeout(staleTimer);
+      staleTimer = null;
+    }
+  }
+
+  /** Called on every live-content event — clears the placeholder and arms
+   * the fallback timer that brings it back if the turn goes quiet again. */
+  function markLiveSignal() {
+    awaitingSignal.value = false;
+    clearStaleTimer();
+    staleTimer = setTimeout(() => {
+      if (turnInProgress.value) {
+        awaitingSignal.value = true;
+      }
+    }, STALE_GAP_MS);
+  }
 
   const activeSession = computed(() => sessions.value.find((session) => !session.ended_at));
   const canSend = computed(
@@ -175,6 +214,8 @@ export function useChat(profileId: string) {
     streamingText.value = '';
     toolProgress.value = null;
     turnInProgress.value = false;
+    awaitingSignal.value = false;
+    clearStaleTimer();
     currentSessionId.value = sessionId;
     await fetchMessages();
   }
@@ -194,6 +235,7 @@ export function useChat(profileId: string) {
       );
       messages.value = [...messages.value, message];
       turnInProgress.value = true;
+      awaitingSignal.value = true;
     } catch (sendError) {
       error.value = sendError instanceof Error ? sendError.message : String(sendError);
       throw sendError;
@@ -242,6 +284,8 @@ export function useChat(profileId: string) {
     streamingText.value = '';
     toolProgress.value = null;
     turnInProgress.value = false;
+    awaitingSignal.value = false;
+    clearStaleTimer();
   }
 
   /** Refetches sessions only, to pick up token_count_estimate after a turn
@@ -264,12 +308,14 @@ export function useChat(profileId: string) {
       if (payload && payload.session_id === currentSessionId.value) {
         toolProgress.value = null;
         streamingText.value += payload.delta;
+        markLiveSignal();
       }
     });
     eventSource.addEventListener('chat.tool_progress', (event) => {
       const payload = parseSSEPayload<ChatToolProgressPayload>(event);
       if (payload && payload.session_id === currentSessionId.value) {
         toolProgress.value = toolProgressLabels[payload.tool] ?? payload.tool;
+        markLiveSignal();
       }
     });
     eventSource.addEventListener('chat.message', (event) => {
@@ -278,6 +324,8 @@ export function useChat(profileId: string) {
         streamingText.value = '';
         toolProgress.value = null;
         turnInProgress.value = false;
+        awaitingSignal.value = false;
+        clearStaleTimer();
         void fetchMessages();
         void refreshTokenCount();
       }
@@ -288,13 +336,18 @@ export function useChat(profileId: string) {
         streamingText.value = '';
         toolProgress.value = null;
         turnInProgress.value = false;
+        awaitingSignal.value = false;
+        clearStaleTimer();
         error.value = payload.message;
       }
     });
   }
 
   onMounted(connectStream);
-  onBeforeUnmount(() => eventSource?.close());
+  onBeforeUnmount(() => {
+    eventSource?.close();
+    clearStaleTimer();
+  });
 
   return {
     sessions: readonly(sessions),
@@ -307,6 +360,7 @@ export function useChat(profileId: string) {
     loading: readonly(loading),
     sending: readonly(sending),
     turnInProgress: readonly(turnInProgress),
+    awaitingSignal: readonly(awaitingSignal),
     error: readonly(error),
     fetchSessions,
     selectSession,

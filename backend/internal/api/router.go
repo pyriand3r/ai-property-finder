@@ -27,6 +27,7 @@ type Server struct {
 	evaluation *EvaluationHandler
 	events     *EventHandler
 	image      *ImageHandler
+	note       *NoteHandler
 	upload     *UploadHandler
 	geocode    *GeocodeHandler
 	chat       *ChatHandler
@@ -58,6 +59,7 @@ func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provide
 		evaluation: &EvaluationHandler{service: evaluationService},
 		events:     &EventHandler{broker: broker},
 		image:      &ImageHandler{service: service.NewImageService(pool, dataDir)},
+		note:       &NoteHandler{service: service.NewNoteService(pool)},
 		upload:     &UploadHandler{service: service.NewUploadService(dataDir)},
 		geocode:    &GeocodeHandler{},
 		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, agentProvider, broker, llmConfig, dataDir, evaluationService)},
@@ -144,6 +146,14 @@ func (server *Server) Router() http.Handler {
 		r.Get("/images", server.image.List)
 		r.Post("/images", server.image.Upload)
 		r.Delete("/images/{imageId}", server.image.Delete)
+
+		r.Get("/notes", server.note.List)
+		r.Post("/notes", server.note.Create)
+	})
+
+	timed.Route("/api/notes/{noteId}", func(r chi.Router) {
+		r.Patch("/", server.note.Update)
+		r.Delete("/", server.note.Delete)
 	})
 
 	// Catch-all: embedded Vue SPA. Must be last — every /api/* and /media/*

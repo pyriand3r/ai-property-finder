@@ -6,6 +6,7 @@ import ListingDocument from '@/components/listings/ListingDocument.vue';
 import ListingForm from '@/components/listings/ListingForm.vue';
 import ListingGallery from '@/components/listings/ListingGallery.vue';
 import ListingGradeGrid from '@/components/listings/ListingGradeGrid.vue';
+import ListingNotes from '@/components/listings/ListingNotes.vue';
 import { useListingDetail } from '@/composables/useListingDetail';
 import { useListingThumbnails } from '@/composables/useListingThumbnails';
 import { statusOptions } from '@/utils/listingStatus';
@@ -113,6 +114,10 @@ function saveStatus() {
 
         <section class="listing-detail-section">
           <ListingForm :listing="listing" @save="handleSave" />
+        </section>
+
+        <section class="listing-detail-section">
+          <ListingNotes :listing-id="listing.id" />
         </section>
 
         <section class="listing-detail-section">

@@ -14,6 +14,10 @@ const props = defineProps<{
    * (useChat.ts missingReply, Layer 8.4/ADR 0008) — renders the "Antwort
    * fehlt — erneut senden?" button below it. */
   missingReply?: boolean;
+  /** True while a turn is running but no live content has shown yet
+   * (useChat.ts awaitingSignal, RF.5) — renders a pulsing placeholder bubble
+   * in the position the next Agent message will appear. */
+  awaitingSignal?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -29,7 +33,7 @@ const emit = defineEmits<{
 const listRef = useTemplateRef<HTMLDivElement>('list');
 
 watch(
-  () => props.messages.length,
+  () => [props.messages.length, props.awaitingSignal],
   async () => {
     await nextTick();
     listRef.value?.scrollTo({ top: listRef.value.scrollHeight, behavior: 'smooth' });
@@ -76,6 +80,13 @@ const visibleMessages = computed(() =>
           :status="call.status"
           @resolved="(status) => emit('callResolved', message.id, index, status)"
         />
+      </div>
+    </div>
+    <div v-if="awaitingSignal" class="chat-message chat-message--assistant">
+      <div class="chat-message-bubble chat-message-bubble--awaiting">
+        <span class="chat-typing-dot" />
+        <span class="chat-typing-dot" />
+        <span class="chat-typing-dot" />
       </div>
     </div>
     <div v-if="missingReply" class="chat-message-missing-reply">
@@ -128,5 +139,41 @@ const visibleMessages = computed(() =>
   display: flex;
   justify-content: flex-end;
   padding: 0 0.5rem;
+}
+
+.chat-message-bubble--awaiting {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.chat-typing-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentcolor;
+  opacity: 0.4;
+  animation: chat-typing-pulse 1.2s ease-in-out infinite;
+}
+
+.chat-typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.chat-typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes chat-typing-pulse {
+  0%,
+  60%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
 }
 </style>
