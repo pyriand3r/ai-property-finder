@@ -193,7 +193,7 @@ func (service *ToolCallService) confirmUpdateContext(ctx context.Context, messag
 		if err != nil {
 			return nil, err
 		}
-		return service.context.UpdateGlobalFromAgent(ctx, appendContent(current.ContentMD, args.Content), message.ID)
+		return service.context.UpdateGlobalFromAgent(ctx, AppendContent(current.ContentMD, args.Content), message.ID)
 	case "profile":
 		session, err := repository.NewChatRepo(service.pool).GetSession(ctx, message.SessionID)
 		if err != nil {
@@ -203,13 +203,19 @@ func (service *ToolCallService) confirmUpdateContext(ctx context.Context, messag
 		if err != nil {
 			return nil, err
 		}
-		return service.context.UpdateProfileContextFromAgent(ctx, session.ProfileID, appendContent(current.ContentMD, args.Content), message.ID)
+		return service.context.UpdateProfileContextFromAgent(ctx, session.ProfileID, AppendContent(current.ContentMD, args.Content), message.ID)
 	default:
 		return nil, &domain.ValidationError{Field: "scope", Message: "unbekannter scope: " + args.Scope}
 	}
 }
 
-func appendContent(current, addition string) string {
+// AppendContent joins current and addition with a blank-line separator,
+// or returns addition alone if current is blank. Shared by
+// confirmUpdateContext's chat-confirm-card path above and
+// internal/mcpserver's update_context tool (docs/adr/0019), which must
+// produce byte-for-byte the same joined result a chat-confirmed
+// update_context proposal would.
+func AppendContent(current, addition string) string {
 	if strings.TrimSpace(current) == "" {
 		return addition
 	}

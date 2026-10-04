@@ -1,8 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router';
 
+import { useAuth } from '@/composables/useAuth';
+
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('@/views/LoginView.vue'),
+    },
     {
       path: '/',
       name: 'profile-list',
@@ -26,4 +33,18 @@ export const router = createRouter({
       component: () => import('@/views/GlobalContextView.vue'),
     },
   ],
+});
+
+router.beforeEach(async (to) => {
+  if (to.name === 'login') {
+    return true;
+  }
+  const { isAuthenticated, checkStatus } = useAuth();
+  if (isAuthenticated.value === null) {
+    await checkStatus();
+  }
+  if (!isAuthenticated.value) {
+    return { name: 'login', query: { redirect: to.fullPath } };
+  }
+  return true;
 });

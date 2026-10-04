@@ -26,6 +26,20 @@ type Env struct {
 	// SeedFromEnv). Empty is valid — the LLM subsystem stays unconfigured
 	// until a later layer wires an implementation to it.
 	ClaudeAPIKey string
+	// AppPassword gates Frontend + API access (see docs/adr/0018). Its
+	// SHA-256 digest doubles as the session JWT's HMAC signing key — no
+	// separate signing secret is configured.
+	AppPassword string
+	// CookieSecure controls the session cookie's Secure flag (docs/adr/0018).
+	// Defaults to true — the documented deployment (both the root
+	// docker-compose.yml used for local dev/testing and deploy/docker-
+	// compose.yml used in production) sits behind an external
+	// TLS-terminating reverse proxy; the container itself only ever
+	// speaks plain HTTP. Set COOKIE_SECURE=false for local development
+	// without a proxy in front (npm run dev's Vite proxy talks plain
+	// HTTP directly to the backend) — otherwise the browser discards the
+	// cookie and login loops back to /login.
+	CookieSecure bool
 	// DataDir is the root of the Docker volume holding uploaded/downloaded
 	// files (default "/data", matching docker-compose.yml's `./data:/data`
 	// mount and ADR 0012). Listing image cleanup on delete removes
@@ -60,8 +74,8 @@ type LLM struct {
 }
 
 // LoadEnv reads Env from environ, a slice of "KEY=VALUE" strings such as
-// os.Environ(). DATABASE_URL is required; HTTP_LISTEN_ADDR defaults to
-// ":8080" when absent or blank.
+// os.Environ(). DATABASE_URL and APP_PASSWORD are required; HTTP_LISTEN_ADDR
+// defaults to ":8080" when absent or blank; COOKIE_SECURE defaults to true.
 func LoadEnv(environ []string) (Env, error) {
 	values := parseEnviron(environ)
 
@@ -70,10 +84,18 @@ func LoadEnv(environ []string) (Env, error) {
 		return Env{}, fmt.Errorf("DATABASE_URL is required")
 	}
 
+	appPassword := strings.TrimSpace(values["APP_PASSWORD"])
+	if appPassword == "" {
+		return Env{}, fmt.Errorf("APP_PASSWORD is required")
+	}
+	cookieSecure := defaultBool(values["COOKIE_SECURE"], true)
+
 	return Env{
 		DatabaseURL:    databaseURL,
 		HTTPListenAddr: envOrDefault(values, "HTTP_LISTEN_ADDR", ":8080"),
 		ClaudeAPIKey:   strings.TrimSpace(values["CLAUDE_API_KEY"]),
+		AppPassword:    appPassword,
+		CookieSecure:   cookieSecure,
 		DataDir:        envOrDefault(values, "DATA_DIR", "/data"),
 	}, nil
 }
@@ -169,6 +191,20 @@ func defaultInt(raw string, fallback int) int {
 		return fallback
 	}
 	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
+// defaultBool parses raw with strconv.ParseBool, falling back to fallback
+// when raw is blank or unparseable — mirrors defaultInt's shape.
+func defaultBool(raw string, fallback bool) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.ParseBool(raw)
 	if err != nil {
 		return fallback
 	}

@@ -8,12 +8,14 @@ import (
 	"propertyfinder/internal/ai"
 	"propertyfinder/internal/config"
 	"propertyfinder/internal/events"
+	"propertyfinder/internal/mcpserver"
 	"propertyfinder/internal/service"
 	"propertyfinder/internal/web"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -33,28 +35,44 @@ type Server struct {
 	chat       *ChatHandler
 	ranking    *RankingHandler
 	toolCall   *ToolCallHandler
+	auth       *AuthHandler
+	mcp        http.Handler
 	dataDir    string
 }
 
 // NewServer constructs the API server, wiring handlers to services backed
 // by pool. dataDir is the image storage volume root (ADR 0012), used by the
 // listing service to clean up files on delete and served at /media/.
-// provider is the resolved single-shot LLM provider (internal/ai) used by
-// evaluate_listing (both directly, via EvaluationHandler, and through the
-// Agent's evaluate_listing Tool — the same *EvaluationService instance
-// backs both, Layer 6.5). agentProvider is the resolved multi-turn
-// Provider (ADR 0007) used by the Agent loop — an unconfigured stand-in
-// when llm.api_key is empty (agent.NewUnconfiguredProvider). broker fans
-// out SSE progress for bulk re-evaluation (Layer 2.3) and chat streaming
+// appPassword and cookieSecure configure Frontend + API login (docs/adr/
+// 0018): appPassword's SHA-256 digest signs session JWTs, cookieSecure
+// sets the session cookie's Secure flag. provider is the resolved
+// single-shot LLM provider (internal/ai) used by evaluate_listing (both
+// directly, via EvaluationHandler, and through the Agent's
+// evaluate_listing Tool — the same *EvaluationService instance backs
+// both, Layer 6.5). agentProvider is the resolved multi-turn Provider
+// (ADR 0007) used by the Agent loop — an unconfigured stand-in when
+// llm.api_key is empty (agent.NewUnconfiguredProvider). broker fans out
+// SSE progress for bulk re-evaluation (Layer 2.3) and chat streaming
 // (Layer 6.3).
-func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provider ai.Provider, agentProvider agent.Provider, broker *events.Broker) *Server {
+func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, appPassword string, cookieSecure bool, provider ai.Provider, agentProvider agent.Provider, broker *events.Broker) *Server {
 	evaluationService := service.NewEvaluationService(pool, provider, broker)
 	rejectionAnalysisService := service.NewRejectionAnalysisService(pool, provider, broker)
+	profileService := service.NewProfileService(pool)
+	criterionService := service.NewCriterionService(pool)
+	contextService := service.NewContextService(pool)
+	mcpHandler := mcpserver.NewHandler(mcpserver.Deps{
+		Profiles: profileService,
+		Criteria: criterionService,
+		Context:  contextService,
+		NewRegistry: func(profileID uuid.UUID) *agent.Registry {
+			return service.NewToolRegistry(pool, dataDir, evaluationService, profileID)
+		},
+	})
 	return &Server{
 		config:     &ConfigHandler{llm: llmConfig},
-		profile:    &ProfileHandler{service: service.NewProfileService(pool)},
-		context:    &ContextHandler{service: service.NewContextService(pool)},
-		criterion:  &CriterionHandler{service: service.NewCriterionService(pool)},
+		profile:    &ProfileHandler{service: profileService},
+		context:    &ContextHandler{service: contextService},
+		criterion:  &CriterionHandler{service: criterionService},
 		listing:    &ListingHandler{service: service.NewListingService(pool, dataDir, rejectionAnalysisService)},
 		evaluation: &EvaluationHandler{service: evaluationService},
 		events:     &EventHandler{broker: broker},
@@ -65,14 +83,20 @@ func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, provide
 		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, agentProvider, broker, llmConfig, dataDir, evaluationService)},
 		ranking:    &RankingHandler{service: service.NewRankingService(pool, provider)},
 		toolCall:   &ToolCallHandler{service: service.NewToolCallService(pool)},
+		auth:       NewAuthHandler(appPassword, cookieSecure),
+		mcp:        mcpHandler,
 		dataDir:    dataDir,
 	}
 }
 
-// Router builds the chi router. GET /api/events is mounted outside the
-// Timeout middleware group — it's long-lived SSE, and chi's Timeout
-// wrapper doesn't implement http.Flusher (would break streaming). /media/
-// is also outside it — file transfers shouldn't be cut off at 60s.
+// Router builds the chi router. GET /health, POST /api/auth/login, and the
+// embedded SPA catch-all stay public (docs/adr/0018); every other route is
+// nested inside a protected group gated by server.auth.RequireAuth. GET
+// /api/events and /media/* are mounted directly on protected, outside the
+// Timeout middleware group nested further inside it — it's long-lived SSE,
+// and chi's Timeout wrapper doesn't implement http.Flusher (would break
+// streaming); /media/ is also outside it — file transfers shouldn't be cut
+// off at 60s.
 func (server *Server) Router() http.Handler {
 	router := chi.NewRouter()
 	router.Use(chimw.RequestID)
@@ -80,10 +104,20 @@ func (server *Server) Router() http.Handler {
 	router.Use(chimw.Recoverer)
 
 	router.Get("/health", healthHandler)
-	router.Get("/api/events", server.events.Stream)
-	router.Handle("/media/*", http.StripPrefix("/media/", http.FileServer(http.Dir(server.dataDir))))
+	router.Post("/api/auth/login", server.auth.Login)
+	router.Handle("/mcp", server.auth.RequireBearer(server.mcp))
 
-	timed := router.Group(func(r chi.Router) {
+	// protected gates every route below behind RequireAuth (docs/adr/0018).
+	protected := router.Group(func(r chi.Router) {
+		r.Use(server.auth.RequireAuth)
+	})
+
+	protected.Get("/api/auth/status", server.auth.Status)
+	protected.Post("/api/auth/logout", server.auth.Logout)
+	protected.Get("/api/events", server.events.Stream)
+	protected.Handle("/media/*", http.StripPrefix("/media/", http.FileServer(http.Dir(server.dataDir))))
+
+	timed := protected.Group(func(r chi.Router) {
 		r.Use(chimw.Timeout(60 * time.Second))
 	})
 
@@ -156,7 +190,8 @@ func (server *Server) Router() http.Handler {
 		r.Delete("/", server.note.Delete)
 	})
 
-	// Catch-all: embedded Vue SPA. Must be last — every /api/* and /media/*
+	// Catch-all: embedded Vue SPA. Public — the login screen itself is
+	// part of this bundle. Must be last — every /api/* and /media/*
 	// route above takes precedence.
 	router.HandleFunc("/*", web.SPAHandler)
 

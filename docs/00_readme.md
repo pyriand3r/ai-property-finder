@@ -58,6 +58,7 @@ Spec ist vollständig genug, um Phase-1-Entwicklung (Chat-Interface + Kontext-Da
 - Testkatalog bewusst noch nicht angelegt — erst nach Validierung der Grundidee (siehe Nächste Schritte)
 - ADRs für Chat/Context/Agent-Architektur angelegt: [[docs/adr/README|docs/adr/]] (6 ADRs, eigene Nummerierung, ADR 0003/0004 lösen dev-property-finder ADR 0007/0008/0001 ab)
 - 2026-07-29: Wechsel des POC-Providers zu OpenCode wurde erwogen und verworfen — Machbarkeit (verlässlicher Multi-Turn-Tool-Use, natives PDF-Input) spricht für Claude; es bleibt bei [[docs/adr/0006-single-provider-for-agent-mvp|ADR 0006]]
+- Deployment auf einen entfernten Docker-Host (Image als Datei, ohne Registry): [[deployment]]
 
 ## Nächste Schritte
 

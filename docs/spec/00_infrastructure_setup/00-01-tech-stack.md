@@ -205,3 +205,5 @@ volumes:
 ```
 
 Frontend is embedded in the Go binary (served as static files). No nginx, no Chrome container, no separate frontend service.
+
+Remote-host deployment (prebuilt image copied as a file, `deploy/docker-compose.yml` with `image:` instead of `build:`, named volume for `/data`): [[../../deployment]].

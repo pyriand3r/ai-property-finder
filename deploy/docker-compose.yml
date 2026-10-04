@@ -1,0 +1,59 @@
+# Docker Compose for a remote Docker host — Property Finder OBS-Style.
+#
+# Uses the prebuilt image loaded from property-finder-image.tar.gz instead of
+# building from source. Full workflow: docs/deployment.md.
+#
+#   docker load -i property-finder-image.tar.gz
+#   cp .env.example .env   # fill in DB_PASSWORD, APP_PASSWORD, CLAUDE_API_KEY
+#   docker compose up -d
+#
+# Differences to the dev compose file at the repo root:
+# - `image:` instead of `build:` (no source tree on the host).
+# - Postgres port is not published — only the backend talks to it.
+# - /data is a named volume, not a ./data bind mount: a fresh named volume
+#   inherits the image's /data ownership (uid 10001, the non-root `app`
+#   user), whereas a bind mount auto-created by Docker on Linux is owned by
+#   root and the backend could not write uploads/images into it.
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: propertyfinder
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      # Postgres 18's image expects the volume at /var/lib/postgresql (not
+      # .../data) — it manages the version-specific data subdirectory itself.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U app -d propertyfinder']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: property-finder:${PF_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://app:${DB_PASSWORD}@db:5432/propertyfinder?sslmode=disable
+      APP_PASSWORD: ${APP_PASSWORD:?APP_PASSWORD must be set in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+    ports:
+      - '${PF_HTTP_PORT:-8080}:8080'
+    volumes:
+      - appdata:/data
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  appdata:

@@ -16,11 +16,23 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   });
 
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
+    if (response.status === 401) {
+      // Dynamic import, not a top-level one: src/router/index.ts's auth
+      // guard transitively imports this module (via useAuth -> api/auth
+      // -> http), so a static top-level `import { router }` here would
+      // be a real import cycle (unlike the router's lazily-loaded view
+      // components, which don't create one).
+      const { router } = await import('@/router');
+      if (router.currentRoute.value.name !== 'login') {
+        void router.push({ name: 'login' });
+      }
+    }
     throw new ApiError(body?.error ?? response.statusText, response.status);
   }
   if (response.status === 204) {

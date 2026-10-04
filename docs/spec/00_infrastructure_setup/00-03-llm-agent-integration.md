@@ -137,3 +137,16 @@ Carried over from dev-property-finder's `app_config`: `llm.provider` (fixed to `
 ## Open Questions / TBD
 
 - Whether LM Studio's and OpenCode's tool-use support (format, reliability, streaming) is close enough to Claude's that `internal/agent.Provider` can stay a thin interface, or whether the Agent loop itself needs provider-specific branches once one of them is actually implemented — unverified until [[../../docs/adr/0006-single-provider-for-agent-mvp]] is revisited
+
+---
+
+## MCP Interface
+
+`POST /mcp` (`internal/mcpserver`, docs/adr/0019) exposes this Tool Catalog over the MCP Streamable HTTP
+transport for external clients (Claude Code, Claude Desktop via the `mcp-remote` proxy, opencode, omp),
+authenticated via `Authorization: Bearer <APP_PASSWORD>` instead of the browser's session cookie. Ten
+tools: the nine above, each dispatched through the same `agent.Registry.Dispatch` the chat Agent uses, plus
+`list_profiles` (bootstrap discovery of `profile_id`, not available any other way outside a chat session).
+`propose_criteria`/`update_context` write immediately over MCP (no chat confirm-card exists outside a real
+`chat_message`) — see ADR 0019 for the full reasoning.
+

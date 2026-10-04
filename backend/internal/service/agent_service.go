@@ -10,8 +10,6 @@ import (
 	"propertyfinder/internal/db/repository"
 	"propertyfinder/internal/domain"
 	"propertyfinder/internal/events"
-	"propertyfinder/internal/fetch"
-	"propertyfinder/internal/geocode"
 	"propertyfinder/internal/pdf"
 	"slices"
 	"strings"
@@ -171,16 +169,7 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 	}
 
 	tools := agent.Tools()
-	registry := &agent.Registry{
-		ProfileID:  session.ProfileID,
-		Listings:   repository.NewListingRepo(service.pool),
-		Images:     repository.NewImageRepo(service.pool),
-		Fetcher:    fetch.NewClient(),
-		Downloader: fetch.NewClient(),
-		DataDir:    service.dataDir,
-		Evaluator:  evaluationAdapter{service.evaluation},
-		Geocoder:   geocodeAdapter{},
-	}
+	registry := NewToolRegistry(service.pool, service.dataDir, service.evaluation, session.ProfileID)
 	loop := &agent.Loop{
 		Provider:            service.provider,
 		MaxLLMRoundtrips:    service.llm.MaxLLMRoundtrips,
@@ -439,29 +428,6 @@ func attachedPDFPath(history []domain.ChatMessage) *string {
 		return nil
 	}
 	return last.AttachmentPath
-}
-
-// geocodeAdapter satisfies agent.AddressGeocoder against the
-// package-level geocode.Geocode func.
-type geocodeAdapter struct{}
-
-func (geocodeAdapter) Geocode(ctx context.Context, address, country string) (*geocode.Result, error) {
-	return geocode.Geocode(ctx, address, country)
-}
-
-// evaluationAdapter satisfies agent.ListingEvaluator against
-// *EvaluationService without internal/agent importing internal/service
-// (which would cycle — service already imports agent for AgentService).
-type evaluationAdapter struct {
-	service *EvaluationService
-}
-
-func (a evaluationAdapter) EvaluateListing(ctx context.Context, listingID uuid.UUID) (*domain.Listing, []domain.CriterionScore, error) {
-	result, err := a.service.EvaluateListing(ctx, listingID)
-	if err != nil {
-		return nil, nil, err
-	}
-	return result.Listing, result.Grades, nil
 }
 
 func (service *AgentService) publishError(sessionID uuid.UUID, err error) {

@@ -40,6 +40,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://app:${DB_PASSWORD}@db:5432/propertyfinder?sslmode=disable
+      APP_PASSWORD: ${APP_PASSWORD}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       CLAUDE_API_KEY: ${CLAUDE_API_KEY}
     ports:
       - '8080:8080'

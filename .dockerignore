@@ -1,0 +1,16 @@
+# Build context is the repo root (backend/Dockerfile). The Dockerfile only
+# COPYs specific paths; this keeps the context small and secrets/runtime data
+# out of it.
+.git/
+.env
+.env.*
+/data/
+/deploy/
+/docs/
+node_modules/
+/dist/
+/backend/internal/web/dist/*
+!/backend/internal/web/dist/.gitkeep
+.idea/
+.vscode/
+.DS_Store

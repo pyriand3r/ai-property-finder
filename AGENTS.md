@@ -109,6 +109,9 @@ consulted again after that.
 - **0015**: Re-evaluation is manual, not automatic — user triggers per-listing or bulk from UI
 - **0016**: Manually-edited `listing.user_confirmed_fields` are surfaced to the Agent every turn; `save_listing` skips them unless `force_overwrite` is set
 - **0017**: Confirm-Card confirmed/rejected status is stored in the same `chat_message.tool_calls` JSONB (extends 0009) so it survives reload/tab-switch
+- **0018**: Single password (APP_PASSWORD) gates Frontend+API access via an HS256 JWT in an httpOnly cookie; Secure flag toggled by COOKIE_SECURE for the documented behind-a-reverse-proxy deployments
+- **0019**: MCP Streamable HTTP interface (`internal/mcpserver`) exposes the existing Agent Tool catalog
+  plus `list_profiles` to external MCP clients, gated by a static Bearer token reusing APP_PASSWORD
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -196,11 +199,15 @@ docker compose up -d --build       # backend on :8080, db (Postgres 18) on :5432
 docker compose exec db psql -U app -d propertyfinder
 docker compose logs -f backend
 curl localhost:8080/health          # health check
+
+# Remote Docker host (image as a file, no registry) — full workflow: docs/deployment.md
+deploy/build-image.sh                  # → deploy/property-finder-image.tar.gz (linux/amd64; PLATFORM=linux/arm64 to override)
 ```
 
-Env vars (`.env`, from `.env.example`): `DB_PASSWORD` (required) and `CLAUDE_API_KEY` (required for the
-Agent; without it the backend falls back to `agent.NewUnconfiguredProvider()`). Never commit `.env` or
-`/data/` (Docker volume: uploaded PDFs and listing images).
+Env vars (`.env`, from `.env.example`): `DB_PASSWORD` and `APP_PASSWORD` (both required), `CLAUDE_API_KEY`
+(required for the Agent; without it the backend falls back to `agent.NewUnconfiguredProvider()`), and
+`COOKIE_SECURE` (optional, default true — set false only for a plain-HTTP local dev backend). Never commit
+`.env` or `/data/` (Docker volume: uploaded PDFs and listing images).
 
 ## Code Conventions & Common Patterns
 
@@ -230,7 +237,8 @@ Agent; without it the backend falls back to `agent.NewUnconfiguredProvider()`). 
   optional fields are pointer types with `omitempty`.
 - Middleware chain (`router.go`): `RequestID` → `Logger` → `Recoverer` on *all* routes; a `Timeout(60s)`
   group wraps normal REST routes only — `GET /api/events` (SSE) and `/media/*` are mounted **outside** it
-  since chi's `Timeout` wrapper doesn't implement `http.Flusher`.
+  since chi's `Timeout` wrapper doesn't implement `http.Flusher`. A `RequireAuth` group (docs/adr/0018)
+  wraps everything except `/health`, `POST /api/auth/login`, and the embedded SPA static assets.
 
 ### Frontend (Vue 3 + TypeScript)
 
@@ -286,6 +294,9 @@ Agent; without it the backend falls back to `agent.NewUnconfiguredProvider()`). 
 - `src/router/index.ts`, `vite.config.ts` — routing and dev-proxy config (proxy target must match
   `docker-compose.yml`'s backend port).
 - `.env.example`, `docker-compose.yml`, `backend/Dockerfile` — deployment/env contract.
+- `backend/internal/mcpserver/` — MCP Streamable HTTP interface exposing the Agent Tool catalog to
+  external clients (docs/adr/0019); `internal/service/tool_registry.go`'s `NewToolRegistry` is the shared
+  Registry constructor both this and `AgentService.runTurn` use.
 
 ## Runtime/Tooling Preferences
 
@@ -298,7 +309,7 @@ Agent; without it the backend falls back to `agent.NewUnconfiguredProvider()`). 
 | Package manager | npm (`package-lock.json` present; no yarn/pnpm lockfile) |
 | Node/Go pins | Only pinned in `backend/Dockerfile`: `node:22-alpine` (frontend build stage), `golang:1.26-alpine` — no root `.nvmrc`/`.node-version` |
 | Database | PostgreSQL 18 (`propertyfinder`, user `app`) |
-| Deployment | Docker Compose, exactly 2 services (`backend`, `db`) — frontend has no separate container, it's embedded into the Go binary |
+| Deployment | Docker Compose, exactly 2 services (`backend`, `db`) — frontend has no separate container, it's embedded into the Go binary — both this repo's compose file and `deploy/docker-compose.yml` assume an external TLS-terminating reverse proxy in front (docs/adr/0018) |
 | Lint/Format | `golangci-lint` v2 (backend) · `oxlint` + `oxfmt` (frontend) — both oxc configs ignore `backend/`, `docs/`, `data/`, `dist/`, `node_modules/`; `oxfmt` additionally ignores `.claude/`, `.idea/`, `*.md`; `oxlint` additionally ignores `*.d.ts` |
 
 - `backend/go.mod` module path is `propertyfinder`.
@@ -381,7 +392,8 @@ PDFs and listing images).
 - **Agent** — the LLM running a multi-turn tool-use loop inside a Chat Session (avoid "Assistant/bot").
 - **Tool** — a typed function the Agent calls mid-turn: `fetch_url`, `save_listing`, `download_image`,
   `evaluate_listing`, `geocode`, `compute_ranking`, `read_pdf`, `propose_criteria`, `update_context`,
-  `list_profile_listings`.
+  `list_profile_listings`. The same catalog (plus `list_profiles` for discovery) is also reachable
+  outside a chat session via the MCP interface at `POST /mcp` (docs/adr/0019).
 - **Context File** — persistent Markdown steering Agent behavior (avoid "Prompt"). Two scopes: **Global**
   (app-wide) and **Profile** (per-Search-Profile; overrides Global).
 - **Portal Rule** — a Context File *fragment* describing per-domain handling, not a structured entity.

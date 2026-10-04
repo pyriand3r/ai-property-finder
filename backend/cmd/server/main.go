@@ -93,7 +93,7 @@ func run() error {
 	broker := events.NewBroker()
 	defer broker.Stop()
 
-	router := api.NewServer(pool, llmConfig, envConfig.DataDir, provider, agentProvider, broker).Router()
+	router := api.NewServer(pool, llmConfig, envConfig.DataDir, envConfig.AppPassword, envConfig.CookieSecure, provider, agentProvider, broker).Router()
 	server := &http.Server{
 		Addr:              envConfig.HTTPListenAddr,
 		Handler:           router,

@@ -6,6 +6,9 @@
 # --- Runtime data (Docker volume: ./data:/data) ---
 /data/
 
+# --- Exported Docker image (deploy/build-image.sh) ---
+/deploy/*.tar.gz
+
 # --- Go ---
 /backend/server
 /backend/bin/

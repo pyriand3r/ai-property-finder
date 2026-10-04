@@ -32,6 +32,8 @@ Numbered, append-only log of architecture decisions for this project's Chat/Cont
 | [[0015-manual-bulk-reevaluation]] | Re-evaluation is manual, not automatic; user triggers per-listing or bulk from UI | [[../../spec/01_mvp/01-04-criteria-and-scoring]], [[../../spec/01_mvp/01-05-ranking-and-list-view]], [[../../spec/01_mvp/01-07-manual-review-and-edit]] | No cost surprise, batch intent, test-before-apply workflow |
 | [[0016-user-confirmed-fields-agent-context]] | Agent sees confirmed fields in context; save_listing skips unless force_overwrite | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]], [[../../spec/01_mvp/01-07-manual-review-and-edit]] | Conversational confirmation, no confirm-card for field overwrites |
 | [[0017-tool-call-status-in-jsonb]] | Confirm-Card status persisted as a field inside chat_message.tool_calls JSONB | [[../../spec/00_infrastructure_setup/00-02-database-schema]], [[../../spec/01_mvp/01-02-context-files#Confirmation]], [[../../spec/01_mvp/01-09-chat-reliability-fixes]] | Extends ADR 0009 — closes the reload-resets-to-pending gap its Consequences section left open |
+| [[0018-single-password-jwt-cookie-auth]] | Single-password login, HS256 JWT in an httpOnly cookie | [[../../spec/00_infrastructure_setup/00-01-tech-stack]] | New |
+| [[0019-mcp-tool-interface]] | MCP Streamable HTTP interface reuses the existing Agent Tool catalog for external clients | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]] | New |
 
 ## Notes
 

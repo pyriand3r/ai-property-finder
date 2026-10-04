@@ -10,9 +10,15 @@
 # Stage 2 (backend):  copy dist/ into backend/internal/web/dist so the
 #                     //go:embed directive picks it up, then build the binary.
 # Stage 3 (runtime):  copy the single static binary onto a minimal base.
+#
+# Cross-platform: stages 1+2 run on the BUILD machine's native platform
+# ($BUILDPLATFORM) — the SPA bundle is arch-independent and Go cross-compiles
+# via GOOS/GOARCH (CGO disabled) — so `docker buildx build --platform
+# linux/amd64` on an arm64 Mac needs no QEMU emulation. Only stage 3 is
+# target-platform. See docs/deployment.md.
 
 # ── Stage 1: Frontend build ────────────────────────────────────────────────
-FROM node:22-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
@@ -22,14 +28,16 @@ COPY src/ ./src/
 RUN npm run build
 
 # ── Stage 2: Backend build ──────────────────────────────────────────────────
-FROM golang:1.26-alpine AS backend
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS backend
+ARG TARGETOS=linux
+ARG TARGETARCH
 WORKDIR /app/backend
-ENV CGO_ENABLED=0 GOOS=linux
+ENV CGO_ENABLED=0
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 COPY --from=frontend /app/dist ./internal/web/dist
-RUN go build -trimpath -ldflags="-s -w" -o /out/property-finder ./cmd/server
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/property-finder ./cmd/server
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────
 FROM alpine:3.21 AS runtime
