@@ -17,6 +17,8 @@ func NewUnconfiguredProvider() Provider { return &unconfiguredProvider{} }
 
 func (*unconfiguredProvider) SupportsDocumentInput() bool { return false }
 
+func (*unconfiguredProvider) SupportsImageInput() bool { return false }
+
 func (*unconfiguredProvider) FormatTools([]Tool) any { return nil }
 
 // FormatMessages still does the DB-row-to-Message mapping (text content

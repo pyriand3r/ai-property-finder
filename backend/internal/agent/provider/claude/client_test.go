@@ -9,6 +9,8 @@ import (
 	"propertyfinder/internal/domain"
 	"strings"
 	"testing"
+
+	"github.com/anthropics/anthropic-sdk-go"
 )
 
 // sseBody is a canned Anthropic streaming response: a text delta followed
@@ -208,5 +210,34 @@ func TestFormatMessages_MergesConsecutiveToolResults(t *testing.T) {
 	}
 	if toolResultMsg.Content[0].ToolResultForID != "call_1" || toolResultMsg.Content[1].ToolResultForID != "call_2" {
 		t.Errorf("tool result blocks = %+v, want ToolResultForID call_1 then call_2", toolResultMsg.Content)
+	}
+}
+
+func TestFormatMessages_TranslatesImageBlock(t *testing.T) {
+	messages := []agent.Message{
+		{Role: "user", Content: []agent.ContentBlock{
+			{Type: agent.ContentBlockText, Text: "Hier ist ein Screenshot"},
+			{Type: agent.ContentBlockImage, ImageData: "ZmFrZQ==", ImageMediaType: "image/png"},
+		}},
+	}
+
+	params := formatMessages(messages)
+
+	if len(params) != 1 {
+		t.Fatalf("got %d messages, want 1", len(params))
+	}
+	blocks := params[0].Content
+	if len(blocks) != 2 {
+		t.Fatalf("got %d content blocks, want 2 (text + image), got %+v", len(blocks), blocks)
+	}
+	imageBlock := blocks[1].OfImage
+	if imageBlock == nil {
+		t.Fatalf("second block is not an image block: %+v", blocks[1])
+	}
+	if imageBlock.Source.OfBase64 == nil || imageBlock.Source.OfBase64.Data != "ZmFrZQ==" {
+		t.Errorf("image data = %+v, want OfBase64.Data = %q", imageBlock.Source.OfBase64, "ZmFrZQ==")
+	}
+	if imageBlock.Source.OfBase64 != nil && imageBlock.Source.OfBase64.MediaType != anthropic.Base64ImageSourceMediaTypeImagePNG {
+		t.Errorf("image media type = %q, want image/png", imageBlock.Source.OfBase64.MediaType)
 	}
 }

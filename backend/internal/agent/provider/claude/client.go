@@ -63,6 +63,8 @@ func New(cfg Config) *Provider {
 
 func (p *Provider) SupportsDocumentInput() bool { return true }
 
+func (p *Provider) SupportsImageInput() bool { return true }
+
 // FormatTools converts app-level Tool definitions into Anthropic's
 // ToolUnionParam wire shape. The concrete type is hidden behind `any` per
 // the agent.Provider interface; Chat type-asserts its own return value.
@@ -208,6 +210,11 @@ func formatMessages(messages []agent.Message) []anthropic.MessageParam {
 				blocks = append(blocks, anthropic.NewToolResultBlock(block.ToolResultForID, block.ToolResultText, block.ToolResultError))
 			case agent.ContentBlockDocument:
 				blocks = append(blocks, anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: block.DocumentData}))
+			case agent.ContentBlockImage:
+				blocks = append(blocks, anthropic.NewImageBlock(anthropic.Base64ImageSourceParam{
+					Data:      block.ImageData,
+					MediaType: anthropic.Base64ImageSourceMediaType(block.ImageMediaType),
+				}))
 			}
 		}
 		role := anthropic.MessageParamRoleUser

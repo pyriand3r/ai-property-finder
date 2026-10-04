@@ -21,6 +21,7 @@ type fakeProvider struct {
 }
 
 func (p *fakeProvider) SupportsDocumentInput() bool                   { return true }
+func (p *fakeProvider) SupportsImageInput() bool                      { return true }
 func (p *fakeProvider) FormatTools([]Tool) any                        { return nil }
 func (p *fakeProvider) FormatMessages([]domain.ChatMessage) []Message { return nil }
 

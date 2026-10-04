@@ -2,7 +2,7 @@
 import { NButton, NIcon, NInput, NTag, useMessage } from 'naive-ui';
 import { shallowRef } from 'vue';
 
-import { uploadPdf } from '@/api/upload';
+import { uploadImage, uploadPdf } from '@/api/upload';
 
 const props = defineProps<{
   disabled: boolean;
@@ -43,13 +43,15 @@ async function handleFiles(files: FileList | null) {
   if (!file) {
     return;
   }
-  if (file.type !== 'application/pdf') {
-    message.error('Nur PDF-Dateien werden unterstützt');
+  const isPdf = file.type === 'application/pdf';
+  const isImage = file.type === 'image/jpeg' || file.type === 'image/png';
+  if (!isPdf && !isImage) {
+    message.error('Nur PDF-, JPG- oder PNG-Dateien werden unterstützt');
     return;
   }
   uploading.value = true;
   try {
-    const result = await uploadPdf(file);
+    const result = isPdf ? await uploadPdf(file) : await uploadImage(file);
     attachmentPath.value = result.path;
     attachmentName.value = file.name;
   } catch (uploadError) {
@@ -92,12 +94,12 @@ function handleFileInput(event: Event) {
     <div class="chat-input-row">
       <label class="chat-input-file-button">
         <NIcon>📎</NIcon>
-        <input type="file" accept="application/pdf" hidden @change="handleFileInput" />
+        <input type="file" accept="application/pdf,image/jpeg,image/png" hidden @change="handleFileInput" />
       </label>
       <NInput
         v-model:value="content"
         type="textarea"
-        placeholder="Nachricht an den Agenten… (URL einfügen, PDF ablegen)"
+        placeholder="Nachricht an den Agenten… (URL einfügen, PDF oder Bild ablegen)"
         :autosize="{ minRows: 1, maxRows: 6 }"
         :disabled="disabled"
         @keydown="handleKeydown"

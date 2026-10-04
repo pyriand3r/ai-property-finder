@@ -34,6 +34,7 @@ Numbered, append-only log of architecture decisions for this project's Chat/Cont
 | [[0017-tool-call-status-in-jsonb]] | Confirm-Card status persisted as a field inside chat_message.tool_calls JSONB | [[../../spec/00_infrastructure_setup/00-02-database-schema]], [[../../spec/01_mvp/01-02-context-files#Confirmation]], [[../../spec/01_mvp/01-09-chat-reliability-fixes]] | Extends ADR 0009 — closes the reload-resets-to-pending gap its Consequences section left open |
 | [[0018-single-password-jwt-cookie-auth]] | Single-password login, HS256 JWT in an httpOnly cookie | [[../../spec/00_infrastructure_setup/00-01-tech-stack]] | New |
 | [[0019-mcp-tool-interface]] | MCP Streamable HTTP interface reuses the existing Agent Tool catalog for external clients | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]] | New |
+| [[0020-image-upload-native-content-block]] | JPG/PNG screenshots via native Claude image input, same pattern as PDF | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#PDF Handling]] | New (extends ADR 0005 to a second upload format) |
 
 ## Notes
 

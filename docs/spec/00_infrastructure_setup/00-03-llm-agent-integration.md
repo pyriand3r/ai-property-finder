@@ -110,13 +110,25 @@ The fixed preamble is a Go string constant in `internal/agent/context_builder.go
 
 ## PDF Handling
 
-## PDF Handling
+When the user uploads a PDF (fallback for a blocked/anti-bot page, matching the current Obsidian
+workflow's `pymupdf` step), it is sent to Claude as a native `document` content block in the same turn.
+No local OCR or image-extraction step is needed for text — Claude reads the PDF directly, including
+embedded images, for both the write-up and for photo identification. `download_image` is only invoked
+afterwards if the user wants a specific photo copied out and stored against the Listing.
 
-When the user uploads a PDF (fallback for a blocked/anti-bot page, matching the current Obsidian workflow's `pymupdf` step), it is sent to Claude as a native `document` content block in the same turn. No local OCR or image-extraction step is needed for text — Claude reads the PDF directly, including embedded images, for both the write-up and for photo identification. `download_image` is only invoked afterwards if the user wants a specific photo copied out and stored against the Listing.
+When the user is on a mobile device with no PDF-export option (only able to screenshot a listing), they
+can instead upload a JPG or PNG. It is sent to Claude the same way, in the same turn, as a native
+`image` content block (ADR 0020) — same downstream flow as the PDF case (`download_image` only
+afterwards, only if a specific photo needs to be persisted against the Listing).
 
-After the ingestion turn completes, the PDF file is deleted from disk. The extracted data lives in `listing` + `chat_message` rows. The PDF is **not** resent in subsequent turns — this prevents silent token consumption across sessions ([[../../docs/adr/0014-context-window-token-display-manual-reset]]).
+After the ingestion turn completes, the PDF or image file is deleted from disk. The extracted data
+lives in `listing` + `chat_message` rows. Neither is resent in subsequent turns — this prevents silent
+token consumption across sessions ([[../../docs/adr/0014-context-window-token-display-manual-reset]]).
 
-Upload limit: 32 MB (matches Claude's document size limit). Enforced at the multipart form handler. Larger files are rejected before any API call is made.
+Upload limits: PDF 32 MB (matches Claude's document size limit), JPG/PNG 3.75 MB raw bytes (keeps the
+base64-encoded payload within Claude's 5 MB image size limit — base64 inflates by 4/3). Enforced at the
+respective multipart form handler (`POST /api/upload/pdf`, `POST /api/upload/image`). Larger files are
+rejected before any API call is made.
 
 ---
 

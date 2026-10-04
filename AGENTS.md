@@ -112,6 +112,8 @@ consulted again after that.
 - **0018**: Single password (APP_PASSWORD) gates Frontend+API access via an HS256 JWT in an httpOnly cookie; Secure flag toggled by COOKIE_SECURE for the documented behind-a-reverse-proxy deployments
 - **0019**: MCP Streamable HTTP interface (`internal/mcpserver`) exposes the existing Agent Tool catalog
   plus `list_profiles` to external MCP clients, gated by a static Bearer token reusing APP_PASSWORD
+- **0020**: Chat-uploaded JPG/PNG screenshots are sent to Claude as a native `image` content block, same
+  pattern as ADR 0005's PDF path (`internal/attachment`, `Provider.SupportsImageInput()`)
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -139,7 +141,7 @@ backend/
     ├── ai/           # single-shot LLM ops: provider.go (interface), claude.go (impl), ops.go
     │                 #   (Evaluate/Rank/AnalyzeRejection), json.go (extractFirstJSON), retry.go, config.go
     ├── fetch/        # HTTP GET + readability text extraction (go-readability; no chromedp in MVP)
-    ├── pdf/          # store/read/delete uploaded PDFs on disk (base64 in/out)
+    ├── attachment/   # attachment.go — read/delete uploaded PDFs (ADR 0005) and images (ADR 0020) on disk (base64 in/out)
     ├── geocode/      # nominatim.go — Nominatim HTTP client, rate-limited
     ├── events/       # broker.go — single SSE Broker for chat streaming + background task progress
     ├── config/       # two-tier config loader (Env + DB-backed LLM config)
@@ -348,7 +350,7 @@ Mocking, no library used, two conventions by collaborator kind:
 
 Covered packages: `internal/agent` (loop, tools, context builder), `internal/agent/provider/claude`,
 `internal/ai` (JSON extraction, grade normalization), `internal/service` (chat-history JSON merge logic),
-`internal/pdf`, `internal/fetch`. **Not yet covered**: `internal/api` (handlers), `internal/db`/repositories,
+`internal/attachment`, `internal/fetch`. **Not yet covered**: `internal/api` (handlers), `internal/db`/repositories,
 `internal/events`, `internal/geocode`, `internal/config`, `cmd/server`.
 
 ### Frontend (Vue + TypeScript)

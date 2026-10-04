@@ -10,7 +10,7 @@ import (
 	"propertyfinder/internal/db/repository"
 	"propertyfinder/internal/domain"
 	"propertyfinder/internal/events"
-	"propertyfinder/internal/pdf"
+	"propertyfinder/internal/attachment"
 	"slices"
 	"strings"
 	"sync"
@@ -189,12 +189,27 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 	// once the turn ends either way, so it's never resent on a later turn.
 	pdfAttachment := attachedPDFPath(history)
 	if pdfAttachment != nil && service.provider.SupportsDocumentInput() {
-		if encoded, readErr := pdf.ReadBase64(service.dataDir, *pdfAttachment); readErr != nil {
+		if encoded, readErr := attachment.ReadBase64(service.dataDir, *pdfAttachment); readErr != nil {
 			log.Printf("agent: read pdf attachment for session %s: %v", sessionID, readErr)
 		} else if last := len(req.Messages) - 1; last >= 0 {
 			req.Messages[last].Content = append(req.Messages[last].Content, agent.ContentBlock{
 				Type:         agent.ContentBlockDocument,
 				DocumentData: encoded,
+			})
+		}
+	}
+
+	// An image attached the same way as a PDF above (ADR 0020) — a JPG/PNG
+	// screenshot for when the user has no PDF-export option on mobile.
+	imageAttachment, imageMediaType := attachedImagePath(history)
+	if imageAttachment != nil && service.provider.SupportsImageInput() {
+		if encoded, readErr := attachment.ReadBase64(service.dataDir, *imageAttachment); readErr != nil {
+			log.Printf("agent: read image attachment for session %s: %v", sessionID, readErr)
+		} else if last := len(req.Messages) - 1; last >= 0 {
+			req.Messages[last].Content = append(req.Messages[last].Content, agent.ContentBlock{
+				Type:           agent.ContentBlockImage,
+				ImageData:      encoded,
+				ImageMediaType: imageMediaType,
 			})
 		}
 	}
@@ -230,8 +245,14 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 	result, err := loop.Run(ctx, req, onEvent, onRoundtrip)
 
 	if pdfAttachment != nil {
-		if deleteErr := pdf.Delete(service.dataDir, *pdfAttachment); deleteErr != nil {
+		if deleteErr := attachment.Delete(service.dataDir, *pdfAttachment); deleteErr != nil {
 			log.Printf("agent: delete pdf attachment for session %s: %v", sessionID, deleteErr)
+		}
+	}
+
+	if imageAttachment != nil {
+		if deleteErr := attachment.Delete(service.dataDir, *imageAttachment); deleteErr != nil {
+			log.Printf("agent: delete image attachment for session %s: %v", sessionID, deleteErr)
 		}
 	}
 
@@ -428,6 +449,29 @@ func attachedPDFPath(history []domain.ChatMessage) *string {
 		return nil
 	}
 	return last.AttachmentPath
+}
+
+// attachedImagePath returns the triggering user message's attachment_path
+// and the Claude MIME type to send it as if it names a JPG or PNG image,
+// or (nil, "") otherwise. Mirrors attachedPDFPath above — same "only the
+// last history row, chronological order" reasoning applies.
+func attachedImagePath(history []domain.ChatMessage) (*string, string) {
+	if len(history) == 0 {
+		return nil, ""
+	}
+	last := history[len(history)-1]
+	if last.Role != domain.ChatRoleUser || last.AttachmentPath == nil {
+		return nil, ""
+	}
+	lower := strings.ToLower(*last.AttachmentPath)
+	switch {
+	case strings.HasSuffix(lower, ".jpg"), strings.HasSuffix(lower, ".jpeg"):
+		return last.AttachmentPath, "image/jpeg"
+	case strings.HasSuffix(lower, ".png"):
+		return last.AttachmentPath, "image/png"
+	default:
+		return nil, ""
+	}
 }
 
 func (service *AgentService) publishError(sessionID uuid.UUID, err error) {

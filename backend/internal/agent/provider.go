@@ -31,6 +31,12 @@ const (
 	// Provider.SupportsDocumentInput(); a provider that returns false for
 	// it never receives this block type.
 	ContentBlockDocument ContentBlockType = "document"
+	// ContentBlockImage carries a JPG/PNG attached natively for this turn
+	// only (spec 00-03 "PDF Handling", ADR 0020) — same mechanism as
+	// ContentBlockDocument: appended to the triggering user Message by
+	// AgentService when its chat_message row has an image attachment_path,
+	// not requested via a Tool call. Gated on Provider.SupportsImageInput().
+	ContentBlockImage ContentBlockType = "image"
 )
 
 // ContentBlock is one normalized piece of a Message or system prompt.
@@ -55,8 +61,16 @@ type ContentBlock struct {
 	ToolResultError bool
 
 	// Document fields: set for ContentBlockDocument. DocumentData is
-	// base64-encoded PDF bytes (internal/pdf.ReadBase64's output).
+	// base64-encoded PDF bytes (internal/attachment.ReadBase64's output).
 	DocumentData string
+
+	// Image fields: set for ContentBlockImage. ImageData is base64-encoded
+	// JPEG/PNG bytes (internal/attachment.ReadBase64's output).
+	// ImageMediaType is the exact MIME type ("image/jpeg" or "image/png") a
+	// provider needs alongside the bytes — unlike a PDF document block, an
+	// image block has no single implicit type.
+	ImageData      string
+	ImageMediaType string
 }
 
 // Message is one normalized conversation turn sent to Chat(). Role is
@@ -142,6 +156,10 @@ type Provider interface {
 	// SupportsDocumentInput reports whether this provider accepts
 	// document (PDF) content blocks natively (spec 00-03 "PDF Handling").
 	SupportsDocumentInput() bool
+	// SupportsImageInput reports whether this provider accepts image
+	// (JPG/PNG) content blocks natively (spec 00-03 "PDF Handling", ADR
+	// 0020).
+	SupportsImageInput() bool
 	// FormatTools converts app-level Tool definitions into this
 	// provider's expected JSON schema format. Called once per turn.
 	FormatTools(tools []Tool) any

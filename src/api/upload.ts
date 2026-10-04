@@ -12,3 +12,17 @@ export async function uploadPdf(file: File): Promise<{ path: string }> {
   }
   return (await response.json()) as { path: string };
 }
+
+/** POST /api/upload/image (spec 00-03 Layer 3.3, ADR 0020) — same shape as
+ * uploadPdf. */
+export async function uploadImage(file: File): Promise<{ path: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch('/api/upload/image', { method: 'POST', body: formData });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? response.statusText);
+  }
+  return (await response.json()) as { path: string };
+}

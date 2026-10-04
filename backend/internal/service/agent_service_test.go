@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"propertyfinder/internal/agent"
+	"propertyfinder/internal/domain"
 	"testing"
 )
 
@@ -53,5 +54,48 @@ func TestToolCallsJSON_DoesNotDuplicateWhenBlockAndResultAgree(t *testing.T) {
 func TestToolCallsJSON_NilWhenNoToolCallsAndNoResults(t *testing.T) {
 	if data := toolCallsJSON(nil, nil); data != nil {
 		t.Errorf("toolCallsJSON(nil, nil) = %s, want nil", data)
+	}
+}
+
+func TestAttachedImagePath_JPEGSuffix(t *testing.T) {
+	path := "uploads/image/test.jpg"
+	history := []domain.ChatMessage{{Role: domain.ChatRoleUser, AttachmentPath: &path}}
+
+	got, mediaType := attachedImagePath(history)
+
+	if got == nil || *got != path {
+		t.Fatalf("attachedImagePath() path = %v, want %q", got, path)
+	}
+	if mediaType != "image/jpeg" {
+		t.Errorf("mediaType = %q, want image/jpeg", mediaType)
+	}
+}
+
+func TestAttachedImagePath_PNGSuffix(t *testing.T) {
+	path := "uploads/image/test.png"
+	history := []domain.ChatMessage{{Role: domain.ChatRoleUser, AttachmentPath: &path}}
+
+	got, mediaType := attachedImagePath(history)
+
+	if got == nil || *got != path {
+		t.Fatalf("attachedImagePath() path = %v, want %q", got, path)
+	}
+	if mediaType != "image/png" {
+		t.Errorf("mediaType = %q, want image/png", mediaType)
+	}
+}
+
+func TestAttachedImagePath_IgnoresPDFSuffix(t *testing.T) {
+	path := "uploads/pdf/test.pdf"
+	history := []domain.ChatMessage{{Role: domain.ChatRoleUser, AttachmentPath: &path}}
+
+	if got, _ := attachedImagePath(history); got != nil {
+		t.Errorf("attachedImagePath() = %v, want nil for a .pdf attachment", got)
+	}
+}
+
+func TestAttachedImagePath_EmptyHistory(t *testing.T) {
+	if got, _ := attachedImagePath(nil); got != nil {
+		t.Errorf("attachedImagePath(nil) = %v, want nil", got)
 	}
 }

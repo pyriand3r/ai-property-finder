@@ -123,6 +123,7 @@ func (server *Server) Router() http.Handler {
 
 	timed.Get("/api/config", server.config.get)
 	timed.Post("/api/upload/pdf", server.upload.PDF)
+	timed.Post("/api/upload/image", server.upload.Image)
 	timed.Get("/api/geocode", server.geocode.Get)
 
 	timed.Get("/api/context/global", server.context.GetGlobal)
