@@ -72,8 +72,16 @@ Es gibt kein CI-Setup — alle Gates (`go test`, `golangci-lint`, `npm run typec
 | [docs/00_readme.md](docs/00_readme.md) | Projektbeschreibung, Motivation, Status |
 | [docs/operations.md](docs/operations.md) | Server-Betrieb: Konfiguration, Start/Stop, Backup, MCP-Nutzung |
 | [docs/deployment.md](docs/deployment.md) | Deployment auf einen entfernten Docker-Host |
-| [docs/adr/](docs/adr/README.md) | 20 Architecture Decision Records |
+| [docs/adr/](docs/adr/README.md) | 21 Architecture Decision Records |
 | [docs/CONTEXT.md](docs/CONTEXT.md) | Domänen-Glossar |
 | [docs/spec.md](docs/spec.md) / [docs/spec/](docs/spec/) | Projekt-Spec / Feature-&-Infrastruktur-Specs |
 | [docs/implementation-plan.md](docs/implementation-plan.md) | Baufortschritt nach Layer |
 | [docs/buglist.md](docs/buglist.md) / [docs/ideas.md](docs/ideas.md) | Offene Bugs / Ideen |
+
+## Lizenz
+
+Copyright (C) 2026 pyriand3r. Lizenziert unter der
+[GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`, siehe
+[ADR 0021](docs/adr/0021-agpl-3-license.md)). Wer eine veränderte Version über ein Netzwerk
+bereitstellt (z. B. als gehosteten Dienst), muss deren vollständigen Quellcode den Nutzern
+anbieten (§ 13).

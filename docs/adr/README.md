@@ -35,6 +35,7 @@ Numbered, append-only log of architecture decisions for this project's Chat/Cont
 | [[0018-single-password-jwt-cookie-auth]] | Single-password login, HS256 JWT in an httpOnly cookie | [[../../spec/00_infrastructure_setup/00-01-tech-stack]] | New |
 | [[0019-mcp-tool-interface]] | MCP Streamable HTTP interface reuses the existing Agent Tool catalog for external clients | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]] | New |
 | [[0020-image-upload-native-content-block]] | JPG/PNG screenshots via native Claude image input, same pattern as PDF | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#PDF Handling]] | New (extends ADR 0005 to a second upload format) |
+| [[0021-agpl-3-license]] | Project is published under AGPL-3.0-only | `LICENSE`, `package.json` | New |
 
 ## Notes
 

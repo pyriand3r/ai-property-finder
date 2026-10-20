@@ -114,6 +114,7 @@ consulted again after that.
   plus `list_profiles` to external MCP clients, gated by a static Bearer token reusing APP_PASSWORD
 - **0020**: Chat-uploaded JPG/PNG screenshots are sent to Claude as a native `image` content block, same
   pattern as ADR 0005's PDF path (`internal/attachment`, `Provider.SupportsImageInput()`)
+- **0021**: Project is licensed AGPL-3.0-only (`LICENSE`); the network clause (§13) applies to modified hosted instances
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
