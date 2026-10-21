@@ -1,6 +1,6 @@
 ---
 type: adr
-title: "Agent turns run to completion, not recovered on server restart"
+title: "Agent turns run to the end and are not recovered after a server restart"
 project: property-finder-obs-style
 status: accepted
 created: 2026-08-01
@@ -11,41 +11,43 @@ tags:
 
 ## Status
 
-Accepted — affects [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]], [[../../spec/00_infrastructure_setup/00-01-tech-stack]].
+Accepted. This affects [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]] and [[../../spec/00_infrastructure_setup/00-01-tech-stack]].
 
 ## Context
 
-An Agent turn (URL → fetch → extract images → save → evaluate) takes 30–120 seconds. During that time the user's browser tab might be closed, the SSE stream might drop, or the server might restart. The old dev-property-finder spec solved this with a full task persistence/recovery model ([[../../../dev-property-finder/docs/adr/0004-task-persistence-and-recovery|ADR 0004]]): every background job was a `task` row with status, retries, and a recovery queue.
+An Agent turn takes 30–120 seconds. It does these steps: URL → fetch → extract images → save → evaluate. During this time the user may close the browser tab. The SSE stream may drop. The server may restart.
 
-An Agent turn is not a background job — it's triggered by a synchronous user action, the user is waiting for the reply, and the expensive work (LLM API calls) has already been paid for by the time a failure might occur. Throwing away that work and re-running the same LLM calls on "recovery" would double the cost for no user-visible benefit.
+The old spec of the predecessor project solved this with a full task persistence and recovery model. Every background job was a `task` row with a status, retries, and a recovery queue.
 
-The question: how much resilience mechanism is worth building for three failure scenarios that differ wildly in frequency and impact?
+An Agent turn is not a background job. A synchronous user action starts it, and the user waits for the reply. The expensive work (LLM API calls) is already paid for when a failure might happen. If we threw that work away and ran the same LLM calls again on "recovery", the cost would double. The user would gain nothing.
+
+The question: how much resilience is worth building for three failure cases? They differ a lot in how often they happen and how much they hurt.
 
 ## Decision
 
-**No recovery mechanism. The Agent turn runs to completion or not at all.**
+**No recovery mechanism. The Agent turn runs to the end or not at all.**
 
-The pattern: fire a goroutine with its own `context.Background()`, let it run until the loop ends (all tool calls done, final Agent reply received), then persist the results into `chat_message` rows. The HTTP handler that kicked it off returns immediately after spawning the goroutine — the SSE stream is a separate, decoupled listener.
+The pattern: start a goroutine with its own `context.Background()`. Let it run until the loop ends (all tool calls done, final Agent reply received). Then save the results as `chat_message` rows. The HTTP handler that started it returns right after it spawns the goroutine. The SSE stream is a separate listener that is not tied to the goroutine.
 
-| Failure scenario | What happens | User sees on reload |
+| Failure case | What happens | What the user sees on reload |
 |---|---|---|
-| Browser tab closed | Loop runs to completion in background | All Agent messages present, as if nothing happened |
-| SSE stream dropped (network blip) | Loop runs to completion, events pile up | Frontend reconnects SSE, receives buffered events, or polls latest messages if stream is gone |
-| Server restart | Loop dies with the process | Last user message persisted; Agent reply missing |
+| Browser tab closed | The loop runs to the end in the background | All Agent messages are there, as if nothing happened |
+| SSE stream dropped (network blip) | The loop runs to the end, and events pile up | The frontend reconnects SSE and gets the buffered events. If the stream is gone, it polls for the latest messages |
+| Server restart | The loop dies with the process | The last user message is saved; the Agent reply is missing |
 
-**The only hard requirement:** the user's message (`chat_message`, `role = 'user'`) is persisted **before** the goroutine is spawned — not in a `defer`. If the server dies, the chat shows the user message with no reply, not a blank gap. A small "Antwort fehlt — erneut senden?" button on the frontend lets the user re-trigger with one click.
+**The only hard requirement:** the user's message (`chat_message`, `role = 'user'`) is saved **before** the goroutine starts. It is not saved in a `defer`. If the server dies, the chat shows the user message with no reply, not a blank gap. The frontend has a small button "Antwort fehlt — erneut senden?" (means: "reply missing — send again?"). It lets the user start the turn again with one click.
 
-No `task` table integration. No checkpoints mid-turn. No recovery queue. No attempt to resume a half-finished turn after restart — the LLM conversation state is lost with the process and cannot be reconstructed without re-sending all prior messages anyway, which costs exactly as much as a fresh turn.
+There is no `task` table integration. There are no checkpoints in the middle of a turn. There is no recovery queue. We do not try to continue a half-finished turn after a restart. The LLM conversation state is lost with the process. To rebuild it, we would have to send all earlier messages again. That costs exactly as much as a fresh turn.
 
 ## Alternatives considered
 
-- **Port the full `task` persistence model from dev-property-finder ADR 0004** — rejected: the model was designed for async background scraping jobs where the user is *not* waiting. An Agent turn has the user in the loop by construction; if the reply is missing, they'll notice and retry. The task infrastructure (status column, retry counter, recovery goroutine, `task_retry_at` index) is ~300 lines of code to handle a scenario (server restart mid-turn) that never happens in practice on a single-user Docker Compose deployment.
-- **Checkpoint after every tool call** (save partial state so the turn can resume) — rejected: to resume a turn after restart, you'd need to replay the entire conversation history up to the crash point anyway (LLMs are stateless), which re-spends every token already spent. A fresh turn is cheaper and simpler.
-- **SSE-with-postbox pattern** (POST returns 202, client polls for result) — rejected: the user is actively waiting for the reply; polling adds latency and complexity for no benefit.
+- **Port the full `task` persistence model from the predecessor project** — rejected. That model was made for async background scraping jobs where the user is *not* waiting. In an Agent turn the user is in the loop by design. If the reply is missing, they will notice and try again. The task infrastructure is about 300 lines of code. It has a status column, a retry counter, a recovery goroutine, and a `task_retry_at` index. It would handle a case (server restart in the middle of a turn) that never happens in practice on a single-user Docker Compose setup.
+- **Checkpoint after every tool call** (save partial state so the turn can resume) — rejected. To resume a turn after a restart, you would still have to replay the whole conversation history up to the crash point, because LLMs are stateless. That spends every token again. A fresh turn is cheaper and simpler.
+- **SSE-with-postbox pattern** (POST returns 202, client polls for the result) — rejected. The user is actively waiting for the reply. Polling adds delay and complexity and gives no benefit.
 
 ## Consequences
 
-- `internal/agent/loop.go` runs in a goroutine detached from the HTTP request lifecycle — the handler returns `202 Accepted` + the `chat_message.id` of the persisted user message, then the SSE stream picks up the goroutine's output independently
-- No `task` table involvement for chat turns — the old `task` table remains only for Phase 3 automated recurring search, exactly where dev-property-finder ADR 0004 intended it
-- Server restart destroys in-flight turns with no recovery — accepted as vanishingly rare on a single-user Docker Compose app
-- The frontend needs exactly one new affordance: a retry button on messages where `role = 'user'` and no `role = 'assistant'` follow-up exists
+- `internal/agent/loop.go` runs in a goroutine that is detached from the HTTP request lifecycle. The handler returns `202 Accepted` and the `chat_message.id` of the saved user message. The SSE stream then picks up the goroutine's output on its own.
+- Chat turns do not use the `task` table. The old `task` table stays only for Phase 3 automated recurring search. This is exactly where the predecessor project meant it to be used.
+- A server restart destroys turns that are in progress, with no recovery. We accept this because it is extremely rare on a single-user Docker Compose app.
+- The frontend needs exactly one new control: a retry button on messages where `role = 'user'` and no `role = 'assistant'` follow-up exists.

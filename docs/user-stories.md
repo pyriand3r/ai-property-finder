@@ -8,20 +8,20 @@ tags:
   - user-stories
 ---
 
-- Als Benutzer möchte ich eine URL oder ein PDF in einen Chat werfen und der KI sagen, dass sie das Inserat auswerten soll, damit ich Inserate genauso schnell erfasse wie heute in Obsidian.
-- Als Benutzer möchte ich der KI im Chat Anweisungen geben können ("folge dem Makler-Link", "vergleiche mit den anderen Inseraten in Skåne"), ohne dafür ein Formular ausfüllen zu müssen.
-- Als Benutzer möchte ich, dass profilspezifische Arbeitsanweisungen (z. B. "bei schwedischen Objekten immer Wasser/Abwasser prüfen") dauerhaft gespeichert sind und nicht in jeder Session neu erklärt werden müssen.
-- Als Benutzer möchte ich grundsätzliche, app-weite Regeln (Bildextraktion, Tabellenformat, Bewertungsskala) an einer zentralen Stelle einsehen und anpassen können.
-- Als Benutzer möchte ich, dass die KI aus jedem Inserat ein strukturiertes Dokument erstellt (Originaltext, Übersetzung, Bewertungstabelle, Vor-/Nachteile), so wie es heute die Obsidian-Dateien tun.
-- Als Benutzer möchte ich, dass die KI verfügbare Fotos auswertet und ein Titelbild auswählt.
-- Als Benutzer möchte ich, dass jedes Inserat anhand transparenter, von der KI vorgeschlagener Kriterien mit A–F bewertet wird und ich nachvollziehen kann, warum ein Kriterium wie bewertet wurde.
-- Als Benutzer möchte ich die Gewichtung einzelner Kriterien anpassen können, damit der Gesamt-Score meine tatsächlichen Prioritäten widerspiegelt.
-- Als Benutzer möchte ich Kriterien auch direkt (nicht nur über den Fließtext) hinzufügen, bearbeiten oder entfernen können.
-- Als Benutzer möchte ich alle Inserate eines Profils in einer sortier- und filterbaren Liste sehen.
-- Als Benutzer möchte ich eine kuratierte Rangliste mit kurzer KI-Begründung pro Eintrag sehen, wie im heutigen Obsidian-`00_readme.md`.
-- Als Benutzer möchte ich alle Inserate mit Koordinaten auf einer Karte sehen, farblich nach Status codiert.
-- Als Benutzer möchte ich jedes von der KI befüllte Feld manuell korrigieren können, ohne dass die Korrektur beim nächsten Chat-Turn wieder überschrieben wird.
-- Als Benutzer möchte ich, dass eine manuelle Korrektur oder ein Chat-Follow-up automatisch eine Neubewertung des betroffenen Inserats auslöst.
-- Als Benutzer möchte ich einem bereits importierten Inserat per Chat eine Folgeanweisung geben ("prüf nochmal, ob es eine Garage gibt"), ohne einen komplett neuen Import zu starten.
-- Als Benutzer möchte ich, dass abgelehnte Inserate mit Kommentar erhalten bleiben und die KI daraus lernt, ohne dass ich dafür einen separaten Vorschlags-Workflow durchlaufen muss — ein normaler Chat-Satz reicht.
-- Als Benutzer möchte ich, dass die App auch dann funktioniert, wenn eine Seite das Scraping blockiert — durch direkten PDF-Upload an die KI.
+- As a user, I want to drop a URL or a PDF into a chat and tell the AI to evaluate the listing. Then I can capture listings as fast as I do today in Obsidian.
+- As a user, I want to give the AI instructions in the chat ("follow the agent link", "compare with the other listings in Skåne"). I do not want to fill in a form for this.
+- As a user, I want profile-specific working instructions (for example "for Swedish properties always check water/sewage") to be saved for good. I do not want to explain them again in every session.
+- As a user, I want to see and change basic, app-wide rules (image extraction, table format, grading scale) in one central place.
+- As a user, I want the AI to create a structured document from each listing (original text, translation, evaluation table, pros/cons), like the Obsidian files do today.
+- As a user, I want the AI to evaluate the available photos and pick a title image.
+- As a user, I want each listing graded A–F by clear criteria that the AI suggests. I want to understand why a criterion got its grade.
+- As a user, I want to change the weighting of single criteria. Then the total Score shows my real priorities.
+- As a user, I want to add, edit, or remove criteria directly, not only through free text.
+- As a user, I want to see all listings of a profile in a list that I can sort and filter.
+- As a user, I want to see a curated Ranking with a short AI reason for each entry, like today's Obsidian ranking list.
+- As a user, I want to see all listings with coordinates on a map, with colors by status.
+- As a user, I want to correct every field the AI filled by hand. The next chat turn must not overwrite my correction.
+- As a user, I want a manual correction or a chat follow-up to start a re-evaluation of the affected listing automatically.
+- As a user, I want to give a follow-up instruction to an already imported listing in the chat ("check again whether there is a garage"). I do not want to start a whole new import.
+- As a user, I want rejected listings to be kept with a comment, and I want the AI to learn from them. I do not want a separate suggestion workflow for this. One normal chat sentence is enough.
+- As a user, I want the app to work even when a site blocks scraping. I upload the PDF directly to the AI.

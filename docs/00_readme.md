@@ -1,71 +1,71 @@
 ---
 type: project
 created: 2026-07-28
-title: Property Finder OBS-Style — Projektbeschreibung
+title: Property Finder OBS-Style — Project Description
 project: property-finder-obs-style
 status: active
 started: 2026-07-28
 due:
-goal: Web-App-Spec für einen chat-gesteuerten Immobilien-Finder, der den bewährten Obsidian-Workflow (immobilienplan-schweden-portugal-oesterreich/schweden) ablöst
+goal: Web app spec for a chat-driven real-estate finder that replaces the proven Obsidian workflow
 tags:
   - property-finder-obs-style
   - beschreibung
   - konzept
 ---
-## Beschreibung
+## Description
 
-Nachfolgeprojekt von [[../dev-property-finder/00_readme|dev-property-finder]]. Die alte Spec war komplett durchgeplant (12 ADRs, volles MVP), bildet aber den **falschen Workflow** ab: formularbasiertes CRUD mit fest kodierten Scraper-Modulen pro Portal. Der Workflow, der in der Praxis tatsächlich funktioniert und produktiv genutzt wird, läuft in Obsidian: eine KI im Chat bekommt eine URL (oder ein PDF), liest das Inserat, folgt portalspezifischen Links, extrahiert Bilder, schreibt ein strukturiertes Dokument, bewertet es transparent nach Kriterien und pflegt Rangliste + Karte.
+This project follows a predecessor project. The old spec was fully planned (12 ADRs, full MVP). But it modeled the **wrong workflow**: form-based CRUD with hard-coded scraper modules for each portal. The workflow that really works, and that is used in daily practice, runs in Obsidian. An AI in a chat gets a URL (or a PDF). It reads the listing and follows portal-specific links. It extracts images and writes a structured document. It evaluates the listing openly by criteria. It also keeps the ranking and the map up to date.
 
-Diese App-Idee überträgt genau diesen Workflow in eine Web-App — mit Chat-Fenster als Herzstück statt Formularen, und mit persistentem, editierbarem Kontext pro Such-Profil (Pendant zu einer profil-eigenen AGENT.md) sowie einem globalen Kontext (Pendant zur vault-weiten AGENT.md).
+This app idea moves exactly that workflow into a web app. The chat window is the core, not forms. Each Search Profile has its own persistent, editable context. This is the same as a profile-specific AGENT.md. There is also a global context. This is the same as the vault-wide AGENT.md.
 
-Das transparente A–F-Bewertungsschema mit gewichteten Kriterien aus der alten Spec bleibt — das Modell war nie das Problem, nur die Art, wie Daten hineinkommen.
+The open A–F grading scheme with weighted criteria from the old spec stays. The model was never the problem. The problem was only how data got into it.
 
-## Grundidee
+## Core idea
 
-- **Chat statt Formular** als primäre Eingabe: der User gibt der KI im Chat Anweisungen ("bewerte dieses Inserat", "folge dem Makler-Link", "vergleiche mit den anderen"), keine Multi-Schritt-Formulare
-- **Agentische Inserats-Verarbeitung**: KI bekommt URL oder PDF, ruft Tools auf (Seite laden, Bilder extrahieren, Makler-Link folgen), schreibt strukturierten Datensatz + lesbaren Volltext (Original + Übersetzung + Bewertung + Vor-/Nachteile — wie die heutigen Obsidian-Dateien)
-- **Zwei Kontext-Ebenen, analog AGENT.md**:
-  - Globaler Kontext: app-weite Grundregeln, teils vorbelegt (Bildextraktion, Tabellenformat, Sternebewertung), vom User erweiterbar
-  - Profil-Kontext: pro Such-Profil eigene Anweisungen (z. B. "bei schwedischen Objekten immer Wasser/Abwasser prüfen und Booli-Makler-Link folgen")
-- **Transparentes Bewertungsschema**: AI-definierte Kriterien, A–F-Grade pro Kriterium, gewichteter Gesamt-Score — wie in [[../dev-property-finder/spec.md|dev-property-finder/spec.md]], aber Kriterien direkt editierbar, nicht nur über Fließtext-Reparse
-- **Liste, Ranking, Karte**: wie im Obsidian-Dashboard — sortierte Liste, KI-erzeugte Rangliste mit Kurzfazit, OSM-Karte mit Koordinaten
-- **Volle Nachvollziehbarkeit**: jedes KI-befüllte Feld bleibt manuell editierbar; Änderungen lösen Re-Evaluation aus
+- **Chat instead of forms** as the main input. The user gives the AI instructions in the chat ("evaluate this listing", "follow the agent link", "compare with the others"). There are no multi-step forms.
+- **Agentic listing processing**: the AI gets a URL or PDF. It calls Tools (load page, extract images, follow agent link). It writes a structured record and a readable full text (original + translation + evaluation + pros/cons — like today's Obsidian files).
+- **Two context levels, like AGENT.md**:
+  - Global context: app-wide base rules. Some are pre-filled (image extraction, table format, star rating). The user can extend them.
+  - Profile context: each Search Profile has its own instructions (for example "for Swedish properties always check water/sewage and follow the Booli agent link").
+- **Transparent grading scheme**: criteria defined by the AI, an A–F grade for each criterion, and a weighted total Score. This works as in the predecessor project. But you can edit criteria directly, not only by re-parsing free text.
+- **List, Ranking, map**: like the Obsidian dashboard — a sorted list, an AI-made ranking with a short summary, and an OSM map with coordinates.
+- **Full traceability**: every field the AI fills stays editable by hand. Changes trigger a re-evaluation.
 
-## Warum der alte Ansatz falsch war
+## Why the old approach was wrong
 
-| Alt (dev-property-finder) | Neu (dieses Projekt) |
+| Old (predecessor project) | New (this project) |
 |---|---|
-| Formular-CRUD pro Feld | Chat als primäres Interface |
-| Ein Fließtext pro Profil → KI parsed Kriterien einmalig | Laufender Dialog, Kriterien entstehen/wachsen iterativ, direkt editierbar |
-| Fest kodierter Scraper + HTML-Reduction-Pipeline pro Portal (ADR 0007/0008) | Agent mit Web-Fetch-Tool, portalspezifische Regeln als Text im Kontext, kein Custom-Code pro Portal |
-| Kein Umgang mit PDF-Fallback bei Anti-Bot-Blockade | PDF-Upload nativ unterstützt (Claude API kann PDFs direkt lesen) |
-| Kein persistenter "Wie soll ich arbeiten"-Kontext | Globaler + profil-spezifischer Kontext, AGENT.md-artig, persistent und editierbar |
+| Form CRUD for each field | Chat as the main interface |
+| One free text per profile → AI parses criteria once | Ongoing dialog. Criteria appear and grow step by step, and you can edit them directly |
+| Hard-coded scraper + HTML reduction pipeline for each portal | Agent with a web-fetch Tool. Portal-specific rules are text in the context. No custom code for each portal |
+| No PDF fallback when anti-bot protection blocks access | PDF upload is supported natively (the Claude API can read PDFs directly) |
+| No persistent "how should I work" context | Global + profile-specific context, like AGENT.md, persistent and editable |
 
 Details: [[spec.md]], [[CONTEXT.md]], [[user-stories.md]].
 
-## Ziel
+## Goal
 
-Eine belastbare Spec für eine Web-App, die den Obsidian-Workflow aus `immobilienplan-schweden-portugal-oesterreich/schweden` 1:1 abbildet und dabei das transparente Bewertungsmodell der alten dev-property-finder-Spec wiederverwendet.
+A solid spec for a web app. The app copies the reference Obsidian workflow 1:1. It reuses the transparent evaluation model from the old spec of the predecessor project.
 
-## Endkriterium
+## End criterion
 
-Spec ist vollständig genug, um Phase-1-Entwicklung (Chat-Interface + Kontext-Dateien + manuelle/URL-Ingestion + Bewertung + Liste) zu starten, ohne Rückfragen zur Grundarchitektur.
+The spec is complete enough to start phase 1 development (chat interface + Context Files + manual/URL ingestion + evaluation + list). No open questions about the base architecture should remain.
 
-## Notizen
+## Notes
 
-- Referenz-Workflow: [[../immobilienplan-schweden-portugal-oesterreich/schweden/00_readme|immobilienplan-schweden-portugal-oesterreich/schweden]] — dort stehen die "Arbeitsanweisungen für zukünftige Sessions", die 1:1 die Rolle des Profil-Kontexts übernehmen sollen
-- Alte Spec nicht löschen — Datenmodell (Kriterien, Grades, Gewichtung, Score-Formel) wird übernommen, nur die Ingestion- und Interaktions-Schicht ändert sich grundlegend
-- Testkatalog bewusst noch nicht angelegt — erst nach Validierung der Grundidee (siehe Nächste Schritte)
-- ADRs für Chat/Context/Agent-Architektur angelegt: [[docs/adr/README|docs/adr/]] (6 ADRs, eigene Nummerierung, ADR 0003/0004 lösen dev-property-finder ADR 0007/0008/0001 ab)
-- 2026-07-29: Wechsel des POC-Providers zu OpenCode wurde erwogen und verworfen — Machbarkeit (verlässlicher Multi-Turn-Tool-Use, natives PDF-Input) spricht für Claude; es bleibt bei [[docs/adr/0006-single-provider-for-agent-mvp|ADR 0006]]
-- Deployment auf einen entfernten Docker-Host (Image als Datei, ohne Registry): [[deployment]]
-- Server-Betrieb (Konfiguration, Start/Stop, Backup, MCP-Server-Nutzung): [[operations]]
+- The reference Obsidian workflow holds the "working instructions for future sessions". These should take over the role of the profile context 1:1.
+- Do not delete the old spec of the predecessor project. Its data model (criteria, grades, weighting, score formula) is kept. Only the ingestion and interaction layer changes completely.
+- The test catalog is deliberately not created yet. Create it only after the base idea is validated (see Next steps).
+- ADRs for the chat/context/agent architecture are created: [[docs/adr/README|docs/adr/]] (6 ADRs, own numbering; ADR 0003/0004 replace earlier decisions of the predecessor project).
+- 2026-07-29: Switching the POC provider to OpenCode was considered and rejected. Feasibility (reliable multi-turn Tool use, native PDF input) favors Claude. It stays with [[docs/adr/0006-single-provider-for-agent-mvp|ADR 0006]].
+- Deployment to a remote Docker host (image as a file, no registry): [[deployment]]
+- Server operations (configuration, start/stop, backup, using the MCP server): [[operations]]
 
-## Nächste Schritte
+## Next steps
 
-- [ ] Spec-Review mit Fokus auf Tool-Definitionen für den Agenten (spec/00_infrastructure_setup/00-03-llm-agent-integration.md)
-- [x] Entscheiden: eigenständiger Chat-Agent-Loop selbst bauen vs. Anthropic Agent SDK/Tool-Runner nutzen — entschieden: eigener, provider-unabhängiger Loop, siehe [[docs/adr/0007-agent-loop-provider-independent]]
-- [x] Prüfen, ob PDF-Direktupload an Claude API den pymupdf-Workaround aus dem Obsidian-Workflow vollständig ersetzt — entschieden, siehe [[docs/adr/0005-pdf-native-document-input]]
-- [x] ADRs für die zentralen Architekturentscheidungen angelegt (docs/adr/)
-- [ ] Testkatalog nach Vorbild [[../dev-property-finder/tests/index|dev-property-finder/tests/index]] aufsetzen
-- [ ] LM Studio / OpenCode Provider-Implementierung nach MVP-Validierung neu bewerten (siehe [[docs/adr/0006-single-provider-for-agent-mvp]])
+- [ ] Spec review focused on the Tool definitions for the Agent (spec/00_infrastructure_setup/00-03-llm-agent-integration.md)
+- [x] Decide: build a standalone chat-agent loop ourselves, or use the Anthropic Agent SDK/Tool-Runner — decided: own loop that does not depend on a provider, see [[docs/adr/0007-agent-loop-provider-independent]]
+- [x] Check whether uploading a PDF directly to the Claude API fully replaces the pymupdf workaround from the Obsidian workflow — decided, see [[docs/adr/0005-pdf-native-document-input]]
+- [x] Create ADRs for the central architecture decisions (docs/adr/)
+- [ ] Set up the test catalog
+- [ ] Re-evaluate the LM Studio / OpenCode provider implementation after MVP validation (see [[docs/adr/0006-single-provider-for-agent-mvp]])

@@ -1,6 +1,6 @@
 ---
 type: adr
-title: "Pending proposals live in chat_message.tool_calls JSONB, confirmed via REST endpoints"
+title: "Pending proposals are stored in chat_message.tool_calls JSONB and confirmed through REST endpoints"
 project: property-finder-obs-style
 status: accepted
 created: 2026-08-01
@@ -11,24 +11,24 @@ tags:
 
 ## Status
 
-Accepted — implements the confirm-before-apply principle of [[0004-unified-confirm-before-apply]] with a concrete data flow. Affects [[../../spec/00_infrastructure_setup/00-02-database-schema]], [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]], [[../../spec/01_mvp/01-02-context-files]].
+Accepted. This gives the confirm-before-apply principle of [[0004-unified-confirm-before-apply]] a concrete data flow. It affects [[../../spec/00_infrastructure_setup/00-02-database-schema]], [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]], and [[../../spec/01_mvp/01-02-context-files]].
 
 ## Context
 
-ADR 0004 established that `update_context` and `propose_criteria` must never silently apply changes — the user sees a diff and explicitly accepts or rejects. The implementation was left open: where does the pending proposal live between the Agent suggesting it and the user confirming it?
+ADR 0004 says that `update_context` and `propose_criteria` must never apply changes silently. The user sees a diff and accepts or rejects it. ADR 0004 did not say how to build this. Where does the pending proposal live between the Agent suggesting it and the user confirming it?
 
-The Agent loop is a multi-turn tool-use cycle inside a single HTTP request (POST → SSE stream). The loop cannot pause and wait for the user to click "Übernehmen" — by the time the diff card renders in the frontend, the HTTP request has already closed and the loop has moved on. So the pending state must live somewhere durable that outlasts the loop.
+The Agent loop is a multi-turn tool-use cycle inside a single HTTP request (POST → SSE stream). The loop cannot pause and wait for the user to click "Übernehmen" (means: "accept"). When the diff card shows in the frontend, the HTTP request has already closed and the loop has moved on. So the pending state must live in a durable place that outlasts the loop.
 
-Several places were considered: a dedicated `pending_change` table, a `status` column on `context_revision`, or holding the diff purely in the tool-call arguments that Claude already formatted correctly.
+We looked at several places: a separate `pending_change` table, a `status` column on `context_revision`, or keeping the diff only in the tool-call arguments that Claude already formatted correctly.
 
 ## Decision
 
-**The proposal lives in `chat_message.tool_calls` JSONB — no new tables, no staging layer.**
+**The proposal lives in `chat_message.tool_calls` JSONB. There are no new tables and no staging layer.**
 
-When the Agent calls `propose_criteria` or `update_context`, the tool implementation:
+When the Agent calls `propose_criteria` or `update_context`, the tool implementation does this:
 
 1. **Does NOT write** to `criterion` or `context.content_md`
-2. **Validates** the proposed change (e.g. criterion name is not empty, weight is 1–5)
+2. **Validates** the proposed change (for example: the criterion name is not empty, the weight is 1–5)
 3. **Returns** a result to the Agent loop:
    ```json
    {
@@ -37,11 +37,13 @@ When the Agent calls `propose_criteria` or `update_context`, the tool implementa
    }
    ```
 
-The `status` field tells the Agent: „Do not use this for `evaluate_listing` in the current turn. Tell the user they need to confirm.“ The Agent's chat reply will include both the `summary` text and Claude's own explanation. The frontend renders a diff card next to the message because the message's `tool_calls` array contains the full proposal.
+The `status` field tells the Agent: „Do not use this for `evaluate_listing` in the current turn. Tell the user they need to confirm.“ The Agent's chat reply includes both the `summary` text and Claude's own explanation. The frontend shows a diff card next to the message, because the `tool_calls` array of the message holds the full proposal.
+
+(The `summary` text means: "Proposed: criterion 'Nähe zum Wasser' (weight 3). Not active yet – waiting for confirmation.")
 
 ### Tool-Call Arguments as Source of Truth
 
-Claude already formats the proposal into the tool call arguments as valid JSON:
+Claude already puts the proposal into the tool call arguments as valid JSON:
 
 ```json
 // propose_criteria arguments
@@ -61,44 +63,44 @@ Claude already formats the proposal into the tool call arguments as valid JSON:
 }
 ```
 
-These arguments are stored automatically in `chat_message.tool_calls` (JSONB) as part of persisting the turn. No extra processing, no extraction step — they're already structured, already validated by Claude's tool-use schema, and already versioned by being part of a specific chat message.
+These arguments are saved automatically in `chat_message.tool_calls` (JSONB) when the turn is persisted. There is no extra processing and no extraction step. They are already structured. Claude's tool-use schema already validated them. They are already versioned, because they are part of one specific chat message.
 
 ### Confirm / Reject Endpoints
 
-Two REST endpoints, thin wrappers:
+There are two REST endpoints. Both are thin wrappers:
 
 | Endpoint | Behaviour |
 |---|---|
-| `POST /api/chat/messages/{msg_id}/tool-calls/{call_idx}/confirm` | Reads `chat_message.tool_calls[call_idx]`, validates against current state (no stale applies), writes to target table (`criterion` or `context`), returns `200` + updated state |
-| `POST /api/chat/messages/{msg_id}/tool-calls/{call_idx}/reject` | Returns `200` — the rejection is implicit by not confirming; this endpoint exists for the frontend to cleanly dismiss the card |
+| `POST /api/chat/messages/{msg_id}/tool-calls/{call_idx}/confirm` | Reads `chat_message.tool_calls[call_idx]`. Checks it against the current state (no stale applies). Writes to the target table (`criterion` or `context`). Returns `200` and the updated state |
+| `POST /api/chat/messages/{msg_id}/tool-calls/{call_idx}/reject` | Returns `200`. Rejecting means simply not confirming. This endpoint exists so the frontend can dismiss the card cleanly |
 
-The frontend hides the confirm/reject buttons once either endpoint returns success. The diff card remains visible in chat history but the buttons turn into a label ("Übernommen" / "Verworfen").
+The frontend hides the confirm and reject buttons after either endpoint returns success. The diff card stays visible in the chat history. The buttons turn into a label ("Übernommen" / "Verworfen", meaning "accepted" / "rejected").
 
 ### Stale Detection
 
-Between proposal and confirm, the user might have manually changed the affected entity. On confirm, the endpoint checks:
+Between the proposal and the confirm, the user may have changed the affected entity by hand. On confirm, the endpoint checks:
 
-- **For `propose_criteria`** (`action = "add"`): a criterion with the same name must not already exist. `409 Conflict` → frontend shows "Vorschlag veraltet — Kriterium existiert bereits."
-- **For `propose_criteria`** (`action = "edit"`): the referenced criterion must still exist and must not have been manually changed since the proposal. If changed → `409 Conflict` → "Vorschlag veraltet."
-- **For `update_context`**: always applies (appending/merging text), because the current `content_md` is compared as a base — the proposal is a plaintext append, not a structured patch. If the base text changed, `409 Conflict` → frontend shows the current vs. proposed diff so the user can decide.
-- **For `reject`**: no validation needed — accepting nothing is always safe.
+- **For `propose_criteria`** (`action = "add"`): a criterion with the same name must not exist yet. If it does, it returns `409 Conflict`. The frontend then shows "Vorschlag veraltet — Kriterium existiert bereits." (means: "Proposal is outdated — criterion already exists.")
+- **For `propose_criteria`** (`action = "edit"`): the referenced criterion must still exist. It must not have been changed by hand since the proposal. If it changed, it returns `409 Conflict` and the frontend shows "Vorschlag veraltet." (means: "Proposal is outdated.")
+- **For `update_context`**: it always applies (appending or merging text). The current `content_md` is compared as a base. The proposal is a plain-text append, not a structured patch. If the base text changed, it returns `409 Conflict`. The frontend then shows the current text and the proposed text as a diff, so the user can decide.
+- **For `reject`**: no check is needed. Accepting nothing is always safe.
 
-No automatic merging, no diff3. Simple and predictable.
+There is no automatic merging and no diff3. This keeps it simple and predictable.
 
 ### Re-Evaluation After Confirm
 
-Once a Criteria proposal is confirmed (new or changed Criterion), the backend triggers full re-evaluation of all Listings in the profile — exactly as specified in [[../../spec/01_mvp/01-04-criteria-and-scoring]] and ADR 0004's consequences. The difference: now the trigger is the confirm endpoint, not an implicit agent-turn side effect.
+After a Criteria proposal is confirmed (a new or changed Criterion), the backend starts a full re-evaluation of all Listings in the profile. This is exactly as described in [[../../spec/01_mvp/01-04-criteria-and-scoring]] and in the consequences of ADR 0004. The difference: the trigger is now the confirm endpoint, not a hidden side effect of the agent turn.
 
 ## Alternatives considered
 
-- **Dedicated `pending_change` table** — rejected: duplicates the proposal data that already exists in `tool_calls` JSONB. Adds a schema migration, a repository, and a cleanup problem (when to delete stale pending rows?).
-- **`status` column on `context_revision`** — rejected: `context_revision` is an append-only audit log with snapshot-before-change semantics. Making it also a staging table conflates two concerns (history vs. proposals) and doesn't cover `propose_criteria` at all.
-- **Hold pending state purely in frontend memory** (no server-side storage, the tool call is extracted client-side from the SSE stream and the confirm POST sends the full proposal back) — rejected: fragile on reload, and the server can't validate what's being applied without storing the proposal somewhere server-side. `tool_calls` JSONB is that server-side store without any extra infrastructure.
+- **A separate `pending_change` table** — rejected. It would copy proposal data that already exists in the `tool_calls` JSONB. It adds a schema migration, a repository, and a cleanup problem (when do we delete stale pending rows?).
+- **A `status` column on `context_revision`** — rejected. `context_revision` is an append-only audit log that stores a snapshot before each change. If it also became a staging table, it would mix two jobs (history and proposals). It also would not cover `propose_criteria` at all.
+- **Keep the pending state only in frontend memory** (no server-side storage; the client takes the tool call from the SSE stream, and the confirm POST sends the full proposal back) — rejected. It breaks easily on reload. Also, the server cannot check what is being applied unless it stores the proposal on the server. The `tool_calls` JSONB is that server-side store, with no extra infrastructure.
 
 ## Consequences
 
-- `context_revision` stays a pure audit log — no `status` column, no pending rows. A revision is created only when `content_md` is actually changed (on confirm), not on proposal.
-- The `update_context` and `propose_criteria` tool implementations are read-only from the perspective of their target tables — they validate and return, they don't write.
-- Two lightweight REST endpoints, ~30 lines each: validate, write, return.
-- The frontend confirm-card component receives its data from the SSE stream (tool-call arguments already in the event), not from a separate pending-proposals API — the chat message *is* the API response.
-- Stale detection is simple (check if target still exists / hasn't changed) but not lossless (the user can't "merge" a stale proposal with manual edits automatically). Accepted for MVP: in a single-user app, the user sees the conflict, understands it, and asks the Agent again if needed.
+- `context_revision` stays a pure audit log. It has no `status` column and no pending rows. A revision is created only when `content_md` really changes (on confirm), not on proposal.
+- The `update_context` and `propose_criteria` tool implementations are read-only for their target tables. They validate and return. They do not write.
+- There are two light REST endpoints, about 30 lines each: validate, write, return.
+- The frontend confirm-card component gets its data from the SSE stream (the tool-call arguments are already in the event). It does not use a separate pending-proposals API. The chat message *is* the API response.
+- Stale detection is simple (check whether the target still exists and has not changed). It is not lossless: the user cannot automatically "merge" a stale proposal with manual edits. We accept this for the MVP. In a single-user app, the user sees the conflict, understands it, and asks the Agent again if needed.

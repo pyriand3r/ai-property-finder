@@ -17,13 +17,15 @@ tags:
 
 ## Overview
 
-The fixed system preamble is a plaintext string held as a constant in `internal/agent/context_builder.go`. It is the first block in the assembled system prompt — before Global Context and Profile Context ([[00-03-llm-agent-integration#Context Assembly Detail]]). It steers the Agent's behaviour across every turn and every profile.
+The fixed system preamble is a plaintext string. It is held as a constant in `internal/agent/context_builder.go`. It is the first block in the assembled system prompt, before Global Context and Profile Context ([[00-03-llm-agent-integration#Context Assembly Detail]]). It guides the Agent's behaviour in every turn and every profile.
 
-It is **not** user-editable. Changes to the preamble require a backend deploy.
+The user **cannot** edit it. To change the preamble, you must deploy the backend.
 
 ---
 
 ## Preamble Text
+
+The text below is the literal German prompt. It is kept verbatim.
 
 ```
 Du bist ein Immobilien-Bewertungsassistent. Deine Antworten sind auf Deutsch.
@@ -93,7 +95,7 @@ ob du weitermachen sollst.
 
 ## Design Principles
 
-- **Kein Markdown-Template, keine Variablen-Interpolation.** Reiner Text, eine Go-String-Konstante. Änderungen sind Code-Änderungen, versioniert in Git.
-- **Steuernd, nicht beschreibend.** Jeder Satz ist eine Handlungsanweisung ("Nutze sie proaktiv", "Bewerte NIE ohne Kriterien"), keine Erklärung ("Diese App hilft dir beim..."). Der Agent muss kein Konzept verstehen, sondern wissen was zu tun ist.
-- **Reihenfolge = Priorität.** Spätere Blöcke (Profile Context) überschreiben frühere (Preamble) per natural-language override, kein formales Merging.
-- **Deutsch.** Die Zielsprache für den Nutzer. Der Agent antwortet auf Deutsch, extrahiert aber Quelltext in Originalsprache.
+- **No Markdown template, no variable interpolation.** The preamble is plain text and a single Go string constant. Changes are code changes, versioned in Git.
+- **Give orders, do not describe.** Every sentence is an instruction ("Nutze sie proaktiv", means "Use them proactively"; "Bewerte NIE ohne Kriterien", means "NEVER rate without criteria"). It is not an explanation ("Diese App hilft dir beim...", means "This app helps you with..."). The Agent does not need to understand a concept. It only needs to know what to do.
+- **Order = priority.** Later blocks (Profile Context) override earlier ones (Preamble) by natural-language override. There is no formal merging.
+- **German.** German is the target language for the user. The Agent answers in German, but it extracts source text in the original language.

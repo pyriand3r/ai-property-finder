@@ -19,13 +19,13 @@ tags:
 
 ## Overview
 
-Two Markdown text stores steer the Agent's behaviour across turns — see [[../CONTEXT#Context File]]. This spec covers how they're seeded, edited, and how Agent-proposed changes get confirmed.
+Two Markdown text stores guide how the Agent behaves across turns. See [[../CONTEXT#Context File]]. This spec explains how they are seeded and edited. It also explains how the user confirms changes that the Agent proposes.
 
 ---
 
 ## Global Context
 
-One row, app-wide (`context.scope = 'global'`). Seeded on first migration with a default covering the conventions observed in the reference Obsidian workflow ([[../../immobilienplan-schweden-portugal-oesterreich/schweden/00_readme#⚙️ Arbeitsanweisungen für zukünftige Sessions]]):
+There is one row for the whole app (`context.scope = 'global'`). The first migration seeds it with a default text. The default covers the habits seen in the reference Obsidian workflow:
 
 ```markdown
 ## Bildauswertung
@@ -44,30 +44,30 @@ One row, app-wide (`context.scope = 'global'`). Seeded on first migration with a
 - Score 0–100 wird automatisch aus Grades × Gewichtung berechnet
 ```
 
-Editable by the user at any time via `ContextEditorView.vue`. The Agent may propose additions (e.g. after repeatedly seeing the user ask for the same thing across multiple profiles) — same confirmation flow as Profile Context, below.
+The user can edit it at any time in `ContextEditorView.vue`. The Agent may propose additions. For example, it may see the user ask for the same thing again and again across several profiles. It uses the same confirmation flow as the Profile Context, described below.
 
 ---
 
 ## Profile Context
 
-One row per Search Profile (`context.scope = 'profile'`), empty by default. Grows from two sources:
+There is one row per Search Profile (`context.scope = 'profile'`). It is empty by default. It grows from two sources:
 
-1. **User writes directly** in the editor — e.g. pastes in the exact "Makler-Link immer folgen" instruction from the reference workflow
-2. **Agent proposes** after a conversational correction — e.g. user says "bei Booli-Inseraten immer dem 'Läs mer hos mäklaren'-Link folgen, die Beschreibung dort ist besser", and the Agent's `update_context` tool call turns that into a durable instruction
+1. **The user writes directly** in the editor. For example, the user pastes the exact "Makler-Link immer folgen" instruction (means: "always follow the agent link") from the reference Obsidian workflow.
+2. **The Agent proposes** a change after the user corrects it in conversation. For example, the user says "bei Booli-Inseraten immer dem 'Läs mer hos mäklaren'-Link folgen, die Beschreibung dort ist besser" (means: "for Booli listings, always follow the 'Läs mer hos mäklaren' link, the description there is better"). The Agent's `update_context` tool call turns this into a lasting instruction.
 
 ---
 
 ## Confirmation
 
-Agent-proposed Context changes are **never applied silently**. The `update_context` tool call ([[../00_infrastructure_setup/00-03-llm-agent-integration#Tool Catalogue]]) validates the proposal and returns `{"status": "pending_confirmation", ...}` without writing to `context.content_md`. The full proposal lives in `chat_message.tool_calls` JSONB — no separate staging table. The chat turn renders a diff card (current text vs. proposed change) with **Übernehmen** / **Verwerfen** buttons.
+The Agent's Context changes are **never applied silently**. The `update_context` tool call ([[../00_infrastructure_setup/00-03-llm-agent-integration#Tool Catalogue]]) checks the proposal. It returns `{"status": "pending_confirmation", ...}` and does not write to `context.content_md`. The full proposal is stored in the `chat_message.tool_calls` JSONB. There is no separate staging table. The chat turn shows a diff card (current text vs. proposed change). The card has two buttons: **Übernehmen** (means: "Accept") and **Verwerfen** (means: "Discard").
 
-On **Übernehmen**, the frontend calls `POST /api/chat/messages/{msg_id}/tool-calls/{call_idx}/confirm`. The backend reads the tool-call arguments from `chat_message`, appends onto the **current** `context.content_md` (fetched fresh at confirm time, not the text as it was when proposed), and creates a `context_revision` row with `changed_by = 'agent'` linked to the confirming `chat_message`. Append is the only supported operation, so there's no base-text staleness check to perform — appending onto whatever the current text is can never lose data, unlike a hypothetical replace operation would.
+On **Übernehmen**, the frontend calls `POST /api/chat/messages/{msg_id}/tool-calls/{call_idx}/confirm`. The backend reads the tool-call arguments from `chat_message`. It appends them to the **current** `context.content_md`. It reads this text fresh at confirm time, not as it was when the Agent proposed the change. It then creates a `context_revision` row with `changed_by = 'agent'`, linked to the confirming `chat_message`. Append is the only supported operation. So there is no check for stale base text. Appending to the current text can never lose data. A replace operation could lose data.
 
-On **Verwerfen**, `POST .../reject` — no state change.
+On **Verwerfen**, the frontend calls `POST .../reject`. No state changes.
 
-Both endpoints are idempotent: once a call has been confirmed or rejected, acting on it again returns `409 Conflict` instead of silently re-applying or no-op'ing. The Confirm-Card's Übernehmen/Verwerfen buttons reflect this persisted status — reopening the Chat tab or reloading the page shows the card's actual resolved state, not a reset-to-pending button pair ([[../../docs/adr/0017-tool-call-status-in-jsonb]]).
+Both endpoints are idempotent. Once a call is confirmed or rejected, acting on it again returns `409 Conflict`. It does not silently apply it again, and it does not silently do nothing. The Übernehmen/Verwerfen buttons on the Confirm-Card show this saved status. If the user reopens the Chat tab or reloads the page, the card shows its real resolved state. It does not go back to the pending button pair ([[../../docs/adr/0017-tool-call-status-in-jsonb]]).
 
-Direct user edits in the editor write immediately (no confirmation needed) and produce a `context_revision` row with `changed_by = 'user'`.
+Direct user edits in the editor are written at once, with no confirmation. They create a `context_revision` row with `changed_by = 'user'`.
 
 Full rationale: [[../../docs/adr/0009-proposal-pending-in-tool-calls]], [[../../docs/adr/0017-tool-call-status-in-jsonb]].
 
@@ -75,35 +75,16 @@ Full rationale: [[../../docs/adr/0009-proposal-pending-in-tool-calls]], [[../../
 
 ## Editor
 
-`ContextEditor.vue` (Layer 7.2) — shared by both scopes via `useContextEditor.ts`, a composable
-taking the four operations (fetch/update/history/restore) as injected functions rather than
-duplicating load/save/error state per scope.
+`ContextEditor.vue` (Layer 7.2) is shared by both scopes through `useContextEditor.ts`. This composable takes the four operations (fetch/update/history/restore) as injected functions. This avoids copying the load, save, and error state for each scope.
 
-- View mode renders `content_md` as Markdown (`marked` + `DOMPurify`, same pipeline as
-  `ListingDocument.vue`'s Listing Document preview); **Bearbeiten** switches to a raw-Markdown
-  `NInput` textarea with explicit **Speichern**/**Abbrechen** — no preview *toggle* while editing,
-  matching the Bearbeiten/Speichern/Abbrechen convention introduced for `ListingForm.vue`
-  ([[01-10-listing-views-overhaul]]) rather than a three-state edit/preview/view switch
-- History panel lists `context_revision` rows newest-first, each showing a **Nutzer**/**Agent**
-  tag (`changed_by`), the timestamp, and a **Wiederherstellen** action. Wiederherstellen asks for
-  confirmation first (same `useDialog()` pattern as `ChatView.vue`'s "Neue Session starten?"),
-  since it overwrites the current text — though nothing is actually lost: restoring is implemented
-  as an ordinary edit whose new text happens to come from history, so the pre-restore text is
-  itself snapshotted as a new revision, same as any other change
-- `POST /api/context/global/revisions/{revisionId}/restore` and
-  `POST /api/profiles/{profileId}/context/revisions/{revisionId}/restore` — the backend checks the
-  revision's `context_id` matches the target Context before applying it (`400` otherwise), so a
-  revision id from one Context (e.g. another profile's history) can't be replayed onto a different
-  one
-- Profile Context editor is reachable from the profile's Chat view (`ProfileContextPanel.vue` in
-  the "Context" tab, `ProfileShellView.vue`); Global Context editor
-  (`GlobalContextView.vue`, route `/context`) is reachable from a "Globaler Kontext" link on the
-  profile list page — no dedicated Settings shell exists yet, so this is the pragmatic
-  Settings-adjacent entry point for now, not nested under any one profile
+- View mode shows `content_md` as Markdown (`marked` + `DOMPurify`, the same pipeline as the Listing Document preview in `ListingDocument.vue`). **Bearbeiten** (means: "Edit") switches to a raw-Markdown `NInput` textarea. It has explicit **Speichern** (means: "Save") and **Abbrechen** (means: "Cancel") buttons. There is no preview *toggle* while editing. This follows the Bearbeiten/Speichern/Abbrechen pattern first used for `ListingForm.vue` ([[01-10-listing-views-overhaul]]). It avoids a three-state edit/preview/view switch.
+- The history panel lists `context_revision` rows, newest first. Each row shows a **Nutzer** (means: "User") or **Agent** tag (`changed_by`), the timestamp, and a **Wiederherstellen** (means: "Restore") action. Wiederherstellen asks for confirmation first. It uses the same `useDialog()` pattern as "Neue Session starten?" in `ChatView.vue`. It asks because it overwrites the current text. But nothing is really lost. Restore works as a normal edit whose new text comes from the history. So the text from before the restore is saved as a new revision, like any other change.
+- `POST /api/context/global/revisions/{revisionId}/restore` and `POST /api/profiles/{profileId}/context/revisions/{revisionId}/restore`: the backend checks that the revision's `context_id` matches the target Context before it applies it. If not, it returns `400`. So a revision id from one Context (for example, another profile's history) cannot be replayed onto a different Context.
+- The user reaches the Profile Context editor from the profile's Chat view (`ProfileContextPanel.vue` in the "Context" tab, `ProfileShellView.vue`). The user reaches the Global Context editor (`GlobalContextView.vue`, route `/context`) through a "Globaler Kontext" link (means: "Global context") on the profile list page. There is no dedicated Settings shell yet. So this is a practical entry point near Settings for now. It is not nested under any one profile.
 
 ---
 
 ## Open Questions / TBD
 
-- Whether Profile Context should support `{{profile_name}}`-style variable interpolation, or stay pure freeform text like today — leaning freeform, since the reference workflow never needed it
-- Whether a size warning is needed once a Profile Context grows large enough to meaningfully eat into the token budget for every turn
+- Should Profile Context support variables like `{{profile_name}}`? Or should it stay plain free text, as it is today? The current lean is free text, because the reference Obsidian workflow never needed variables.
+- Is a size warning needed once a Profile Context grows large enough to use a real share of the token budget on every turn?

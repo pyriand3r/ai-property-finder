@@ -18,23 +18,23 @@ tags:
 
 ## Overview
 
-A user-review finding: the Detail View has no way to jot down freeform running notes about a Listing ("called the agent, viewing booked for Saturday", "neighbor mentioned the roof was redone in 2019"). This is **not** the same thing as `seller_notes` — that's a single field about the seller/contact person, part of the seller-info group ([[01-07-manual-review-and-edit]]). Listing Notes are the user's own notes about the property, as many as they want, each its own timestamped, independently editable/deletable object.
+A user review found a gap. The Detail View has no way to write freeform running notes about a Listing. Examples: "called the agent, viewing booked for Saturday" or "neighbor mentioned the roof was redone in 2019". This is **not** the same as `seller_notes`. That is a single field about the seller or contact person. It is part of the seller-info group ([[01-07-manual-review-and-edit]]). Listing Notes are the user's own notes about the property. The user can add as many as they want. Each note is its own object with a timestamp. Each can be edited and deleted on its own.
 
-The `listing_note` table already exists in the schema (carried over unchanged from dev-property-finder, see `backend/internal/db/migrations/000001_init.up.sql`) but has zero application code on top of it — this spec builds the full stack.
+The `listing_note` table already exists in the schema. It was carried over unchanged from the predecessor project (see `backend/internal/db/migrations/000001_init.up.sql`). But no application code uses it yet. This spec builds the full stack.
 
 ---
 
 ## Data Model
 
-`listing_note`: `id, listing_id, content, created_at` today. This spec adds `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()` via a new migration (`000003_listing_note_updated_at`) — every other editable table in this schema already has one, and notes need it since they're edit-in-place, not delete-and-recreate.
+`listing_note` has these columns today: `id, listing_id, content, created_at`. This spec adds `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()` with a new migration (`000003_listing_note_updated_at`). Every other editable table in this schema already has this column. Notes need it because they are edited in place, not deleted and recreated.
 
-No `title` field — a note is a single content block, same as the reference workflow's freeform per-listing notes.
+There is no `title` field. A note is a single content block, like the freeform per-listing notes in the reference Obsidian workflow.
 
 ---
 
 ## API
 
-`internal/db/repository/note_repo.go` — mirrors the shape of `image_repo.go` (`Create`, `GetByID`, `ListByListing`, `Delete`), plus `Update` for in-place edits:
+`internal/db/repository/note_repo.go` has the same shape as `image_repo.go` (`Create`, `GetByID`, `ListByListing`, `Delete`). It also has `Update` for edits in place:
 
 ```go
 type NoteRepository interface {
@@ -45,9 +45,9 @@ type NoteRepository interface {
 }
 ```
 
-`internal/service/note_service.go` — thin orchestration (validate non-empty content, verify the listing exists on create), same shape as `internal/service/image_service.go`'s simpler paths.
+`internal/service/note_service.go` is thin orchestration. It checks that the content is not empty. On create, it checks that the listing exists. It has the same shape as the simpler paths in `internal/service/image_service.go`.
 
-`internal/api/notes.go` + routes, nested under the listing (matches the existing `/api/listings/{listingId}/images` pattern):
+`internal/api/notes.go` and its routes are nested under the listing. This matches the existing `/api/listings/{listingId}/images` pattern:
 
 | Method | Path | |
 |---|---|---|
@@ -56,21 +56,21 @@ type NoteRepository interface {
 | `PATCH` | `/api/notes/{noteId}` | Update content |
 | `DELETE` | `/api/notes/{noteId}` | Delete |
 
-`listing_note.listing_id` already cascades on listing delete (`ON DELETE CASCADE`, confirmed in the existing migration) — no extra cleanup needed in `ListingService.Delete`.
+`listing_note.listing_id` already cascades when a listing is deleted (`ON DELETE CASCADE`, confirmed in the existing migration). `ListingService.Delete` needs no extra cleanup.
 
 ---
 
 ## Frontend
 
-A "Notizen" section in `ListingDetailPanel.vue` ([[01-10-listing-views-overhaul]]), separate from the seller-info field group:
+`ListingDetailPanel.vue` ([[01-10-listing-views-overhaul]]) gets a "Notizen" section (meaning "notes"). It is separate from the seller-info field group:
 
-- "Neue Notiz" button opens an inline empty card in edit mode
-- Each note renders as its own card: content text, timestamp, edit and delete icon buttons in the top-right corner (matching the review's exact description)
-- Edit-in-place per card (own local edit-mode state, own Speichern/Abbrechen) — independent of the Listing form's Bearbeiten/Speichern batching from [[01-10-listing-views-overhaul]]; notes save individually since each is its own object, not a field on the Listing
-- Delete asks for confirmation (matches the app's existing delete-confirmation pattern elsewhere, e.g. Criteria/Images)
+- The "Neue Notiz" button (meaning "new note") opens an empty inline card in edit mode.
+- Each note shows as its own card. The card has the content text, a timestamp, and edit and delete icon buttons in the top-right corner (this matches the exact description in the review).
+- Each card is edited in place. It has its own local edit-mode state and its own Speichern/Abbrechen buttons. This is independent of the Bearbeiten/Speichern batching of the Listing form from [[01-10-listing-views-overhaul]]. Notes save one by one. Each note is its own object, not a field on the Listing.
+- Delete asks for confirmation. This matches the delete-confirmation pattern the app already uses elsewhere, for example for Criteria and Images.
 
 ---
 
 ## Verification
 
-`curl` against the new endpoints directly (create, list, update, delete a note on a real listing, confirm cascade-delete removes notes when the listing is deleted), then a manual click-through: add a note, edit it, delete it, confirm the list order (newest first) and that another Listing's notes never appear.
+First, use `curl` directly on the new endpoints. Create, list, update, and delete a note on a real listing. Confirm that deleting the listing also deletes its notes (cascade). Then click through by hand: add a note, edit it, delete it. Confirm the list order (newest first). Confirm that notes of another Listing never show up.

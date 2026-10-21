@@ -1,6 +1,6 @@
 ---
 type: adr
-title: "Agent loop is built provider-independently, not tied to Anthropic's SDK"
+title: "The Agent loop is provider-independent, not tied to Anthropic's SDK"
 project: property-finder-obs-style
 status: accepted
 created: 2026-08-01
@@ -11,24 +11,38 @@ tags:
 
 ## Status
 
-Accepted — affects [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]], [[../../spec/00_infrastructure_setup/00-01-tech-stack]].
+Accepted. It affects [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]] and [[../../spec/00_infrastructure_setup/00-01-tech-stack]].
 
 ## Context
 
-[[0006-single-provider-for-agent-mvp]] decided that MVP ships with Claude API as the sole provider. A natural follow-up question is whether to use Anthropic's own `ToolRunner` / Agent SDK to drive the multi-turn tool-use loop (`client.beta.messages.tool_runner`), or to build the dispatch loop ourselves in `internal/agent/loop.go`.
+[[0006-single-provider-for-agent-mvp]] decided that the MVP ships with the Claude API as the only provider. A natural next question follows. Should we use Anthropic's own `ToolRunner` / Agent SDK to drive the multi-turn tool-use loop (`client.beta.messages.tool_runner`)? Or should we build the dispatch loop ourselves in `internal/agent/loop.go`?
 
-Anthropic's SDK would handle: buffering partial tool calls, dispatching results back into the conversation, streaming deltas, and stopping the loop when the model returns only text. That is real implementation weight saved. But the SDK is Claude-specific — it speaks Anthropic's event types, tool-call JSON schema, and streaming format. Every alternative provider (LM Studio, OpenCode) uses OpenAI-compatible tool-call formats, which differ in both HTTP schema and streaming event structure.
+Anthropic's SDK would handle these things:
 
-Since [[0006-single-provider-for-agent-mvp]] explicitly defers LM Studio and OpenCode — not drops them — the question is not *whether* a second provider will arrive, but *when*. Building the loop directly on Anthropic's SDK would mean either:
+- buffering partial tool calls
+- sending results back into the conversation
+- streaming deltas
+- stopping the loop when the model returns only text
 
-1. Rewriting the loop for each new provider (duplicated, drift-prone orchestration logic), or
-2. Mapping every provider's tool-call format *into* Anthropic's SDK-internal shape (a leaky abstraction that breaks the moment Anthropic extends their protocol).
+That saves real implementation work. But the SDK is Claude-specific. It uses Anthropic's event types, tool-call JSON schema, and streaming format. Every other provider (LM Studio, OpenCode) uses OpenAI-compatible tool-call formats. These differ in both HTTP schema and streaming event structure.
+
+[[0006-single-provider-for-agent-mvp]] defers LM Studio and OpenCode. It does not drop them. So the question is not *whether* a second provider will come, but *when*. Building the loop directly on Anthropic's SDK would mean one of two things:
+
+1. Rewrite the loop for each new provider (duplicated orchestration logic that is prone to drift), or
+2. Map every provider's tool-call format *into* the internal shape of Anthropic's SDK (a leaky abstraction that breaks as soon as Anthropic extends its protocol).
 
 ## Decision
 
-The agent loop (`internal/agent/loop.go`) is built as provider-independent orchestration code. It owns: assembling the system prompt from preamble + context files, sending the full message/tool history to the current provider, receiving text deltas and tool-call requests in a provider-normalized form, dispatching tool calls against the local tool registry, feeding results back into the conversation, and stopping when the model returns no further tool calls.
+The agent loop (`internal/agent/loop.go`) is provider-independent orchestration code. It owns these jobs:
 
-The `internal/agent.Provider` interface exists at the boundary between loop and LLM. It normalizes four things that differ across providers:
+- building the system prompt from the preamble and context files
+- sending the full message and tool history to the current provider
+- receiving text deltas and tool-call requests in a provider-normalized form
+- dispatching tool calls against the local tool registry
+- feeding results back into the conversation
+- stopping when the model returns no more tool calls
+
+The `internal/agent.Provider` interface sits at the border between the loop and the LLM. It normalizes four things that differ across providers:
 
 ```go
 type Provider interface {
@@ -67,22 +81,22 @@ type ToolCall struct {
 }
 ```
 
-The `Provider` interface does **not** know what the tools do, does **not** dispatch them, and does **not** decide whether to loop again — those all belong to `loop.go`.
+The `Provider` interface does **not** know what the tools do. It does **not** dispatch them. It does **not** decide whether to loop again. All of that belongs to `loop.go`.
 
-For the Claude implementation (`internal/agent/provider/claude/`): the provider translates our normalized event stream from Anthropic's SSE event types (`content_block_delta`, `content_block_stop` for tool calls, `message_delta` for usage). For future LM Studio / OpenCode implementations: the same interface is implemented against OpenAI-compatible streaming tool-use events.
+In the Claude implementation (`internal/agent/provider/claude/`), the provider turns Anthropic's SSE event types into our normalized event stream. These types are `content_block_delta`, `content_block_stop` for tool calls, and `message_delta` for usage. Future LM Studio / OpenCode implementations will implement the same interface against OpenAI-compatible streaming tool-use events.
 
-The cost of this abstraction is the extra translation layer (~100–150 lines of event-mapping code per provider). The benefit is that `loop.go` never changes when a new provider is added — and specifically never needs to learn a second tool-call JSON schema or streaming format.
+The cost of this abstraction is an extra translation layer (~100–150 lines of event-mapping code per provider). The benefit is that `loop.go` never changes when a new provider is added. In particular, it never has to learn a second tool-call JSON schema or streaming format.
 
 ## Alternatives considered
 
-- **Build directly on Anthropic's SDK for MVP, abstract later** — rejected: the loop is the core of the application. Rewriting it when a second provider arrives would touch every integration point (tool dispatch, error handling, SSE bridge to frontend, cancellation, token tracking) simultaneously. That kind of rewrite is a source of regressions in exactly the place where correctness matters most.
-- **Abstract at a higher level — make the whole loop pluggable** — rejected: a loop-per-provider means every provider ships its own orchestration logic, including "stop condition," "what to do on tool error," "ordering guarantees." Those are application-level semantics, not provider-level; duplicating them guarantees drift.
-- **Use the OpenAI-compatible format as the canonical format** (since LM Studio and OpenCode both speak it, and Anthropic has an OpenAI-compatible endpoint) — considered but rejected for MVP: Anthropic's native format has richer tool-use metadata (e.g. `server_tool_use` vs `tool_use`) and the OpenAI-compatible proxy may lag behind native features. The abstraction cost of one extra provider implementation is low enough to not need this shortcut.
+- **Build directly on Anthropic's SDK for MVP, abstract later** — rejected. The loop is the core of the application. Rewriting it when a second provider arrives would touch every integration point at once: tool dispatch, error handling, the SSE bridge to the frontend, cancellation, and token tracking. Such a rewrite causes regressions in exactly the place where correctness matters most.
+- **Abstract at a higher level — make the whole loop pluggable** — rejected. With a loop per provider, every provider ships its own orchestration logic. That includes the "stop condition," "what to do on tool error," and "ordering guarantees." These are application-level rules, not provider-level rules. Duplicating them guarantees drift.
+- **Use the OpenAI-compatible format as the main format** (LM Studio and OpenCode both speak it, and Anthropic has an OpenAI-compatible endpoint) — considered but rejected for MVP. Anthropic's native format has richer tool-use metadata (for example `server_tool_use` vs `tool_use`). The OpenAI-compatible proxy may also lag behind native features. One extra provider implementation costs little enough that we do not need this shortcut.
 
 ## Consequences
 
-- `internal/agent/loop.go` is ~200–400 lines of orchestration code that must be correct — the tool-dispatch loop, error handling, cancellation, and streaming bridge are all owned here
-- `internal/agent.Provider` is the seam that insulates the loop from provider-specific wire formats — implemented once per provider, tested independently
-- The Claude-specific provider (`internal/agent/provider/claude/`) maps Anthropic's streaming SSE events to our normalized `ChatEvent` stream — this mapping is the only provider-specific code that exists at MVP time
-- `internal/agent/tools.go` defines the Tool struct and the local dispatch registry — unchanged from the original spec, but now clearer that it's loop-owned, not provider-owned
-- The frontend SSE bridge (`useChatStream`) receives `ChatEvent` equivalents serialized as JSON over the existing SSE channel — the streaming transport from loop to frontend is provider-independent from day one
+- `internal/agent/loop.go` is ~200–400 lines of orchestration code that must be correct. It owns the tool-dispatch loop, error handling, cancellation, and the streaming bridge.
+- `internal/agent.Provider` is the seam that shields the loop from provider-specific wire formats. It is implemented once per provider and tested on its own.
+- The Claude-specific provider (`internal/agent/provider/claude/`) maps Anthropic's streaming SSE events to our normalized `ChatEvent` stream. This mapping is the only provider-specific code that exists at MVP time.
+- `internal/agent/tools.go` defines the Tool struct and the local dispatch registry. It is unchanged from the original spec. It is now clearer that the loop owns it, not the provider.
+- The frontend SSE bridge (`useChatStream`) receives `ChatEvent` equivalents serialized as JSON over the existing SSE channel. The streaming transport from loop to frontend is provider-independent from day one.

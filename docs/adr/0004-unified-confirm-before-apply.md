@@ -11,26 +11,33 @@ tags:
 
 ## Status
 
-Accepted — carries forward the principle of [[../../../dev-property-finder/docs/adr/0001-proposal-requires-user-confirmation|dev-property-finder ADR 0001]], replaces its mechanism. Affects [[../../spec/01_mvp/01-02-context-files#Confirmation]], [[../../spec/01_mvp/01-04-criteria-and-scoring#Rejection Feedback, Reimagined]], [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#Tool Catalogue]].
+Accepted. It keeps the principle of an earlier decision in the predecessor project (proposals need user confirmation) but replaces its mechanism. It affects [[../../spec/01_mvp/01-02-context-files#Confirmation]], [[../../spec/01_mvp/01-04-criteria-and-scoring#Rejection Feedback, Reimagined]], and [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#Tool Catalogue]].
 
 ## Context
 
-dev-property-finder ADR 0001 established a real principle worth keeping: AI-proposed changes that affect scoring must never apply silently — the user has to see a diff and explicitly accept it. It implemented that principle as one dedicated entity, `profile_proposal`, wired to exactly one trigger (Rejection). In the chat-driven model, the same need for "propose, don't apply" shows up in at least two other places that have nothing to do with Rejection: the Agent proposing a Context addition after learning something in conversation, and the Agent proposing new/changed Criteria mid-chat, unprompted by any rejection at all. Three separate proposal mechanisms for the same underlying pattern would triple the surface area for the same UI (diff card, accept/discard).
+The predecessor project set a principle worth keeping. AI-proposed changes that affect scoring must never apply silently. The user must see a diff and accept it explicitly. It built the principle as one dedicated entity, `profile_proposal`, tied to exactly one trigger (Rejection).
+
+In the chat-driven model, the same need to "propose, don't apply" appears in at least two other places. Neither has anything to do with Rejection:
+
+- The Agent proposes a Context addition after learning something in conversation.
+- The Agent proposes new or changed Criteria mid-chat, with no rejection involved.
+
+Three separate proposal mechanisms for the same pattern would triple the surface area for the same UI (diff card, accept/discard).
 
 ## Decision
 
-There is one mechanism: any Agent Tool that would durably change persisted state the user relies on — `update_context`, `propose_criteria` — returns a pending-confirmation result and the full proposal lives in the tool-call arguments stored in `chat_message.tool_calls` JSONB. The chat turn renders a confirm card with **Übernehmen**/**Verwerfen**. Nothing applies until the user acts via a REST endpoint (`POST .../confirm`). No dedicated `profile_proposal` table. Implementation: [[0009-proposal-pending-in-tool-calls]].
+There is one mechanism. Any Agent Tool that would durably change persisted state the user relies on returns a pending-confirmation result. These Tools are `update_context` and `propose_criteria`. The full proposal lives in the tool-call arguments stored in `chat_message.tool_calls` JSONB. The chat turn shows a confirm card with **Übernehmen**/**Verwerfen** (means: "Apply"/"Discard"). Nothing applies until the user acts through a REST endpoint (`POST .../confirm`). There is no dedicated `profile_proposal` table. Implementation: [[0009-proposal-pending-in-tool-calls]].
 
-Rejection-triggered feedback ([[../../spec/01_mvp/01-04-criteria-and-scoring#Rejection Feedback, Reimagined]]) is no longer a special case with its own entity and UI section — it's an ordinary chat turn that happens to end in an `update_context` or `propose_criteria` call, going through the same confirm card as anything else.
+Rejection-triggered feedback ([[../../spec/01_mvp/01-04-criteria-and-scoring#Rejection Feedback, Reimagined]]) is no longer a special case with its own entity and UI section. It is an ordinary chat turn that happens to end in an `update_context` or `propose_criteria` call. It goes through the same confirm card as everything else.
 
 ## Alternatives considered
 
-- **Keep `profile_proposal`, add a second near-identical table for Context proposals** — rejected: duplicates the same pattern for no benefit; the two would immediately drift (e.g. only one gets a "replace vs. merge" concept) since they're maintained separately.
-- **Auto-apply Context/Criteria changes, rely on `context_revision`/edit history for undo** — rejected: this is the exact failure mode ADR 0001 was written to prevent — silent score changes ("why did this listing drop from B to D?") are just as bad whether triggered by a Rejection-specific Proposal or an offhand chat remark the Agent over-interpreted.
+- **Keep `profile_proposal`, add a second near-identical table for Context proposals** — rejected. It duplicates the same pattern for no benefit. The two tables would drift apart quickly, because they are maintained separately. For example, only one might get a "replace vs. merge" concept.
+- **Auto-apply Context/Criteria changes, use `context_revision`/edit history for undo** — rejected. This is the exact failure the principle above was written to prevent. Silent score changes ("why did this listing drop from B to D?") are just as bad whether a Rejection-specific Proposal or an offhand chat remark the Agent over-read caused them.
 
 ## Consequences
 
-- One confirm-card UI component serves both Context and Criteria proposals, reducing frontend surface versus two/three bespoke flows
-- Losing the "at most one pending Proposal per profile" constraint dev-property-finder had — the chat model can have a proposal pending from one turn and another topic entirely in the next; each confirm card is independent and doesn't block unrelated chat turns
-- `evaluate_listing` re-runs automatically once a Criteria proposal is confirmed, same trigger semantics as before ([[../../spec/01_mvp/01-04-criteria-and-scoring]])
-- Losing dev-property-finder's "accepting a Proposal resets all Weights to 1" behaviour by default — a Criteria confirm in this model is scoped to exactly what changed (add/edit one Criterion), so existing Weights on untouched Criteria are simply left alone; no global reset needed since there's no full reparse-and-replace step to reset after
+- One confirm-card UI component serves both Context and Criteria proposals. This means less frontend work than two or three custom flows.
+- We lose the "at most one pending Proposal per profile" rule from the predecessor project. In the chat model, a proposal can stay pending from one turn while the next turn is about a different topic. Each confirm card is independent. It does not block unrelated chat turns.
+- `evaluate_listing` re-runs automatically once a Criteria proposal is confirmed. The trigger works the same as before ([[../../spec/01_mvp/01-04-criteria-and-scoring]]).
+- By default we lose the predecessor project's behaviour "accepting a Proposal resets all Weights to 1". In this model, a Criteria confirm covers exactly what changed (add or edit one Criterion). Existing Weights on untouched Criteria are left alone. No global reset is needed, because there is no full reparse-and-replace step to reset after.

@@ -10,314 +10,314 @@ tags:
   - checklist
 ---
 
-## Prinzip
+## Principle
 
-Jeder Step produziert etwas **manuell Testbares** — curl, Browser, DB-Query. Kein Step hängt von einem späteren ab. Nach jedem Step: testen, nachjustieren, erst dann weiter.
+Each step produces something you can **test by hand**: curl, browser, or a DB query. No step depends on a later step. After each step: test, adjust, and only then move on.
 
-Layer 5 macht die App **vor dem Agenten** als manuellen Finder mit AI-Scoring komplett nutzbar (Form-Fallback, ADR 0001). Danach ist jeder Agenten-Output ab Layer 6 sofort im echten UI prüfbar statt nur per DB-Query.
+Layer 5 makes the app fully usable **before the agent** as a manual finder with AI scoring (form fallback, ADR 0001). After that, you can check every agent output from Layer 6 on in the real UI. You do not need DB queries for it.
 
 ---
 
-## Layer 0: Skelett
+## Layer 0: Skeleton
 
 - [x] **0.1 — Docker Compose + DB**
-  - `docker-compose.yml`: PostgreSQL 18 + Go-Backend (leer, health endpoint)
-  - DB-Migration: alle Tabellen aus `00-02-database-schema.md` anlegen
-  - Volume `pgdata`, Volume `./data:/data`
+  - `docker-compose.yml`: PostgreSQL 18 + Go backend (empty, health endpoint)
+  - DB migration: create all tables from `00-02-database-schema.md`
+  - Volume `pgdata`, volume `./data:/data`
   - **Test:** `docker-compose up` → `curl localhost:8080/health` → `200 OK`
-  - **Test:** `psql -h localhost -U app -d propertyfinder -c "\dt"` → alle Tabellen sichtbar
+  - **Test:** `psql -h localhost -U app -d propertyfinder -c "\dt"` → all tables are visible
 
-- [x] **0.2 — Go-Projektstruktur + Config**
-  - `backend/` mit `go.mod` (Module-Pfad: `propertyfinder`), `cmd/server/main.go`
-  - Linting: `backend/.golangci.yml` existiert bereits — `golangci-lint run` muss ab dem ersten Commit sauber durchlaufen
-  - `internal/config/` — laedt `app_config` aus DB
-  - `internal/db/` — Verbindungspool, Migration-Runner
-  - API-Router (chi) mit `/health`
-  - Global-Context-Seed in Migration (Default-Text aus `01-02`)
-  - **Test:** `curl localhost:8080/api/config` → liefert `llm.*`-Defaults
-  - **Test:** `psql -c "SELECT content_md FROM context WHERE scope='global'"` → Default-Text vorhanden
+- [x] **0.2 — Go project structure + config**
+  - `backend/` with `go.mod` (module path: `propertyfinder`), `cmd/server/main.go`
+  - Linting: `backend/.golangci.yml` already exists. `golangci-lint run` must pass cleanly from the first commit.
+  - `internal/config/` — loads `app_config` from the DB
+  - `internal/db/` — connection pool, migration runner
+  - API router (chi) with `/health`
+  - Global Context seed in the migration (default text from `01-02`)
+  - **Test:** `curl localhost:8080/api/config` → returns the `llm.*` defaults
+  - **Test:** `psql -c "SELECT content_md FROM context WHERE scope='global'"` → default text is there
 
 ---
 
-## Layer 1: Profil + Context + Kriterien (manuell, kein AI)
+## Layer 1: Profile + Context + Criteria (manual, no AI)
 
 - [x] **1.1 — Search Profile CRUD**
   - Endpoints: `POST /api/profiles`, `GET /api/profiles`, `PATCH /api/profiles/{id}`, `DELETE /api/profiles/{id}`
-  - `PATCH /api/profiles/{id}/archive` (setzt `archived_at`)
-  - Beim Create: automatisch `chat_session` + leeren Profile-Context anlegen
-  - **Test:** `curl -X POST .../api/profiles -d '{"name":"Schweden"}'` → `201` mit ID
-  - **Test:** `curl .../api/profiles` → zeigt "Schweden"
-  - **Test:** `curl -X PATCH .../api/profiles/{id}/archive` → in DB `archived_at` gesetzt
+  - `PATCH /api/profiles/{id}/archive` (sets `archived_at`)
+  - On create: automatically create a `chat_session` and an empty Profile Context
+  - **Test:** `curl -X POST .../api/profiles -d '{"name":"Schweden"}'` → `201` with an ID
+  - **Test:** `curl .../api/profiles` → shows "Schweden"
+  - **Test:** `curl -X PATCH .../api/profiles/{id}/archive` → `archived_at` is set in the DB
 
-- [x] **1.2 — Context Files (manuell editieren)**
+- [x] **1.2 — Context Files (edit by hand)**
   - Endpoints: `GET /api/context/global`, `PUT /api/context/global`, `GET /api/profiles/{id}/context`, `PUT /api/profiles/{id}/context`
-  - `context_revision`-Row bei jedem `PUT` schreiben (changed_by = 'user')
-  - `GET /api/profiles/{id}/context/history` → Liste der Revisionen
+  - Write a `context_revision` row on every `PUT` (changed_by = 'user')
+  - `GET /api/profiles/{id}/context/history` → list of revisions
   - **Test:** `curl -X PUT .../api/profiles/{id}/context -d '{"content_md":"Bei Booli: Makler-Link folgen"}'` → `200`
-  - **Test:** `curl .../api/profiles/{id}/context/history` → eine Revision sichtbar
+  - **Test:** `curl .../api/profiles/{id}/context/history` → one revision is visible
 
-- [x] **1.3 — Criterion CRUD (manuell)**
+- [x] **1.3 — Criterion CRUD (manual)**
   - Endpoints: `GET /api/profiles/{id}/criteria`, `POST /api/profiles/{id}/criteria`, `PATCH /api/criteria/{id}`, `DELETE /api/criteria/{id}`
-  - Weight 1-5, Validierung
-  - Kein LLM-Call — rein manuell
-  - Hook im Write-Path (Listing-Tabelle existiert seit 0.1, testbar ab 2.3): **Weight-only-Aenderung** → pure-SQL Score-Recompute ueber alle Profil-Listings (kein Flag, kein LLM). **Jede andere Aenderung** (Name, Beschreibung, Objective/Subjective, Add, Delete) → `needs_reevaluation = true` auf allen Listings des Profils
+  - Weight 1-5, with validation
+  - No LLM call — fully manual
+  - Hook in the write path (the listing table exists since 0.1, testable from 2.3): **a weight-only change** → pure-SQL Score recompute over all listings of the profile (no flag, no LLM). **Any other change** (name, description, objective/subjective, add, delete) → `needs_reevaluation = true` on all listings of the profile
   - **Test:** `curl -X POST .../api/profiles/{id}/criteria -d '{"name":"Lage","is_objective":false,"weight":4}'` → `201`
-  - **Test:** `curl .../api/profiles/{id}/criteria` → zeigt "Lage", Weight 4
+  - **Test:** `curl .../api/profiles/{id}/criteria` → shows "Lage", weight 4
 
 ---
 
-## Layer 2: Listing + Bewertung (manuell + Single-Shot-LLM)
+## Layer 2: Listing + Evaluation (manual + single-shot LLM)
 
-- [x] **2.1 — Listing CRUD (manuell)**
+- [x] **2.1 — Listing CRUD (manual)**
   - Endpoints: `POST /api/profiles/{id}/listings`, `GET /api/profiles/{id}/listings`, `GET /api/listings/{id}`, `PATCH /api/listings/{id}`, `DELETE /api/listings/{id}`
-  - Alle Felder aus Schema
-  - `PATCH` auf strukturiertem Feld → `needs_reevaluation = true` **und** Feldname an `user_confirmed_fields` anhaengen (noetig fuer 8.2)
-  - `DELETE` → erst `os.RemoveAll("/data/images/listings/{id}")`, dann DB
+  - All fields from the schema
+  - `PATCH` on a structured field → `needs_reevaluation = true` **and** append the field name to `user_confirmed_fields` (needed for 8.2)
+  - `DELETE` → first `os.RemoveAll("/data/images/listings/{id}")`, then the DB
   - **Test:** `curl -X POST .../api/profiles/{id}/listings -d '{"title":"Kappmuren 2","price":310000}'` → `201`
   - **Test:** `curl -X PATCH .../api/listings/{id} -d '{"price":305000}'` → DB: `needs_reevaluation = true`, `user_confirmed_fields = {price}`
 
-- [x] **2.2 — evaluate_listing (Single-Shot-LLM-Call)** — verified with one live Claude API call (`claude-sonnet-5`): real Grade A + German reasoning, `overall_score` computed, `listing_criterion_grade` row persisted
-  - `POST /api/listings/{id}/evaluate` — kein Agent, kein Tool-Use
-  - Prompt: Criterion-Liste + Listing-Daten → Grades mit Reasoning + Score
-  - Provider-Interface wie dev-property-finder: `Evaluate(ctx, criteria, listing) -> ([]Grade, score, error)`
-  - `needs_reevaluation = false` bei Erfolg
-  - **Model:** Claude 3.5 Sonnet · GPT-4o-mini (Single-Shot, strukturiertes JSON — Haiku wuerde reichen, aber Sonnet ist sicherer bei Edge-Cases)
-  - **Test:** Criterion anlegen (1.3), Listing anlegen (2.1), `curl -X POST .../api/listings/{id}/evaluate` → DB: `overall_score > 0`, `listing_criterion_grade`-Rows existieren
+- [x] **2.2 — evaluate_listing (single-shot LLM call)** — verified with one live Claude API call (`claude-sonnet-5`): real Grade A + German reasoning, `overall_score` computed, `listing_criterion_grade` row persisted
+  - `POST /api/listings/{id}/evaluate` — no Agent, no tool use
+  - Prompt: Criterion list + listing data → Grades with reasoning + Score
+  - Provider interface: `Evaluate(ctx, criteria, listing) -> ([]Grade, score, error)`
+  - `needs_reevaluation = false` on success
+  - **Model:** Claude 3.5 Sonnet · GPT-4o-mini (single-shot, structured JSON. Haiku would be enough, but Sonnet is safer with edge cases)
+  - **Test:** Create a Criterion (1.3), create a listing (2.1), `curl -X POST .../api/listings/{id}/evaluate` → DB: `overall_score > 0`, `listing_criterion_grade` rows exist
 
-- [x] **2.3 — needs_reevaluation + Bulk-Trigger**
-  - `GET /api/profiles/{id}/listings?needs_reevaluation=true` → nur stale Listings
-  - `POST /api/profiles/{id}/listings/reevaluate-all` → sequenzielle Goroutine, SSE-Stream (Task-SSE-Plumbing, wird in 6.3 fuer Chat-SSE wiederverwendet)
-  - **Test:** Criterion-Beschreibung aendern → `needs_reevaluation = true` auf allen Listings → `curl .../reevaluate-all` → SSE-Stream zeigt Fortschritt → Scores aktualisiert
-  - **Test:** Criterion-Weight aendern → Scores sofort neu per SQL, Flag bleibt `false` (kein LLM-Call)
+- [x] **2.3 — needs_reevaluation + bulk trigger**
+  - `GET /api/profiles/{id}/listings?needs_reevaluation=true` → only stale listings
+  - `POST /api/profiles/{id}/listings/reevaluate-all` → sequential goroutine, SSE stream (task SSE plumbing, reused in 6.3 for chat SSE)
+  - **Test:** Change a Criterion description → `needs_reevaluation = true` on all listings → `curl .../reevaluate-all` → SSE stream shows progress → Scores are updated
+  - **Test:** Change a Criterion weight → Scores are recomputed at once in SQL, flag stays `false` (no LLM call)
 
 ---
 
-## Layer 3: File-Handling (Bilder, PDF, Geocoding)
+## Layer 3: File handling (images, PDF, geocoding)
 
-- [x] **3.1 — Image Upload + Storage + Serving**
-  - `/media/` → `http.FileServer(http.Dir("/data"))` im chi-Router
-  - `POST /api/listings/{id}/images` — Multipart-Upload, UUID-rename
-  - `GET /api/listings/{id}/images` — Liste aller `listing_image`-Rows
-  - `DELETE /api/listings/{id}/images/{image_id}` — Datei + DB-Row loeschen
-  - **Test:** `curl -F "file=@photo.jpg" .../api/listings/{id}/images` → `201` → `curl .../media/images/listings/{id}/{uuid}.jpg` → Bild sichtbar
+- [x] **3.1 — Image upload + storage + serving**
+  - `/media/` → `http.FileServer(http.Dir("/data"))` in the chi router
+  - `POST /api/listings/{id}/images` — multipart upload, rename to a UUID
+  - `GET /api/listings/{id}/images` — list of all `listing_image` rows
+  - `DELETE /api/listings/{id}/images/{image_id}` — delete the file and the DB row
+  - **Test:** `curl -F "file=@photo.jpg" .../api/listings/{id}/images` → `201` → `curl .../media/images/listings/{id}/{uuid}.jpg` → image is visible
 
-- [x] **3.2 — Title Image setzen/aendern**
-  - `PATCH /api/listings/{id}` mit `{"title_image_id":"..."}`
-  - Erstes Image-Upload: `title_image_id` automatisch setzen
-  - **Test:** Zwei Bilder hochladen → `title_image_id` auf erstes → per PATCH auf zweites wechseln
+- [x] **3.2 — Set/change the title image**
+  - `PATCH /api/listings/{id}` with `{"title_image_id":"..."}`
+  - On the first image upload: set `title_image_id` automatically
+  - **Test:** Upload two images → `title_image_id` points to the first → switch to the second with PATCH
 
-- [x] **3.3 — PDF Upload**
-  - `POST /api/upload/pdf` — Multipart, max 32 MB, speichert Temp-Datei
-  - **Test:** `curl -F "file=@listing.pdf" .../api/upload/pdf` → `201` mit Pfad
+- [x] **3.3 — PDF upload**
+  - `POST /api/upload/pdf` — multipart, max 32 MB, saves a temp file
+  - **Test:** `curl -F "file=@listing.pdf" .../api/upload/pdf` → `201` with a path
 
 - [x] **3.4 — Geocoding (Nominatim)**
   - `internal/geocode/nominatim.go` — HTTP GET
   - `GET /api/geocode?address=...&country=...` → `{"lat","lon","display_name"}`
-  - Rate-Limiting: Mutex + Last-Call-Timestamp
-  - **Test:** `curl ".../api/geocode?address=Kappmuren+Malmo"` → Koordinaten
+  - Rate limiting: mutex + last-call timestamp
+  - **Test:** `curl ".../api/geocode?address=Kappmuren+Malmo"` → coordinates
 
 ---
 
-## Layer 4: Chat-Basis + Frontend-Skelett
+## Layer 4: Chat basics + frontend skeleton
 
-- [x] **4.1 — Chat Session + Message Persistence**
-  - Session-CRUD, Message-CRUD (nur User-Nachrichten, noch kein Agent)
-  - `POST /api/profiles/{id}/chat/sessions/{sid}/messages` speichert nur
-  - `POST /api/profiles/{id}/chat/sessions` legt neue Session an: alte Session bekommt `ended_at` gesetzt (read-only), neue Row ist aktiv
-  - **Test:** Nachricht senden → persistiert → Reload → noch da
-  - **Test:** Zweite Session anlegen → alte hat `ended_at` gesetzt, beide in DB
+- [x] **4.1 — Chat Session + message persistence**
+  - Session CRUD, message CRUD (user messages only, no Agent yet)
+  - `POST /api/profiles/{id}/chat/sessions/{sid}/messages` only saves
+  - `POST /api/profiles/{id}/chat/sessions` creates a new session: the old session gets `ended_at` set (read-only), the new row is active
+  - **Test:** Send a message → it is persisted → reload → it is still there
+  - **Test:** Create a second session → the old one has `ended_at` set, both are in the DB
 
-- [x] **4.2 — Frontend-Skelett + Profil-Liste (Vue)**
-  - Scaffolding: Vite + TypeScript + Vue Router + Naive UI; Go embedt `dist/` (Single-Binary), Dev-Proxy auf `:8080`
-  - `npm add -D oxlint oxfmt` — Configs (`.oxlintrc.json`, `.oxfmtrc.json`) liegen bereits im Repo-Root; npm-Scripts `lint`/`format`/`typecheck` anlegen. **Kein** ESLint/Prettier.
-  - `ProfileListView.vue` — Liste, Archiv, Create/Rename/Archive
-  - Klick auf Profil → Profil-Shell mit Tab-Strip (Platzhalter-Tabs)
-  - **Test:** Browser → Profil anlegen → anklicken → Profil-Shell erscheint
+- [x] **4.2 — Frontend skeleton + profile list (Vue)**
+  - Scaffolding: Vite + TypeScript + Vue Router + Naive UI. Go embeds `dist/` (single binary). Dev proxy to `:8080`.
+  - `npm add -D oxlint oxfmt` — the configs (`.oxlintrc.json`, `.oxfmtrc.json`) are already in the repo root. Create the npm scripts `lint`/`format`/`typecheck`. **No** ESLint/Prettier.
+  - `ProfileListView.vue` — list, archive, create/rename/archive
+  - Click on a profile → profile shell with a tab strip (placeholder tabs)
+  - **Test:** Browser → create a profile → click it → the profile shell appears
 
 ---
 
-## Layer 5: Manuelle Views (Form-Fallback komplett nutzbar)
+## Layer 5: Manual views (form fallback fully usable)
 
-Macht die App vor dem Agenten als manuellen Finder mit AI-Scoring nutzbar. Nutzt nur die fertigen REST-APIs aus Layer 1-3.
+This makes the app usable before the Agent as a manual finder with AI scoring. It uses only the finished REST APIs from Layers 1-3.
 
 - [x] **5.1 — Criterion Editor**
-  - Liste aller Criteria mit Weight-Slider, Add/Edit/Delete
-  - Weight-Aenderung → Scores aktualisieren sofort (SQL-Recompute), kein Banner
-  - Andere Aenderungen → Banner "N Inserate neu bewerten" + "Alle neu bewerten"-Button (2.3)
-  - **Test:** Weight aendern → Scores neu, kein Banner → Beschreibung aendern → Banner erscheint → "Alle neu bewerten" klicken → SSE-Fortschritt
+  - List of all Criteria with a weight slider, add/edit/delete
+  - Weight change → Scores update at once (SQL recompute), no banner
+  - Other changes → banner "N Inserate neu bewerten" + "Alle neu bewerten" button (2.3)
+  - **Test:** Change a weight → new Scores, no banner → change a description → banner appears → click "Alle neu bewerten" → SSE progress
 
 - [x] **5.2 — List View + Ranking View**
-  - Sortierbare/filterbare Tabelle (Score, Preis, Groesse, Datum; Filter Status/Score/Preis)
-  - Ranking: Score-Sortierung + Kurzfazit + Gesamt-Summary (`search_profile.ranking_summary`)
-  - "Rangliste aktualisieren"-Button: isolierter Single-Shot-LLM-Call (kein Agent, nutzt Provider-Seam aus 2.2), speichert `listing.kurzfazit` + `search_profile.ranking_summary`
-  - **Model:** Claude 3.5 Sonnet · GPT-4o-mini (Text-Generierung, kein Tool-Use — Haiku reicht fuer Kurztexte)
-  - **Test:** Mehrere Listings → List View zeigt alle → Ranking View sortiert → "Rangliste aktualisieren" klicken → Kurzfazit-Texte + Gesamt-Summary erscheinen
+  - Sortable/filterable table (Score, price, size, date; filters status/Score/price)
+  - Ranking: Score sorting + short summary (`kurzfazit`) + overall summary (`search_profile.ranking_summary`)
+  - "Rangliste aktualisieren" button: isolated single-shot LLM call (no Agent, uses the provider seam from 2.2), saves `listing.kurzfazit` + `search_profile.ranking_summary`
+  - **Model:** Claude 3.5 Sonnet · GPT-4o-mini (text generation, no tool use. Haiku is enough for short texts)
+  - **Test:** Several listings → List View shows all → Ranking View sorts them → click "Rangliste aktualisieren" → short-summary texts + overall summary appear
 
 - [x] **5.3 — Listing Detail View**
-  - Form mit allen Feldern, `document_md` gerendert, Grade-Grid
-  - `needs_reevaluation`-Badge + "Neu bewerten"-Button (2.2)
-  - Status-Management (rejected mit Kommentar)
-  - **Test:** Listing in List-View anklicken → Detail-View → Preis editieren → `needs_reevaluation = true` UND `price` in `user_confirmed_fields` → "Neu bewerten" → Badge weg
+  - Form with all fields, rendered `document_md`, Grade grid
+  - `needs_reevaluation` badge + "Neu bewerten" button (2.2)
+  - Status management (rejected with a comment)
+  - **Test:** Click a listing in the List View → Detail View → edit the price → `needs_reevaluation = true` AND `price` in `user_confirmed_fields` → "Neu bewerten" → badge is gone
 
 ---
 
-## Layer 6: Chat-UI + Agent-Integration (Chat wird lebendig)
+## Layer 6: Chat UI + Agent integration (chat comes alive)
 
-- [x] **6.1 — Frontend: Chat-UI (Vue, ohne Agent)**
-  - `ChatView.vue` — Message-Liste, Input, File-Dropzone
-  - Donut-Chart (zeigt bis 6.3 `0%` — `token_count_estimate` wird erst vom Agenten befuellt), "Neue Session"-Button (einfach, ohne Warnung/Disable — kommt in 8.3), Session-Dropdown
-  - Nachrichten persistieren, keine Antworten (noch kein Agent)
-  - **Test:** Nachricht tippen → Enter → erscheint in Liste → Reload → noch da
+- [x] **6.1 — Frontend: Chat UI (Vue, without Agent)**
+  - `ChatView.vue` — message list, input, file dropzone
+  - Donut chart (shows `0%` until 6.3, because only the Agent fills `token_count_estimate`), "Neue Session" button (simple, with no warning and no disable. Those come in 8.3), session dropdown
+  - Messages are persisted, with no replies (no Agent yet)
+  - **Test:** Type a message → Enter → it appears in the list → reload → it is still there
 
-- [x] **6.2 — Provider Interface + Claude-Implementierung**
-  - `internal/agent/provider.go` — Interface: `Chat()`, `FormatTools()`, `FormatMessages()`, `SupportsDocumentInput()`
-  - `internal/agent/provider/claude/` — Anthropic-Client, SSE-Mapping
-  - `ChatEvent`-Stream: `text_delta`, `tool_call_request`, `done`
-  - **Model:** Claude 3.5 Sonnet · GPT-4o (Tool-Use-Zuverlaessigkeit ist hier kritisch — kein Platz fuer Halluzinationen im JSON-Format)
-  - **Test:** Unit-Test mit Mock-HTTP-Server → Claude-Tool-Call → `ChatEvent` korrekt
+- [x] **6.2 — Provider interface + Claude implementation**
+  - `internal/agent/provider.go` — interface: `Chat()`, `FormatTools()`, `FormatMessages()`, `SupportsDocumentInput()`
+  - `internal/agent/provider/claude/` — Anthropic client, SSE mapping
+  - `ChatEvent` stream: `text_delta`, `tool_call_request`, `done`
+  - **Model:** Claude 3.5 Sonnet · GPT-4o (tool-use reliability is critical here. There is no room for hallucinations in the JSON format)
+  - **Test:** Unit test with a mock HTTP server → Claude tool call → `ChatEvent` is correct
 
-- [x] **6.3 — Agent Loop (ohne Tools, nur Echo)**
-  - `internal/agent/loop.go` — `Run()` als Goroutine
-  - System-Prompt-Assembly (Preamble + Global Context + Profile Context) — Preamble **ohne Tool-Sektion**, solange der Tool-Katalog leer ist (sonst halluziniert das Modell Tool-Calls als Text)
-  - SSE-Streaming der Agent-Antwort ins Frontend
-  - `token_count_estimate` aus API-Usage befuellen (Donut ab hier mit Daten)
+- [x] **6.3 — Agent Loop (no Tools, echo only)**
+  - `internal/agent/loop.go` — `Run()` as a goroutine
+  - System prompt assembly (preamble + Global Context + Profile Context). The preamble has **no Tool section** while the Tool catalog is empty (otherwise the model hallucinates Tool calls as text)
+  - SSE streaming of the Agent reply to the frontend
+  - Fill `token_count_estimate` from the API usage (the donut has data from here on)
   - Limits: `max_llm_roundtrips`, `max_tool_calls_per_turn`
-  - Noch keine echten Tools — Agent antwortet nur textuell
-  - **Model:** Claude 3.5 Sonnet · GPT-4o (erster echter Kontakt mit dem Modell — hier zeigt sich ob der Prompt stimmt)
-  - **Test:** Chat-Nachricht senden → Agent antwortet (text only) → Antwort erscheint streamend im Chat
+  - No real Tools yet. The Agent only answers with text
+  - **Model:** Claude 3.5 Sonnet · GPT-4o (first real contact with the model. Here you see whether the prompt is right)
+  - **Test:** Send a chat message → Agent answers (text only) → the reply streams into the chat
 
 - [x] **6.4 — First Tools (fetch_url, save_listing, download_image)**
-  - Tool-Registry + Dispatch in `loop.go` (Preamble ab hier mit voller Tool-Sektion)
-  - `fetch_url` — HTTP GET + Readability-Text-Extraktion
-  - `save_listing` — DB-Insert/Update mit `force_overwrite`
-  - `download_image` — HTTP GET → `/data/images/...` → `listing_image`-Row
-  - Inline-Listing-Card im Chat: `chat_message.listing_id` → Card mit Titel, Preis, Thumbnail, Score; Klick oeffnet Detail-View (5.3)
-  - Agent kann: URL → fetch → save → download images → antworten
-  - **Model:** Claude 3.5 Sonnet · GPT-4o (erster Multi-Turn-Tool-Use — Modell muss Tool-Ergebnisse korrekt einordnen und weiterfuehren)
-  - **Test:** URL in Chat pasten → Agent laedt Seite, speichert Listing, laedt Bilder → Listing sichtbar in List-View (5.2), Bilder in Detail-View, Card im Chat verlinkt
+  - Tool registry + dispatch in `loop.go` (from here on the preamble has the full Tool section)
+  - `fetch_url` — HTTP GET + Readability text extraction
+  - `save_listing` — DB insert/update with `force_overwrite`
+  - `download_image` — HTTP GET → `/data/images/...` → `listing_image` row
+  - Inline Listing Card in the chat: `chat_message.listing_id` → card with title, price, thumbnail, Score. A click opens the Detail View (5.3)
+  - The Agent can: URL → fetch → save → download images → reply
+  - **Model:** Claude 3.5 Sonnet · GPT-4o (first multi-turn tool use. The model must read Tool results correctly and continue from them)
+  - **Test:** Paste a URL into the chat → Agent loads the page, saves the listing, loads the images → listing is visible in the List View (5.2), images in the Detail View, card in the chat is linked
 
-- [x] **6.5 — Evaluation Tools + Confirm-Flow**
-  - `evaluate_listing` Tool (ruft Single-Shot-Call aus 2.2)
-  - `propose_criteria` Tool (pending, kein Write)
-  - `update_context` Tool (pending, kein Write)
-  - Confirm/Reject-Endpoints: `POST .../messages/{mid}/tool-calls/{idx}/confirm`
-  - Confirm-Cards im Frontend (Uebernehmen/Verwerfen)
-  - **Model:** Claude 3.5 Sonnet · GPT-4o (Pending-Confirmation-Pattern muss zuverlaessig funktionieren — das Modell darf nicht "vergessen" dass es auf Bestaetigung wartet)
-  - **Test:** URL in Chat → Agent schlaegt Criteria vor → Confirm-Card erscheint → Uebernehmen klicken → Criteria in DB (sichtbar in 5.1) → evaluate_listing laeuft
+- [x] **6.5 — Evaluation Tools + Confirm flow**
+  - `evaluate_listing` Tool (calls the single-shot call from 2.2)
+  - `propose_criteria` Tool (pending, no write)
+  - `update_context` Tool (pending, no write)
+  - Confirm/reject endpoints: `POST .../messages/{mid}/tool-calls/{idx}/confirm`
+  - Confirm-Cards in the frontend (Uebernehmen/Verwerfen — means: accept/reject)
+  - **Model:** Claude 3.5 Sonnet · GPT-4o (the pending-confirmation pattern must work reliably. The model must not "forget" that it is waiting for confirmation)
+  - **Test:** URL in the chat → Agent proposes Criteria → Confirm-Card appears → click Uebernehmen → Criteria are in the DB (visible in 5.1) → evaluate_listing runs
 
 - [x] **6.6 — Remaining Tools**
-  - `geocode` Tool (ruft 3.4 auf)
+  - `geocode` Tool (calls 3.4)
   - `list_profile_listings` Tool
-  - `compute_ranking` Tool (Score-Sortierung, kein LLM; Kurzfazit schreibt der Agent im Chat — Persistierung nur via Button aus 5.2)
-  - `read_pdf` Tool (PDF-Upload als Claude-Document-Block; PDF nach Ingestion-Turn von Disk loeschen)
-  - **Model:** Claude 3.5 Sonnet · GPT-4o (PDF-Input ist Claude-spezifisch — fuer OpenCode braucht es PDF→Text-Extraktion statt nativem Document-Block)
-  - **Test:** "Vergleiche mit Kappmuren 2" → Agent nutzt `list_profile_listings`
-  - **Test:** "Rangliste aktualisieren" → Agent nutzt `compute_ranking`, schreibt Kurzfazit im Chat
+  - `compute_ranking` Tool (Score sorting, no LLM. The Agent writes the short summary in the chat. It is persisted only through the button from 5.2)
+  - `read_pdf` Tool (PDF upload as a Claude document block; delete the PDF from disk after the ingestion turn)
+  - **Model:** Claude 3.5 Sonnet · GPT-4o (PDF input is specific to Claude. OpenCode needs PDF→text extraction instead of a native document block)
+  - **Test:** "Vergleiche mit Kappmuren 2" → Agent uses `list_profile_listings`
+  - **Test:** "Rangliste aktualisieren" → Agent uses `compute_ranking` and writes the short summary in the chat
 
 ---
 
-## Review-Fixes (Zwischenschritt vor Layer 7)
+## Review fixes (intermediate step before Layer 7)
 
-Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) gefundene Bugs und UX-Lücken. Keiner der Punkte war in einem späteren Layer eingeplant (geprüft gegen den gesamten Plan) — alles hier ist ungeplante Nacharbeit, kein Vorziehen künftiger Arbeit. Eigene Nummerierung (`RF.x`), damit Layer 7/8 nicht umnummeriert werden müssen.
+These are bugs and UX gaps found in a manual review of the running app (`docs/review.md`). None of them was planned in a later layer (checked against the whole plan). Everything here is unplanned rework, not pulled-forward future work. It has its own numbering (`RF.x`), so Layer 7/8 do not need to be renumbered.
 
-- [x] **RF.1 — Chat-Zuverlässigkeit: Confirm-Card-Status + Budget-Limit-Fortsetzung**
-  - Confirm-Card-Status (`confirmed`/`rejected`) wird in `chat_message.tool_calls` JSONB persistiert statt nur lokaler Frontend-State — überlebt Tab-Wechsel/Reload. Confirm/Reject werden idempotent (409 bei erneuter Aktion). Siehe ADR 0017.
-  - `budgetExhausted`-Zweig in `loop.go` persistiert nur Text (Roundtrip-Text + Limit-Hinweis), keine nicht-dispatchten `tool_use`-Blöcke mehr — verhindert ungültige Replay-History, die "weitermachen" bisher wirkungslos machte.
+- [x] **RF.1 — Chat reliability: Confirm-Card status + continuing after the budget limit**
+  - The Confirm-Card status (`confirmed`/`rejected`) is persisted in the `chat_message.tool_calls` JSONB. Before, it was only local frontend state. It now survives a tab switch or reload. Confirm and reject are idempotent (409 on a repeated action). See ADR 0017.
+  - The `budgetExhausted` branch in `loop.go` persists only text (roundtrip text + limit note). It no longer persists `tool_use` blocks that were not dispatched. This avoids an invalid replay history, which made "weitermachen" (means: "continue") have no effect before.
   - Spec: [[../docs/spec/01_mvp/01-09-chat-reliability-fixes]]
-  - **Test:** Vorschlag bestätigen → Tab wechseln/reload → Card zeigt weiterhin "Übernommen". `llm.max_llm_roundtrips` testweise niedrig setzen, Limit auslösen, "weitermachen" antworten → Agent macht tatsächlich weiter.
+  - **Test:** Confirm a proposal → switch tab/reload → the card still shows "Übernommen". Set `llm.max_llm_roundtrips` low for the test, hit the limit, reply "weitermachen" → the Agent really continues.
 
-- [x] **RF.2 — Token-Donut Lesbarkeit**
-  - `TokenDonut.vue`: Ring-Größe/Stroke-Width angepasst, damit der Füllstand auf einen Blick erkennbar ist.
+- [x] **RF.2 — Token donut readability**
+  - `TokenDonut.vue`: ring size and stroke width adjusted, so you can see the fill level at a glance.
   - Spec: [[../docs/spec/01_mvp/01-01-chat-interface#Layout]]
-  - **Test:** Visueller Check in `npm run dev`.
+  - **Test:** Visual check in `npm run dev`.
 
-- [x] **RF.3 — Listing List/Detail View Überarbeitung**
-  - Master-Detail-Split (Liste links, Detail rechts) in der "Liste"-Tab statt Navigation auf separate Seite; `/listings/:id`-Route bleibt für Deep-Links (Chat-Card) erhalten.
-  - Titelbild-Thumbnails in Liste und Detail-Ansicht.
-  - Optionale, persistente Pro-Kriterium-Score-Spalten in der Liste (localStorage je Profil).
-  - Bewertungstabelle an den Anfang der Detail-Ansicht, Status prominent im Header statt im Formularraster.
-  - Explizites Bearbeiten/Speichern/Abbrechen statt Auto-Save pro Feld — bündelt Änderungen in einem PATCH-Call.
-  - Quell-URL als klickbarer Link im Anzeige-Modus.
-  - Spec: [[../docs/spec/01_mvp/01-10-listing-views-overhaul]] (ersetzt Teile von 01-05 § List View und 01-07 § Editing Behaviour)
-  - **Test:** siehe Verification-Abschnitt der Spec.
+- [x] **RF.3 — Listing List/Detail View rework**
+  - Master-detail split (list on the left, detail on the right) in the "Liste" tab, instead of navigating to a separate page. The `/listings/:id` route stays for deep links (chat card).
+  - Title-image thumbnails in the list and the detail view.
+  - Optional, persistent per-Criterion Score columns in the list (localStorage per profile).
+  - Evaluation table at the top of the detail view. Status is shown prominently in the header, not in the form grid.
+  - Explicit edit/save/cancel instead of auto-save per field. This bundles changes into one PATCH call.
+  - Source URL as a clickable link in display mode.
+  - Spec: [[../docs/spec/01_mvp/01-10-listing-views-overhaul]] (replaces parts of 01-05 § List View and 01-07 § Editing Behaviour)
+  - **Test:** See the Verification section of the spec.
 
-- [x] **RF.4 — Listing-Notizen (neues Feature)**
-  - Volles CRUD auf der bereits existierenden `listing_note`-Tabelle (Migration ergänzt `updated_at`): Repository, Service, API (`/api/listings/{id}/notes`, `/api/notes/{id}`), Frontend-Cards mit "Neue Notiz"/Bearbeiten/Löschen.
-  - Ausdrücklich getrennt von `seller_notes` (Feld zum Verkäufer, bleibt unverändert).
+- [x] **RF.4 — Listing notes (new feature)**
+  - Full CRUD on the already existing `listing_note` table (a migration adds `updated_at`): repository, service, API (`/api/listings/{id}/notes`, `/api/notes/{id}`), frontend cards with "Neue Notiz"/edit/delete.
+  - Clearly separate from `seller_notes` (the field about the seller, which stays unchanged).
   - Spec: [[../docs/spec/01_mvp/01-11-listing-notes]]
-  - **Test:** curl gegen neue Endpoints, dann manueller Klick-Durchlauf.
+  - **Test:** curl against the new endpoints, then a manual click-through.
 
-- [x] **RF.5 — Chat-Feedback-Fixes**
-  - Turn-In-Progress-Indikator: `useChat.ts`-Flag ab erfolgreichem POST bis zum ersten Live-Signal (`chat.text_delta`/`chat.tool_progress`/`chat.message`/`chat.turn_error`) für den Turn; `ChatMessageList.vue` zeigt währenddessen einen animierten Platzhalter, auch bei stillen Lücken zwischen Tool-Calls innerhalb eines Turns.
-  - Unicode-Escape-Bug (Vorschlagstext zeigt `\uXXXX` statt Umlauten): bei frischem Live-Test nicht reproduzierbar — Spec dokumentiert offene Diagnoseschritte statt eines Fixes.
+- [x] **RF.5 — Chat feedback fixes**
+  - Turn-in-progress indicator: a `useChat.ts` flag. It runs from a successful POST until the first live signal for the turn (`chat.text_delta`/`chat.tool_progress`/`chat.message`/`chat.turn_error`). In the meantime `ChatMessageList.vue` shows an animated placeholder. This also covers silent gaps between Tool calls inside one turn.
+  - Unicode escape bug (the proposal text shows `\uXXXX` instead of umlauts): not reproducible in a fresh live test. The spec documents open diagnosis steps instead of a fix.
   - Spec: [[../docs/spec/01_mvp/01-12-chat-feedback-fixes]]
-  - **Test:** Nachricht senden → Indikator erscheint sofort, verschwindet bei erstem Text/Tool-Progress; Multi-Roundtrip-Turn auslösen → Indikator erscheint erneut bei Lücke zwischen Tool-Calls. Unicode-Bug bleibt offen bis reproduziert.
+  - **Test:** Send a message → the indicator appears at once and disappears at the first text/tool progress. Trigger a multi-roundtrip turn → the indicator appears again at a gap between Tool calls. The unicode bug stays open until it is reproduced.
 
 ---
 
-## Layer 7: Restliche Views
+## Layer 7: Remaining views
 
 - [x] **7.1 — Map View**
-  - OpenLayers + OSM-Karte, neuer "Karte"-Tab in `ProfileShellView.vue`, lazy geladen (`defineAsyncComponent`)
-  - Master-Detail-Split wie List View: Karte links, `ListingDetailPanel` rechts (`ListingSplitPane.vue`, geteilt mit der Inserate-Liste)
-  - Marker pro Listing mit Koordinaten, farbcodiert nach Status (`src/utils/listingStatus.ts`)
-  - Marker-Klick: wählt Listing für die rechte Spalte aus **und** öffnet ein kleines Popup am Marker mit Titel, Preis, Score, 100x100-Thumbnail
+  - OpenLayers + OSM map, new "Karte" tab in `ProfileShellView.vue`, lazy loaded (`defineAsyncComponent`)
+  - Master-detail split like the List View: map on the left, `ListingDetailPanel` on the right (`ListingSplitPane.vue`, shared with the listing list)
+  - One marker per listing with coordinates, color-coded by status (`src/utils/listingStatus.ts`)
+  - Marker click: selects the listing for the right column **and** opens a small popup at the marker with title, price, Score, and a 100x100 thumbnail
   - Spec: [[../docs/spec/01_mvp/01-06-map-view]]
-  - **Test:** Listing mit Koordinaten (manuell in 5.3 oder via Agent aus 6.6) → Karte-Tab → Marker sichtbar, farbcodiert → Marker klicken → Popup mit Thumbnail erscheint, rechte Spalte zeigt Detail-Ansicht
+  - **Test:** Listing with coordinates (by hand in 5.3 or through the Agent from 6.6) → Karte tab → marker is visible and color-coded → click the marker → popup with thumbnail appears, right column shows the Detail View
 
 - [x] **7.2 — Context Editor**
-  - `ContextEditor.vue` — Markdown-Textarea (Bearbeiten → Speichern/Abbrechen), Preview via marked+DOMPurify im Anzeige-Modus
-  - History-Panel (context_revision-Liste) mit Wiederherstellen (Confirm-Dialog, neuer Revision-Snapshot vor dem Zurücksetzen)
-  - Backend: `GET /api/context/global/history`, `POST .../revisions/{id}/restore` (global + profile) — Restore prüft, dass die Revision zum Ziel-Context gehört
-  - Global Context über Link auf der Profilliste (`/context`), Profile Context über Profil-Tab
+  - `ContextEditor.vue` — Markdown textarea (edit → save/cancel), preview with marked+DOMPurify in display mode
+  - History panel (context_revision list) with restore (confirm dialog, new revision snapshot before the reset)
+  - Backend: `GET /api/context/global/history`, `POST .../revisions/{id}/restore` (global + profile). Restore checks that the revision belongs to the target context
+  - Global Context through a link on the profile list (`/context`), Profile Context through the profile tab
   - Spec: [[../docs/spec/01_mvp/01-02-context-files]]
-  - **Test:** Context öffnen → Text ändern → speichern → History zeigt Revision → Wiederherstellen setzt alten Text zurück (curl-verifiziert, inkl. 400 bei Revision aus falschem Context) → Agent liest Context frisch pro Turn (agent_service.go, unverändert seit Layer 6.3)
+  - **Test:** Open a context → change the text → save → history shows a revision → restore sets the old text back (verified with curl, including 400 for a revision from the wrong context) → the Agent reads the context fresh each turn (agent_service.go, unchanged since Layer 6.3)
 
-- [x] **7.3 — Image Gallery im Detail View**
-  - `ListingGallery.vue` — Thumbnail-Raster, Kategorie-Badges (Außenansicht/Innenaufnahme/Grundriss/Nebengebäude/Sonstiges)
-  - Stern-Icon fuer Title-Image-Wechsel (PATCH `title_image_id`, bereits ADR-0012-konform, kein neuer Endpoint noetig)
-  - Loeschen mit Confirmation (`useDialog`, DELETE `/api/listings/{id}/images/{imageId}`, bereits vorhandener Endpoint)
+- [x] **7.3 — Image gallery in the Detail View**
+  - `ListingGallery.vue` — thumbnail grid, category badges (Außenansicht/Innenaufnahme/Grundriss/Nebengebäude/Sonstiges — means: exterior/interior/floor plan/outbuilding/other)
+  - Star icon to change the title image (PATCH `title_image_id`, already ADR-0012 compliant, no new endpoint needed)
+  - Delete with confirmation (`useDialog`, DELETE `/api/listings/{id}/images/{imageId}`, endpoint already exists)
   - Spec: [[../docs/adr/0012-image-storage-filesystem-media]]
-  - **Test:** Detail-View oeffnen → Galerie zeigt alle Bilder mit Kategorie-Badge → Stern auf anderem Bild klicken → Titelbild + Header-Thumbnail wechseln (live verifiziert) → Testbild hochgeladen (curl) → Löschen-Icon → Confirm-Dialog → Bild entfernt, Titelbild unveraendert (live verifiziert)
+  - **Test:** Open the Detail View → gallery shows all images with a category badge → click the star on another image → title image and header thumbnail change (verified live) → upload a test image (curl) → delete icon → confirm dialog → image is removed, title image unchanged (verified live)
 
 ---
 
-## Layer 8: Feinschliff
+## Layer 8: Polish
 
-- [x] **8.1 — Rejection Async Analysis**
-  - Status auf `rejected` → async LLM-Call analysiert Kommentar (`RejectionAnalysisService`, single-shot wie `EvaluationService`/`RankingService`, kein Tool-Use)
-  - `propose_criteria` / `update_context` Vorschlaege landen als synthetische `chat_message` (role=assistant, `tool_calls` im selben Format wie ein echter Agent-Turn) in der aktiven Session — bestehende Confirm-Card-UI/Endpoints unveraendert wiederverwendet
-  - Toast "Rejection verarbeitet — Vorschlaege im Chat verfuegbar." (`useRejectionAnalysisToast.ts`, SSE-Event `listing.rejection_analyzed`)
-  - **Model:** Claude (ADR 0006 — einziger MVP-Provider; Single-Shot-Analyse, kein Tool-Use)
+- [x] **8.1 — Rejection async analysis**
+  - Status set to `rejected` → async LLM call analyzes the comment (`RejectionAnalysisService`, single-shot like `EvaluationService`/`RankingService`, no tool use)
+  - `propose_criteria` / `update_context` proposals land as a synthetic `chat_message` (role=assistant, `tool_calls` in the same format as a real Agent turn) in the active session. The existing Confirm-Card UI/endpoints are reused unchanged
+  - Toast "Rejection verarbeitet — Vorschlaege im Chat verfuegbar." (means: rejection processed, proposals are available in the chat) (`useRejectionAnalysisToast.ts`, SSE event `listing.rejection_analyzed`)
+  - **Model:** Claude (ADR 0006 — the only MVP provider; single-shot analysis, no tool use)
   - Spec: [[../docs/spec/01_mvp/01-04-criteria-and-scoring#Rejection Feedback, Reimagined]]
-  - **Test:** Listing per PATCH auf `rejected` mit Kommentar gesetzt (curl + UI) → `update_context`-Vorschlag korrekt erkannt (Makler-Meide-Regel) → Confirm-Card in Chat sichtbar (inkl. Listing-Card) → Übernehmen funktioniert unveraendert → Toast im Browser bestaetigt. golangci-lint/go test clean (inkl. neuer `parseRejectionAnalysis`-Tests).
+  - **Test:** Set a listing to `rejected` with a comment by PATCH (curl + UI) → `update_context` proposal is recognized correctly (broker-avoid rule) → Confirm-Card is visible in the chat (with the Listing Card) → Übernehmen works unchanged → toast confirmed in the browser. golangci-lint/go test clean (including the new `parseRejectionAnalysis` tests).
 
-- [x] **8.2 — user_confirmed_fields im Agent-Context**
-  - Listing-Context-Block vor jedem Turn (`BuildListingContextBlock`, `context_builder.go`) — "aktuelles Inserat" ermittelt aus der juengsten `listing_id` in der Session-History (`currentListingID`, `agent_service.go`)
-  - `save_listing` skipped gesperrte Felder (bereits seit ADR 0016 vorhanden)
-  - `force_overwrite` nach User-Bestaetigung (bereits seit ADR 0016 vorhanden)
-  - **Model:** Claude (ADR 0006 — einziger MVP-Provider)
+- [x] **8.2 — user_confirmed_fields in the Agent context**
+  - Listing context block before every turn (`BuildListingContextBlock`, `context_builder.go`). The "current listing" comes from the most recent `listing_id` in the session history (`currentListingID`, `agent_service.go`)
+  - `save_listing` skips locked fields (already there since ADR 0016)
+  - `force_overwrite` after user confirmation (already there since ADR 0016)
+  - **Model:** Claude (ADR 0006 — the only MVP provider)
   - Spec: [[../docs/adr/0016-user-confirmed-fields-agent-context]]
-  - **Test:** Live gegen echte Claude API (neue Chat-Session wegen kaputter alter Session, siehe Buglist): Preis manuell auf 315.000 SEK gesetzt → direkte Nachfrage "welche Felder gesperrt?" beantwortet der Agent ungefragt korrekt mit exaktem Wert (kein Tool-Call, Block kam nachweislich im System-Prompt an) → Region manuell gesperrt, vage Bitte um Änderung → Agent lehnt ab, fragt nach ("nicht überschrieben") → DB bestätigt unveraendert → "Ja, überschreib." → Agent aktualisiert per `force_overwrite`, Feld korrekt aus `user_confirmed_fields` entfernt, DB bestätigt Änderung. golangci-lint/go vet/go test clean (inkl. neuer `context_builder_test.go`).
+  - **Test:** Live against the real Claude API (new chat session because the old session was broken, see the bug list): Price set by hand to 315.000 SEK → on the direct question "welche Felder gesperrt?" (means: which fields are locked?), the Agent correctly answers unprompted with the exact value (no Tool call, the block demonstrably arrived in the system prompt) → Region locked by hand, vague request to change it → Agent refuses and asks back ("nicht überschrieben" — means: not overwritten) → DB confirms it is unchanged → "Ja, überschreib." → Agent updates with `force_overwrite`, the field is correctly removed from `user_confirmed_fields`, DB confirms the change. golangci-lint/go vet/go test clean (including the new `context_builder_test.go`).
 
-- [x] **8.3 — "Neue Session" mit Warnung + Disable**
-  - Button deaktiviert waehrend Turn laeuft (`turnInProgress` in `useChat.ts`, gesetzt zwischen erfolgreichem POST und `chat.message`/`chat.turn_error`)
-  - Dialog warnt bei offenen Confirm-Cards (`hasPendingConfirmCards`, geteilte Helper in `src/utils/chat.ts`)
-  - Alte Sessions (read-only, `ended_at` gesetzt) als Dropdown einsehbar (bereits seit Layer 6.1 vorhanden)
-  - Bugfix waehrend Live-Verifikation gefunden: `ChatConfirmCard.vue`s `status` war rein lokaler State — Uebernehmen/Verwerfen aktualisierte nie `useChat.ts`s `messages`, wodurch `hasPendingConfirmCards` nach Aufloesung einer Card veraltet blieb. Fix: `ChatConfirmCard.vue` emitted `resolved`, `ChatMessageList.vue` reicht es mit Message-ID + Call-Index als `callResolved` weiter, `useChat.ts` bekommt `markToolCallResolved` zum In-Place-Patchen von `messages`.
-  - **Test:** `turnInProgress` per MutationObserver zeitstempelbelegt bestaetigt (disabled:true bei Turnstart, disabled:false 8.04s spaeter bei Turnende, immun gegen eigene Tool-Roundtrip-Latenz). Confirm-Card ("Testkriterium 8.3b") im Browser verworfen → sofort "Neue Session" geklickt → Dialog zeigt korrekt den einfachen Text ohne Pending-Warnung (vorher: Warnung blieb faelschlich stehen). oxlint/oxfmt/vue-tsc/`npm run build` clean, Docker-Rebuild.
+- [x] **8.3 — "Neue Session" with warning + disable**
+  - Button is disabled while a turn runs (`turnInProgress` in `useChat.ts`, set between a successful POST and `chat.message`/`chat.turn_error`)
+  - Dialog warns about open Confirm-Cards (`hasPendingConfirmCards`, shared helper in `src/utils/chat.ts`)
+  - Old sessions (read-only, `ended_at` set) can be viewed in a dropdown (already there since Layer 6.1)
+  - Bug found during live verification: the `status` in `ChatConfirmCard.vue` was purely local state. Uebernehmen/Verwerfen never updated `messages` in `useChat.ts`. So `hasPendingConfirmCards` stayed stale after a card was resolved. Fix: `ChatConfirmCard.vue` emits `resolved`, `ChatMessageList.vue` passes it on as `callResolved` with the message ID + call index, and `useChat.ts` gets `markToolCallResolved` to patch `messages` in place.
+  - **Test:** `turnInProgress` confirmed with timestamps via a MutationObserver (disabled:true at turn start, disabled:false 8.04s later at turn end, not affected by its own Tool roundtrip latency). Confirm-Card ("Testkriterium 8.3b") rejected in the browser → clicked "Neue Session" right away → the dialog correctly shows the simple text with no pending warning (before: the warning wrongly stayed). oxlint/oxfmt/vue-tsc/`npm run build` clean, Docker rebuild.
 
-- [x] **8.4 — Stop-Button + Fehlende-Antwort-Handling**
-  - Backend: `AgentService` haelt pro Session einen `context.CancelFunc` (`turns map[uuid.UUID]context.CancelFunc`), synchron registriert bevor `SendMessage` zurueckkehrt (kein Race mit einem sofortigen Stop-Klick). `StopTurn` validiert Session-Profil-Zugehoerigkeit und ruft `cancel()`. Neuer Endpunkt `POST .../chat/sessions/{sessionId}/stop`.
-  - `agent.Loop.Run` prueft `ctx.Err()` vor jedem Roundtrip; bei Abbruch (vor oder waehrend des Streamings, erkannt via `errors.Is(streamErr, context.Canceled)`) persistiert `stopped()` eine Text-only-Abschluss-Roundtrip ("[Abgebrochen durch Nutzer.]") — nie mit `tool_use`-Bloecken fuer nicht dispatchte Calls (gleiches Prinzip wie beim Budget-Limit, verhindert dangling `tool_use` beim naechsten Turn-Replay).
-  - `dispatchAll` nutzt `context.WithoutCancel(ctx)` fuer den eigentlichen Tool-Aufruf — ein laufender Tool-Call (z. B. `fetch_url`, `save_listing`) laeuft immer zu Ende, nur die naechste LLM-Anfrage wird nicht mehr gestellt.
-  - Zwei Bugs waehrend Live-Verifikation gefunden und gefixt: (1) `persistRoundtrip`/`UpdateTokenCount` nutzten den bereits abgebrochenen `ctx` fuer den DB-Write, wodurch der Abschluss-Roundtrip nie persistiert wurde und `chat.message` nie feuerte (frontend blieb dauerhaft im `turnInProgress`-Zustand haengen) — gefixt mit einem von `ctx` entkoppelten `persistCtx := context.WithoutCancel(ctx)` fuer alle Schreiboperationen. (2) Ein abgebrochener Turn ohne gemessenen Usage (`tokenCount == 0`, da nie ein `ChatEventDone` ankam) ueberschrieb `token_count_estimate` faelschlich auf 0 — gefixt mit einem `tokenCount > 0`-Guard vor dem `UpdateTokenCount`-Aufruf.
-  - Frontend: `useChat.ts` `stop()` ruft den neuen Endpunkt auf (404 durch Race mit natuerlichem Turn-Ende wird verschluckt); `missingReply` erkennt eine letzte User-Message ohne jede Folge-Nachricht (nur nach Server-Neustart moeglich, da ein Stop immer seine eigene Abschluss-Nachricht persistiert); `retryLastMessage` sendet den gleichen Inhalt erneut (keine History-Bearbeitung). `ChatView.vue` zeigt einen "Stop"-Button neben "Neue Session" waehrend `turnInProgress`; `ChatMessageList.vue` zeigt "Antwort fehlt — erneut senden?" unter der letzten Nachricht wenn `missingReply`.
-  - **Test:** `go test ./internal/agent/...` deckt drei Cancel-Pfade ab (zwischen Roundtrips, mitten im Stream, Tool-Call laeuft trotz Cancel zu Ende — `dispatchCtx.Err()` bleibt `nil` obwohl der aeussere `ctx` bereits abgebrochen ist). Live gegen echte Claude API: Stop-Button waehrend eines laufenden Turns geklickt → Button verschwindet, "Neue Session" wieder aktiv, "[Abgebrochen durch Nutzer.]"-Bubble erscheint sofort im Chat (curl+Browser). `token_count_estimate` vor/nach einem abgebrochenen Turn verglichen (25546 → 25546, nicht 0) — Regression aus Bug (2) bestaetigt behoben. Server-Neustart mitten in einem laufenden Turn simuliert (`docker compose restart backend` direkt nach dem POST) → letzte Nachricht bleibt `role=user` ohne Folge-Nachricht → "Antwort fehlt — erneut senden?" erscheint im Browser → Klick sendet erfolgreich neu und die Antwort kommt vollstaendig durch. golangci-lint/go vet/go test clean.
+- [x] **8.4 — Stop button + handling of a missing reply**
+  - Backend: `AgentService` holds one `context.CancelFunc` per session (`turns map[uuid.UUID]context.CancelFunc`). It is registered synchronously before `SendMessage` returns (no race with an immediate Stop click). `StopTurn` checks that the session belongs to the profile and calls `cancel()`. New endpoint `POST .../chat/sessions/{sessionId}/stop`.
+  - `agent.Loop.Run` checks `ctx.Err()` before every roundtrip. On cancel (before or during streaming, detected with `errors.Is(streamErr, context.Canceled)`), `stopped()` persists a text-only final roundtrip ("[Abgebrochen durch Nutzer.]" — means: stopped by user). It never includes `tool_use` blocks for calls that were not dispatched (same principle as the budget limit). This avoids a dangling `tool_use` on the next turn replay.
+  - `dispatchAll` uses `context.WithoutCancel(ctx)` for the actual Tool call. A running Tool call (for example `fetch_url`, `save_listing`) always runs to the end. Only the next LLM request is no longer made.
+  - Two bugs found and fixed during live verification: (1) `persistRoundtrip`/`UpdateTokenCount` used the already cancelled `ctx` for the DB write. So the final roundtrip was never persisted and `chat.message` never fired (the frontend stayed stuck in the `turnInProgress` state). Fixed with a `persistCtx := context.WithoutCancel(ctx)`, separate from `ctx`, for all write operations. (2) A cancelled turn with no measured usage (`tokenCount == 0`, because no `ChatEventDone` ever arrived) wrongly overwrote `token_count_estimate` with 0. Fixed with a `tokenCount > 0` guard before the `UpdateTokenCount` call.
+  - Frontend: `stop()` in `useChat.ts` calls the new endpoint (a 404 from a race with the natural end of the turn is swallowed). `missingReply` detects a last user message with no follow-up message at all (only possible after a server restart, because a Stop always persists its own final message). `retryLastMessage` sends the same content again (no history editing). `ChatView.vue` shows a "Stop" button next to "Neue Session" while `turnInProgress`. `ChatMessageList.vue` shows "Antwort fehlt — erneut senden?" (means: reply missing, send again?) under the last message when `missingReply`.
+  - **Test:** `go test ./internal/agent/...` covers three cancel paths (between roundtrips, in the middle of the stream, Tool call runs to the end despite cancel — `dispatchCtx.Err()` stays `nil` although the outer `ctx` is already cancelled). Live against the real Claude API: clicked the Stop button during a running turn → button disappears, "Neue Session" is active again, the "[Abgebrochen durch Nutzer.]" bubble appears at once in the chat (curl+browser). Compared `token_count_estimate` before/after a cancelled turn (25546 → 25546, not 0) — regression from bug (2) confirmed fixed. Simulated a server restart in the middle of a running turn (`docker compose restart backend` right after the POST) → last message stays `role=user` with no follow-up message → "Antwort fehlt — erneut senden?" appears in the browser → a click resends successfully and the reply comes through completely. golangci-lint/go vet/go test clean.
 
 ---
 
-## Abhaengigkeiten
+## Dependencies
 
 ```
 0.1 ──→ 0.2 ──→ 1.1 ──→ 1.2
@@ -341,4 +341,4 @@ Nach einem manuellen Review-Durchgang durch die laufende App (`docs/review.md`) 
                                                                                                                                        └──→ 8.x (parallel)
 ```
 
-Layer 7 kann parallel zu Layer 6 laufen — die Views nutzen die REST-APIs aus Layer 1-3 und die UI-Patterns aus Layer 5. 7.2 (Context Editor) kann bei Bedarf vorgezogen werden, um das Agent-Verhalten ab 6.3 im UI statt per curl zu steuern.
+Layer 7 can run in parallel with Layer 6. The views use the REST APIs from Layers 1-3 and the UI patterns from Layer 5. You can pull 7.2 (Context Editor) forward if needed. Then you can steer the Agent behavior from 6.3 on in the UI instead of with curl.

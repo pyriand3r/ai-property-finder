@@ -1,67 +1,58 @@
-# Deployment auf einen entfernten Docker-Host
+# Deployment to a remote Docker host
 
-Ziel: Image lokal bauen, als Datei auf den Host kopieren, dort ohne Quellcode starten. Keine Registry nötig.
+Goal: build the image locally, copy it to the host as a file, and start it there without source code. No registry is needed.
 
-## 1. Image bauen (Entwicklungsrechner)
+## 1. Build the image (development machine)
 
 ```bash
-deploy/build-image.sh                        # Ziel linux/amd64 (Standard)
-PLATFORM=linux/arm64 deploy/build-image.sh   # ARM-Host (Raspberry Pi, ARM-NAS …)
+deploy/build-image.sh                        # target linux/amd64 (default)
+PLATFORM=linux/arm64 deploy/build-image.sh   # ARM host (Raspberry Pi, ARM NAS …)
 ```
 
-Ergebnis: `deploy/property-finder-image.tar.gz` (~12 MB, gitignored), enthält die Tags
-`property-finder:latest` und `property-finder:<git describe>` (z. B. `9a21952-dirty`).
+Result: `deploy/property-finder-image.tar.gz` (~12 MB, gitignored). It has the tags `property-finder:latest` and `property-finder:<git describe>` (for example `9a21952-dirty`).
 
-Plattform des Hosts prüfen: `docker version --format '{{.Server.Arch}}'` auf dem Host (`amd64` / `arm64`).
-Ein Image der falschen Architektur startet dort nicht (bzw. nur emuliert).
+Check the platform of the host: run `docker version --format '{{.Server.Arch}}'` on the host (`amd64` / `arm64`). An image for the wrong architecture does not start there (or only runs emulated).
 
-Cross-Build ohne Emulation: `backend/Dockerfile` baut Frontend- und Go-Stage mit `--platform=$BUILDPLATFORM`
-und kompiliert per `GOOS=$TARGETOS GOARCH=$TARGETARCH` (CGO aus). Nur die Runtime-Stage (`apk add`) läuft
-für die Zielplattform.
+Cross-build without emulation: `backend/Dockerfile` builds the frontend and Go stages with `--platform=$BUILDPLATFORM`. It compiles with `GOOS=$TARGETOS GOARCH=$TARGETARCH` (CGO off). Only the runtime stage (`apk add`) runs for the target platform.
 
-## 2. Auf den Host kopieren
+## 2. Copy to the host
 
 ```bash
 ssh host mkdir -p ~/property-finder
 scp deploy/property-finder-image.tar.gz deploy/docker-compose.yml deploy/.env.example host:~/property-finder/
 ```
 
-## 3. Auf dem Host starten
+## 3. Start on the host
 
 ```bash
 cd ~/property-finder
 docker load -i property-finder-image.tar.gz
-cp .env.example .env          # DB_PASSWORD, APP_PASSWORD und CLAUDE_API_KEY setzen
+cp .env.example .env          # set DB_PASSWORD, APP_PASSWORD and CLAUDE_API_KEY
 docker compose up -d
 curl localhost:8080/health    # {"status":"ok"}
 ```
 
-`deploy/docker-compose.yml` unterscheidet sich vom Dev-Compose im Repo-Root:
+`deploy/docker-compose.yml` differs from the dev compose file in the repo root:
 
-- `image: property-finder:${PF_IMAGE_TAG:-latest}` statt `build:`.
-- Postgres-Port wird nicht veröffentlicht.
-- `/data` (PDFs, Bilder) ist das Named Volume `appdata`, kein `./data`-Bind-Mount. Ein neues Named Volume
-  übernimmt die Eigentümerschaft von `/data` aus dem Image (uid 10001, User `app`); ein von Docker auf
-  Linux automatisch angelegter Bind-Mount-Ordner gehört `root`, und das Backend (läuft nicht als root)
-  könnte nicht hineinschreiben.
-- Optionale `.env`-Variablen: `PF_HTTP_PORT` (Host-Port, Standard 8080), `PF_IMAGE_TAG` (Standard `latest`).
+- `image: property-finder:${PF_IMAGE_TAG:-latest}` instead of `build:`.
+- The Postgres port is not published.
+- `/data` (PDFs, images) is the named volume `appdata`, not a `./data` bind mount. A new named volume takes the ownership of `/data` from the image (uid 10001, user `app`). A bind-mount folder that Docker creates automatically on Linux belongs to `root`. The backend does not run as root, so it could not write into it.
+- Optional `.env` variables: `PF_HTTP_PORT` (host port, default 8080), `PF_IMAGE_TAG` (default `latest`).
 
-`CLAUDE_API_KEY` wird nur beim allerersten Start in `app_config` übernommen, danach ist die DB maßgeblich
-(siehe AGENTS.md „Config is two-tier“). `DB_PASSWORD` wirkt nur bei der Initialisierung des `pgdata`-Volumes.
+`CLAUDE_API_KEY` is copied into `app_config` only at the very first start. After that, the DB is the source of truth (see AGENTS.md "Config is two-tier"). `DB_PASSWORD` only has an effect when the `pgdata` volume is first initialized.
 
 ## Update
 
-Schritte 1–2 wiederholen, dann auf dem Host:
+Repeat steps 1–2. Then run this on the host:
 
 ```bash
 docker load -i property-finder-image.tar.gz
-docker compose up -d          # erstellt backend mit dem neuen Image neu; Migrationen laufen beim Boot
+docker compose up -d          # recreates backend with the new image; migrations run at boot
 ```
 
-Rollback: `PF_IMAGE_TAG=<alter git-Tag>` in `.env` setzen, `docker compose up -d` — funktioniert, solange
-das alte Image noch geladen ist **und** keine neue Migration gelaufen ist (Migrationen sind forward-only).
+Rollback: set `PF_IMAGE_TAG=<old git tag>` in `.env`, then run `docker compose up -d`. This works as long as the old image is still loaded **and** no new migration has run (migrations are forward-only).
 
 ## Backup
 
-Beide Volumes enthalten Nutzdaten: `<projekt>_pgdata` (Datenbank) und `<projekt>_appdata` (PDFs, Bilder).
-Datenbank-Dump: `docker compose exec db pg_dump -U app propertyfinder > backup.sql`.
+Both volumes hold user data: `<project>_pgdata` (database) and `<project>_appdata` (PDFs, images).
+Database dump: `docker compose exec db pg_dump -U app propertyfinder > backup.sql`.

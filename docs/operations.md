@@ -1,6 +1,6 @@
 ---
 type: guide
-title: Betriebsanleitung (Server-Betrieb)
+title: Operations Guide (Running the Server)
 project: property-finder-obs-style
 created: 2026-10-04
 tags:
@@ -9,70 +9,67 @@ tags:
   - mcp
 ---
 
-# Betriebsanleitung
+# Operations Guide
 
-Praktische Anleitung zum Betreiben des Backends (Go, embedded Vue-SPA, Postgres 18) und
-zur Nutzung des MCP-Servers. Für das Bauen/Kopieren eines Images auf einen entfernten
-Docker-Host ohne Registry siehe [deployment.md](deployment.md) — dieses Dokument
-behandelt den laufenden Betrieb (beide Varianten nutzen dieselbe Konfiguration und
-dieselben Backup/MCP-Mechanismen).
+This is a practical guide to running the backend (Go, embedded Vue SPA, Postgres 18). It also
+explains how to use the MCP server. To build a image and copy it to a remote Docker host
+without a registry, see [deployment.md](deployment.md). This document covers day-to-day
+running. Both ways of running use the same configuration, backup, and MCP setup.
 
-## 1. Varianten
+## 1. Variants
 
-| Variante | Compose-Datei | Wann |
+| Variant | Compose file | When |
 |---|---|---|
-| Lokale Entwicklung/Test | `docker-compose.yml` (Repo-Wurzel) | `build:` aus Quellcode, Postgres-Port veröffentlicht, `./data` Bind-Mount |
-| Produktiv auf entferntem Host | `deploy/docker-compose.yml` | `image:` aus vorgebautem Tarball, kein Postgres-Port nach außen, `/data` als Named Volume — siehe [deployment.md](deployment.md) |
+| Local development/test | `docker-compose.yml` (repo root) | `build:` from source code, Postgres port published, `./data` bind mount |
+| Production on a remote host | `deploy/docker-compose.yml` | `image:` from a prebuilt tarball, no Postgres port open to the outside, `/data` as a named volume — see [deployment.md](deployment.md) |
 
-Beide Varianten starten/stoppen identisch (`docker compose up -d` / `down`); die
-folgenden Abschnitte gelten für beide, sofern nicht anders vermerkt.
+Both variants start and stop the same way (`docker compose up -d` / `down`). The sections
+below apply to both, unless noted.
 
 ## 2. Start / Stop / Status
 
 ```bash
-docker compose up -d --build       # lokal: baut und startet
-docker compose up -d               # Produktiv-Host: startet mit geladenem Image
+docker compose up -d --build       # local: builds and starts
+docker compose up -d               # production host: starts with the loaded image
 docker compose ps
 docker compose logs -f backend
-docker compose down                # stoppt, Volumes bleiben erhalten
-curl localhost:8080/health         # {"status":"ok"} — einziger unauthentifizierter Endpoint
+docker compose down                # stops, volumes are kept
+curl localhost:8080/health         # {"status":"ok"} — the only endpoint without auth
 ```
 
-Der Healthcheck (`GET /health`) ist absichtlich ohne Login erreichbar, da beide
-Compose-Dateien ihn per `wget` ohne Auth abfragen.
+The health check (`GET /health`) works without login on purpose. Both Compose files call it
+with `wget` and no auth.
 
-## 3. Konfiguration
+## 3. Configuration
 
-Zwei Konfigurations-Ebenen (`backend/internal/config/config.go`):
+There are two configuration levels (`backend/internal/config/config.go`):
 
-### Tier 1 — Environment (`.env`, nur beim Start gelesen)
+### Tier 1 — Environment (`.env`, read only at start)
 
-| Variable | Pflicht | Default | Bedeutung |
+| Variable | Required | Default | Meaning |
 |---|---|---|---|
-| `DATABASE_URL` | ja | – | Postgres-Connection-String |
-| `APP_PASSWORD` | ja | – | Login-Passwort für UI + API (ADR 0018) **und** Bearer-Token für `/mcp` (ADR 0019) |
-| `DB_PASSWORD` | ja (nur Docker Compose) | – | Postgres-Passwort; wirkt nur bei der **Erstinitialisierung** des `pgdata`-Volumes, danach ignoriert |
-| `CLAUDE_API_KEY` | für den Agent nötig | `""` | wird nur beim allerersten Boot einmalig in `app_config` geschrieben (s. Tier 2); danach ist die DB maßgeblich |
-| `COOKIE_SECURE` | nein | `true` | `Secure`-Flag der Session-Cookie; `false` nur für lokale Entwicklung ohne vorgeschalteten TLS-Proxy |
-| `HTTP_LISTEN_ADDR` | nein | `:8080` | Bind-Adresse des HTTP-Servers |
-| `DATA_DIR` | nein | `/data` | Wurzelverzeichnis für hochgeladene PDFs und Listing-Bilder |
+| `DATABASE_URL` | yes | – | Postgres connection string |
+| `APP_PASSWORD` | yes | – | Login password for UI + API (ADR 0018) **and** Bearer token for `/mcp` (ADR 0019) |
+| `DB_PASSWORD` | yes (Docker Compose only) | – | Postgres password. It only works at the **first setup** of the `pgdata` volume. After that it is ignored |
+| `CLAUDE_API_KEY` | needed for the Agent | `""` | Written to `app_config` only once, at the very first boot (see Tier 2). After that the DB is the source of truth |
+| `COOKIE_SECURE` | no | `true` | `Secure` flag of the session cookie. Use `false` only for local development without a TLS proxy in front |
+| `HTTP_LISTEN_ADDR` | no | `:8080` | Bind address of the HTTP server |
+| `DATA_DIR` | no | `/data` | Root folder for uploaded PDFs and listing images |
 
-Ein fehlender `DATABASE_URL` oder `APP_PASSWORD` lässt den Start fehlschlagen (fail-fast,
-kein stiller Teilbetrieb). Ohne `CLAUDE_API_KEY` startet das Backend trotzdem — der Agent
-fällt dann auf `agent.NewUnconfiguredProvider()` zurück und lehnt jede Chat-Anfrage mit
-einer entsprechenden Fehlermeldung ab; REST-API, Formulare und MCP-Tools, die keinen
-LLM-Call brauchen (`fetch_url`, `download_image`, `geocode`, `list_profile_listings`,
-`compute_ranking`, `list_profiles`), funktionieren weiterhin.
+If `DATABASE_URL` or `APP_PASSWORD` is missing, the start fails (fail-fast, no silent partial
+run). Without `CLAUDE_API_KEY` the backend still starts. The Agent then falls back to
+`agent.NewUnconfiguredProvider()` and rejects every chat request with an error message. The
+REST API, forms, and MCP tools that need no LLM call still work. These tools are `fetch_url`,
+`download_image`, `geocode`, `list_profile_listings`, `compute_ranking`, and `list_profiles`.
 
-### Tier 2 — `app_config`-Tabelle (DB-autoritativ nach dem ersten Boot)
+### Tier 2 — `app_config` table (the DB is the source of truth after the first boot)
 
-LLM-Einstellungen (`provider`, `base_url`, `model`, `timeout_seconds`, `max_retries`,
-`max_tool_calls_per_turn`, `max_llm_roundtrips`, `reasoning_language`, `api_key`) liegen
-als Key-Value-Zeilen (`key`, `category`, `value`) in `app_config`. `GET /api/config`
-zeigt den aufgelösten Stand **nur lesend** (der API-Key wird nie im Klartext
-zurückgegeben, nur `api_key_configured: true/false`) — es gibt bewusst keinen
-PUT-Endpoint und keine Einstellungsseite im Frontend. Eine Änderung (z. B. Modellwechsel)
-geht direkt über SQL:
+The LLM settings are `provider`, `base_url`, `model`, `timeout_seconds`, `max_retries`,
+`max_tool_calls_per_turn`, `max_llm_roundtrips`, `reasoning_language`, and `api_key`. They are
+stored as key-value rows (`key`, `category`, `value`) in `app_config`. `GET /api/config` shows
+the resolved state, **read-only**. It never returns the API key in plain text. It only returns
+`api_key_configured: true/false`. There is no PUT endpoint and no settings page in the frontend,
+on purpose. To change a setting (for example, the model), use SQL directly:
 
 ```bash
 docker compose exec db psql -U app -d propertyfinder -c \
@@ -80,104 +77,100 @@ docker compose exec db psql -U app -d propertyfinder -c \
    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
 ```
 
-Ein Neustart des Backends ist dafür **nicht** nötig — `LoadAll` liest `app_config` pro
-Request-Pfad, der die Konfiguration braucht (nicht einmalig beim Boot gecacht).
+You do **not** need to restart the backend. `LoadAll` reads `app_config` on each request path
+that needs the configuration. It is not cached once at boot.
 
-### Passwort ändern
+### Change the password
 
-`APP_PASSWORD` in `.env` ändern, dann `docker compose up -d` (nur den `backend`-Service
-neu erzeugen). Da der JWT-Signing-Key von `APP_PASSWORD` abgeleitet wird, invalidiert das
-**sofort** jede bestehende Browser-Session **und** jeden MCP-Bearer-Token — gewolltes
-Verhalten bei einem Single-User-System (ADR 0018), kein Bug.
+Change `APP_PASSWORD` in `.env`. Then run `docker compose up -d` (this only re-creates the
+`backend` service). The JWT signing key comes from `APP_PASSWORD`. So this **immediately**
+invalidates every existing browser session **and** every MCP Bearer token. This is wanted
+behavior for a single-user system (ADR 0018). It is not a bug.
 
 ## 4. Backup
 
-Zwei Volumes enthalten Nutzdaten:
+Two volumes hold user data:
 
 ```bash
-# Datenbank
+# Database
 docker compose exec db pg_dump -U app propertyfinder > backup.sql
 
-# PDFs/Bilder — lokal: einfach das Bind-Mount-Verzeichnis sichern
+# PDFs/images — local: just back up the bind-mount folder
 tar czf data-backup.tar.gz ./data
-# Produktiv-Host (Named Volume appdata statt Bind-Mount):
+# Production host (named volume appdata instead of bind mount):
 docker run --rm -v <projekt>_appdata:/data -v "$PWD":/backup alpine \
   tar czf /backup/data-backup.tar.gz -C / data
 ```
 
-Restore: Datenbank mit `psql -U app -d propertyfinder < backup.sql` einspielen (auf einer
-frisch migrierten, leeren DB), Daten-Tarball in das jeweilige Volume zurück entpacken.
+Restore: load the database with `psql -U app -d propertyfinder < backup.sql` (into a freshly
+migrated, empty DB). Unpack the data tarball back into the matching volume.
 
-## 5. Migrationen
+## 5. Migrations
 
-Laufen automatisch und fail-fast beim Boot vor dem HTTP-Listener
-(`backend/cmd/server/main.go`), forward-only (`golang-migrate/v4`,
-`backend/internal/db/migrations/`). Es gibt kein separates Migrations-CLI — ein Rollback
-auf eine alte Image-Version funktioniert nur, solange danach keine neue Migration
-gelaufen ist.
+Migrations run automatically at boot, before the HTTP listener starts. They fail fast
+(`backend/cmd/server/main.go`) and only go forward (`golang-migrate/v4`,
+`backend/internal/db/migrations/`). There is no separate migration CLI. A rollback to an old
+image version only works if no new migration has run since.
 
 ## 6. Troubleshooting
 
-| Symptom | Ursache | Fix |
+| Symptom | Cause | Fix |
 |---|---|---|
-| Login liefert 204, danach sofortiger Redirect zu `/login` | `COOKIE_SECURE=true` (Default) bei einem Deployment ohne TLS-Proxy davor | `COOKIE_SECURE=false` setzen (nur für Setups ohne vorgeschalteten HTTPS-Proxy) |
-| Backend-Container `unhealthy`/restartet dauernd | Migration schlägt fehl oder `DATABASE_URL`/`APP_PASSWORD` fehlt | `docker compose logs backend` — Fehler steht in den ersten Zeilen (fail-fast vor dem Listener) |
-| Chat antwortet mit Fehler, aber REST/Formulare funktionieren | `CLAUDE_API_KEY` nie gesetzt → `agent.NewUnconfiguredProvider()` | `CLAUDE_API_KEY` in `.env` setzen und Backend neu erzeugen (einmaliger Seed) |
-| `POST /mcp` liefert die SPA (`index.html`) statt JSON-RPC | läuft ein Image **vor** ADR 0019 (kein `/mcp`-Route vorhanden) | Image neu bauen/laden (`docker compose up -d --build` bzw. aktuelles `property-finder-image.tar.gz` laden) |
-| `POST /mcp` liefert `401` | fehlender/falscher `Authorization: Bearer <APP_PASSWORD>`-Header | Header prüfen; `APP_PASSWORD`-Rotation invalidiert alte Tokens sofort |
+| Login returns 204, then an instant redirect to `/login` | `COOKIE_SECURE=true` (default) in a deployment with no TLS proxy in front | Set `COOKIE_SECURE=false` (only for setups without an HTTPS proxy in front) |
+| Backend container is `unhealthy` or restarts all the time | A migration fails, or `DATABASE_URL`/`APP_PASSWORD` is missing | Run `docker compose logs backend` — the error is in the first lines (fail-fast before the listener) |
+| Chat answers with an error, but REST/forms work | `CLAUDE_API_KEY` was never set → `agent.NewUnconfiguredProvider()` | Set `CLAUDE_API_KEY` in `.env` and re-create the backend (one-time seed) |
+| `POST /mcp` returns the SPA (`index.html`) instead of JSON-RPC | The image is **older than** ADR 0019 (no `/mcp` route) | Rebuild/load the image (`docker compose up -d --build`, or load the current `property-finder-image.tar.gz`) |
+| `POST /mcp` returns `401` | The `Authorization: Bearer <APP_PASSWORD>` header is missing or wrong | Check the header. A `APP_PASSWORD` change invalidates old tokens immediately |
 
-## 7. MCP-Server-Nutzung
+## 7. Using the MCP Server
 
-Der komplette interne Agent-Tool-Katalog ist zusätzlich extern per MCP (Streamable HTTP
-Transport, `github.com/modelcontextprotocol/go-sdk`) erreichbar — für externe
-MCP-fähige Clients wie Claude Code, Claude Desktop und opencode, ohne eine echte
-Chat-Session anzulegen (ADR 0019).
+The full internal Agent tool catalog is also available from outside through MCP (Streamable
+HTTP transport, `github.com/modelcontextprotocol/go-sdk`). It is for external MCP-capable
+clients like Claude Code, Claude Desktop, and opencode. They do not need to create a real chat
+session (ADR 0019).
 
 ### Endpoint & Auth
 
-- `POST /mcp` — Streamable HTTP, JSON-RPC 2.0, Antworten als einzelnes JSON-Objekt
-  (`JSONResponse: true`, keine SSE-Streams; jedes Tool liefert ein schnelles, einmaliges
-  Ergebnis).
-- Auth: `Authorization: Bearer <APP_PASSWORD>` — derselbe Wert wie das UI-Login-Passwort,
-  kein zweites Secret (`RequireBearer`-Middleware, `backend/internal/api/auth.go`).
-- Der Handler ist **stateful**: die erste Antwort (`initialize`) liefert einen
-  `Mcp-Session-Id`-Response-Header; dieser muss bei allen folgenden Requests derselben
-  Sitzung als Header mitgeschickt werden.
+- `POST /mcp` — Streamable HTTP, JSON-RPC 2.0. Answers come as a single JSON object
+  (`JSONResponse: true`, no SSE streams; each tool gives one quick result).
+- Auth: `Authorization: Bearer <APP_PASSWORD>`. This is the same value as the UI login
+  password. There is no second secret (`RequireBearer` middleware,
+  `backend/internal/api/auth.go`).
+- The handler is **stateful**. The first answer (`initialize`) returns an `Mcp-Session-Id`
+  response header. You must send this header with all later requests of the same session.
 
-### Tool-Katalog
+### Tool Catalog
 
-`list_profiles` ist der Einstiegspunkt — er liefert die `profile_id`, die jedes andere
-Tool als Pflichtfeld erwartet (es gibt sonst keinen Weg, außerhalb einer Chat-Session an
-eine Profil-UUID zu kommen).
+`list_profiles` is the entry point. It returns the `profile_id` that every other tool needs as
+a required field. Outside a chat session, there is no other way to get a profile UUID.
 
-| Tool | Zweck | Wichtige Parameter |
+| Tool | Purpose | Key parameters |
 |---|---|---|
-| `list_profiles` | Alle Search Profiles mit UUID auflisten | – |
-| `fetch_url` | Webseite per GET laden, lesbaren Haupttext + Bild-URLs + Links zurückgeben | `profile_id`, `url` |
-| `save_listing` | Inserat anlegen/aktualisieren | `profile_id`, `listing_id` (optional = Update), `fields.*` (title, price, address, document_md, seller_*, …), `force_overwrite[]` |
-| `download_image` | Bild von URL laden, beim Inserat speichern (erstes Bild = automatisch Titelbild) | `profile_id`, `listing_id`, `image_url`, `category` |
-| `evaluate_listing` | Inserat anhand der Profil-Kriterien bewerten (Note A–F je Kriterium + Gesamt-Score) | `profile_id`, `listing_id` |
-| `propose_criteria` | Kriterium anlegen/ändern — schreibt **sofort**, kein Chat-Confirm-Card wie beim internen Tool gleichen Namens | `profile_id`, `action` (`add`/`edit`), `criterion_id` (bei edit), `name`, `description`, `weight` (1–5), `is_subjective` |
-| `update_context` | Text an Globalen oder Profil-Kontext anhängen — schreibt ebenfalls sofort | `profile_id`, `scope` (`global`/`profile`), `operation` (nur `append`), `content` |
-| `geocode` | Adresse zu Koordinaten auflösen (Nominatim) | `profile_id`, `address`, `country` (optional, ISO-3166-1 alpha-2) |
-| `list_profile_listings` | Übersicht aller Inserate im Profil (Titel, Preis, Score, Status, Quell-URL) | `profile_id` |
-| `compute_ranking` | Rangliste aller bewerteten, nicht abgelehnten/archivierten Inserate, absteigend nach Score | `profile_id` |
+| `list_profiles` | List all Search Profiles with UUID | – |
+| `fetch_url` | Load a web page with GET. Return the readable main text, image URLs, and links | `profile_id`, `url` |
+| `save_listing` | Create/update a listing | `profile_id`, `listing_id` (optional = update), `fields.*` (title, price, address, document_md, seller_*, …), `force_overwrite[]` |
+| `download_image` | Load an image from a URL and save it with the listing (the first image automatically becomes the cover image) | `profile_id`, `listing_id`, `image_url`, `category` |
+| `evaluate_listing` | Grade a listing against the profile criteria (grade A–F per criterion + overall Score) | `profile_id`, `listing_id` |
+| `propose_criteria` | Create/change a criterion. It writes **at once**. There is no chat Confirm-Card, unlike the internal tool with the same name | `profile_id`, `action` (`add`/`edit`), `criterion_id` (for edit), `name`, `description`, `weight` (1–5), `is_subjective` |
+| `update_context` | Append text to the Global or Profile Context. It also writes at once | `profile_id`, `scope` (`global`/`profile`), `operation` (only `append`), `content` |
+| `geocode` | Turn an address into coordinates (Nominatim) | `profile_id`, `address`, `country` (optional, ISO-3166-1 alpha-2) |
+| `list_profile_listings` | Overview of all listings in the profile (title, price, Score, status, source URL) | `profile_id` |
+| `compute_ranking` | Ranking of all graded listings that are not rejected/archived, highest Score first | `profile_id` |
 
-`propose_criteria`/`update_context` haben über MCP **kein Undo**: anders als die
-gleichnamigen internen Chat-Tools (ADR 0004/0009) schreiben sie direkt, ohne
-Confirm-Card — Änderungen werden als `ChangedByUser` protokolliert, nicht
-`ChangedByAgent`.
+Over MCP, `propose_criteria` and `update_context` have **no undo**. The internal chat tools
+with the same names (ADR 0004/0009) use a Confirm-Card. The MCP versions write directly with
+no Confirm-Card. Changes are logged as `ChangedByUser`, not `ChangedByAgent`.
 
-### Diagnose per curl
+### Debugging with curl
 
-Für Diagnosezwecke lässt sich der Handshake auch direkt mit `curl` nachvollziehen (für
-den Alltag die Client-Integrationen unten verwenden):
+For debugging, you can also walk through the handshake directly with `curl`. For everyday use,
+use the client setups below.
 
 ```bash
 TOKEN="<APP_PASSWORD>"
 HOST="http://localhost:8080"
 
-# 1. Session initialisieren — Antwort-Header "Mcp-Session-Id" merken
+# 1. Initialize the session — note the response header "Mcp-Session-Id"
 curl -sD - -o /dev/null -X POST "$HOST/mcp" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -186,15 +179,15 @@ curl -sD - -o /dev/null -X POST "$HOST/mcp" \
         "protocolVersion":"2025-06-18","capabilities":{},
         "clientInfo":{"name":"curl-test","version":"1.0"}}}'
 
-SESSION="<aus dem Mcp-Session-Id Header oben>"
+SESSION="<from the Mcp-Session-Id header above>"
 
-# 2. initialized-Notification bestätigen (ohne "id" = Notification)
+# 2. Confirm the initialized notification (no "id" = notification)
 curl -s -X POST "$HOST/mcp" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" -H "Mcp-Session-Id: $SESSION" \
   -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
 
-# 3. Tool aufrufen, z.B. list_profiles
+# 3. Call a tool, for example list_profiles
 curl -s -X POST "$HOST/mcp" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" -H "Mcp-Session-Id: $SESSION" \
@@ -209,7 +202,7 @@ claude mcp add --transport http property-finder https://<host>/mcp \
   --header "Authorization: Bearer <APP_PASSWORD>"
 ```
 
-Verbindet sich direkt — Claude Code unterstützt statische Bearer-Header nativ.
+It connects directly. Claude Code supports static Bearer headers natively.
 
 ### opencode
 
@@ -231,29 +224,28 @@ In `opencode.json`/`opencode.jsonc`:
 }
 ```
 
-`oauth: false` ist nötig, damit opencode nicht versucht, einen OAuth-Flow mit dem Server
-auszuhandeln — `/mcp` kennt nur den statischen Bearer-Token.
+`oauth: false` is needed so opencode does not try to negotiate an OAuth flow with the server.
+`/mcp` only knows the static Bearer token.
 
 ### Claude Desktop
 
-Claude Desktops Custom-Connector-UI akzeptiert nur OAuth-Felder, keinen statischen
-Bearer-Token (ADR 0019, "Alternatives considered"). Workaround über den
-Community-Proxy `mcp-remote`, den Claude Desktops stdio-Server-Unterstützung direkt
-ausführen kann:
+The Custom Connector UI of Claude Desktop only accepts OAuth fields. It does not accept a
+static Bearer token (ADR 0019, "Alternatives considered"). The workaround is the community
+proxy `mcp-remote`. Claude Desktop can run it through its stdio server support:
 
 ```bash
 npx mcp-remote https://<host>/mcp --header "Authorization: Bearer <APP_PASSWORD>"
 ```
 
-Als lokaler stdio-MCP-Server in Claude Desktops Konfiguration eintragen (Command:
-`npx`, Args: `mcp-remote https://<host>/mcp --header "Authorization: Bearer <APP_PASSWORD>"`).
+Add it as a local stdio MCP server in the Claude Desktop configuration (Command: `npx`, Args:
+`mcp-remote https://<host>/mcp --header "Authorization: Bearer <APP_PASSWORD>"`).
 
-### Typischer Workflow über MCP
+### Typical Workflow over MCP
 
-1. `list_profiles` → `profile_id` ermitteln.
-2. `fetch_url` auf die Inserats-URL → Haupttext/Bilder/Links.
-3. `save_listing` mit den extrahierten Feldern (neu: `listing_id` weglassen).
-4. `download_image` für jedes relevante Bild.
-5. `geocode` für die Adresse (füllt `latitude`/`longitude` für die Karte).
-6. `evaluate_listing` → Note je Kriterium + Score.
-7. `list_profile_listings` / `compute_ranking` zur Übersicht/Rangliste.
+1. `list_profiles` → get the `profile_id`.
+2. `fetch_url` on the listing URL → main text/images/links.
+3. `save_listing` with the extracted fields (for a new listing: leave out `listing_id`).
+4. `download_image` for each relevant image.
+5. `geocode` for the address (fills `latitude`/`longitude` for the map).
+6. `evaluate_listing` → grade per criterion + Score.
+7. `list_profile_listings` / `compute_ranking` for the overview/Ranking.

@@ -1,17 +1,17 @@
-- Chat-Cards stehen nachdem man aus dem Chat-Tag geht und später zurück zum Chat kommt bzw. nach einem Seiten-Refresh wieder auf unentschieden, obwohl man sie vorher angenommen/abgelehnt hat
-- "Da das Profil noch keine Bewertungskriterien hat, schlage ich passende Kriterien vor, statt zu bewerten: [Limit von 5 LLM-Anfragen erreicht — fasse den Stand zusammen und frag, ob weitergemacht werden soll.]"
-    - habe mit `weitermachen` geantwortet, LLM hat nichts gemacht
-- Session-Token Füllstands Donut-Chart ist mit dem Icon in der Mitte nur sehr schlecht erkennbar. Das Icon kleiner oder nur Icon ohne Hintergrund besser, damit man den Chart sehen kann
-- Inserate-Liste
-    - kein Titelbild sichtbar. Insgesamt nirgends Bilder sichtbar außer im Chat das Titelbild einmal
-    - Gut fände ich es, wenn die Detail-Ansicht eines Inserats direkt neben der Liste stehen würde. Also links Liste, rechts Detail-Ansicht. Dann könnte man schneller durch die Inserate gehen
-    - Optional sollen die einzelnen Kriterien mit Score einblendbar sein, für jedes Kriterium eine optionale eigene Spalte, soll auch persistent sein
-- Detail-Ansicht
-    - Bewertungstabelle nach ganz oben
-    - "Bearbeiten" und "Speichern" Button für die gesamte Ansicht, nicht automatisches speichern. Buttons sollen oben rechts in der Ecke stehen.
-    - Notizen sollen als einzelne Cards hinzufügbar sein. Nicht ein einzelnes Notizfeld, dass immer weiter befüllt wird, sondern einzelne, eigenstädige Notiz-Objekte, die einzeln erstellt/bearbeitet/gelöscht werden können. Button "Neue Notiz" und Cards mit Icons oben Rechts in der Ecke für Bearbeiten und Löschen
-    - Quell-URL soll in Ansichts-Modus ein klickbarer Link sein
-    - Es fehlen diverse Felder, die (noch) nicht als eigenständige Felder angezeigt werden:
+- Chat cards go back to "undecided" after you leave the chat tab and come back later, or after a page refresh. This happens even though you accepted or rejected them before.
+- "Da das Profil noch keine Bewertungskriterien hat, schlage ich passende Kriterien vor, statt zu bewerten: [Limit von 5 LLM-Anfragen erreicht — fasse den Stand zusammen und frag, ob weitergemacht werden soll.]" (means: "Since the profile has no evaluation criteria yet, I suggest suitable criteria instead of evaluating: [Limit of 5 LLM requests reached — summarize the state and ask whether to continue.]")
+    - I answered with `weitermachen` ("continue"). The LLM did nothing.
+- The session-token fill-level donut chart is hard to read because of the icon in the middle. A smaller icon, or only the icon without a background, would be better. Then you can see the chart.
+- Listings list
+    - No title image is visible. Images are not visible anywhere, except the title image once in the chat.
+    - I would like the detail view of a listing to sit right next to the list: list on the left, detail view on the right. Then you could go through the listings faster.
+    - Optional: you should be able to show the single criteria with their Score. Each criterion gets its own optional column. This should also be persistent.
+- Detail view
+    - Move the evaluation table to the very top.
+    - Add an "Bearbeiten" (edit) button and a "Speichern" (save) button for the whole view. No automatic saving. The buttons should sit in the top right corner.
+    - You should be able to add notes as single cards. Not one single note field that keeps growing, but separate, standalone note objects. You can create, edit, and delete each one on its own. Add a "Neue Notiz" (new note) button. The cards get icons in the top right corner for edit and delete.
+    - In view mode, the source URL should be a clickable link.
+    - Several fields are missing. They are not yet shown as standalone fields:
         - lat / long
         - plot_size_m2
         - price

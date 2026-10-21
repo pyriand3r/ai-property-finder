@@ -22,6 +22,8 @@ Where it goes:
 
 Rules:
 - Update in place. Prefer editing the existing section over appending a duplicate one.
+- Write docs in simple English: short sentences, common words, one idea per sentence. Keep real product
+  text (German UI copy, system-prompt text) verbatim and add a short English gloss in nearby prose.
 - Keep `AGENTS.md` short and factual — pointers to `docs/`, not copies of it. If a topic outgrows a few
   lines here, move it to `docs/` and leave a one-line pointer.
 - Delete facts that become wrong. Stale docs are worse than missing docs.

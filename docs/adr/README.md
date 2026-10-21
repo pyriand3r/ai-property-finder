@@ -9,20 +9,20 @@ tags:
   - index
 ---
 
-Numbered, append-only log of architecture decisions for this project's Chat/Context/Agent redesign. Own numbering, independent of [[../../../dev-property-finder/docs/adr/README|dev-property-finder's ADR sequence]] — several ADRs here explicitly supersede or carry forward specific dev-property-finder ADRs, noted per row.
+This is a numbered, append-only log of architecture decisions for this project's Chat/Context/Agent redesign. It has its own numbering, separate from the ADR sequence of the predecessor project. Several ADRs here explicitly replace or carry forward specific ADRs of the predecessor project. Each row notes this.
 
 ## Index
 
-| ADR | Title | Resolves / affects | Relation to dev-property-finder |
-|-----|-------|---------------------|----------------------------------|
+| ADR | Title | Resolves / affects | Relation to the predecessor project |
+|-----|-------|---------------------|--------------------------------------|
 | [[0001-chat-first-with-form-fallback]] | Chat is primary; a plain form is a mandatory fallback | [[../../spec/01_mvp/01-01-chat-interface]], [[../../spec/01_mvp/01-07-manual-review-and-edit]] | New |
 | [[0002-context-files-freeform-markdown]] | Context Files are freeform Markdown, not structured settings | [[../../spec/01_mvp/01-02-context-files]] | New |
-| [[0003-portal-rules-as-context-text]] | Portal-specific handling lives as text in Context, not scraper code | [[../../spec/01_mvp/01-03-listing-ingestion-via-chat]] | Supersedes ADR 0007, ADR 0008 |
-| [[0004-unified-confirm-before-apply]] | One unified confirm-before-apply mechanism replaces the Proposal entity | [[../../spec/01_mvp/01-02-context-files#Confirmation]], [[../../spec/01_mvp/01-04-criteria-and-scoring]] | Carries forward the principle of ADR 0001, replaces its mechanism |
+| [[0003-portal-rules-as-context-text]] | Portal-specific handling lives as text in Context, not scraper code | [[../../spec/01_mvp/01-03-listing-ingestion-via-chat]] | Supersedes its anti-bot strategy and HTML reduction decisions |
+| [[0004-unified-confirm-before-apply]] | One unified confirm-before-apply mechanism replaces the Proposal entity | [[../../spec/01_mvp/01-02-context-files#Confirmation]], [[../../spec/01_mvp/01-04-criteria-and-scoring]] | Carries forward the principle of its confirm-before-apply decision, replaces its mechanism |
 | [[0005-pdf-native-document-input]] | PDF Sources via native Claude document input, no local extraction | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#PDF Handling]] | New (replaces the manual pymupdf step from the reference Obsidian workflow) |
-| [[0006-single-provider-for-agent-mvp]] | Claude API is the sole provider for MVP; LM Studio and OpenCode deferred | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#Provider Abstraction]] | Narrows dev-property-finder's day-1 Claude+LM-Studio requirement |
+| [[0006-single-provider-for-agent-mvp]] | Claude API is the sole provider for MVP; LM Studio and OpenCode deferred | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#Provider Abstraction]] | Narrows the day-1 Claude+LM-Studio requirement of the predecessor project |
 | [[0007-agent-loop-provider-independent]] | Agent loop is built provider-independently, not tied to Anthropic's SDK | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]], [[../../spec/00_infrastructure_setup/00-01-tech-stack]] | Follows from 0006 — the loop stays clean across providers |
-| [[0008-agent-turn-fire-and-forget]] | Agent turns run to completion, no recovery on server restart | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]], [[../../spec/00_infrastructure_setup/00-01-tech-stack]] | Simplifies over dev-property-finder's task-persistence model (ADR 0004) — recovery not needed for chat-driven turns |
+| [[0008-agent-turn-fire-and-forget]] | Agent turns run to completion, no recovery on server restart | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]], [[../../spec/00_infrastructure_setup/00-01-tech-stack]] | Simplifies over the task-persistence model of the predecessor project — recovery not needed for chat-driven turns |
 | [[0009-proposal-pending-in-tool-calls]] | Pending proposals live in chat_message.tool_calls JSONB, confirmed via REST | [[../../spec/00_infrastructure_setup/00-02-database-schema]], [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]], [[../../spec/01_mvp/01-02-context-files]] | Implements ADR 0004's confirm-before-apply with no new tables |
 | [[0010-tool-result-jsonb-for-replay]] | Tool results stored as JSONB in chat_message, provider-mapped on replay | [[../../spec/00_infrastructure_setup/00-02-database-schema]], [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]] | Enables lossless conversation history replay across providers |
 | [[0011-nominatim-geocoding-tool]] | Geocoding via Nominatim (OSM), added as geocode Tool | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]], [[../../spec/01_mvp/01-06-map-view]] | Resolves addresses to coordinates for map markers |
@@ -39,6 +39,6 @@ Numbered, append-only log of architecture decisions for this project's Chat/Cont
 
 ## Notes
 
-- ADR 0003 and 0004 are the two decisions that most directly explain why this project exists as a separate spec rather than a patch to dev-property-finder — they replace code-shaped solutions (scraper modules, a Proposal table) with context-shaped ones.
-- ADR 0006 is deliberately narrow in scope (which providers, for MVP) — it does not revisit *whether* a provider abstraction is worth having at all; that's settled by reusing dev-property-finder's proven pattern.
-- ADR 0007 is the implementation-level consequence of 0006: because alternative providers *will* arrive post-MVP, the agent loop itself must not be coupled to any one provider's SDK or wire format. (2026-07-29: OpenCode statt Claude als POC-Provider wurde erwogen und verworfen — siehe Status-Notiz in [[0006-single-provider-for-agent-mvp]].)
+- ADR 0003 and 0004 best explain why this project exists as a separate spec and not as a patch to the predecessor project. They replace code-shaped solutions (scraper modules, a Proposal table) with context-shaped ones.
+- ADR 0006 is deliberately narrow in scope (which providers, for MVP). It does not ask *whether* a provider abstraction is worth having at all. That is settled by reusing the proven pattern of the predecessor project.
+- ADR 0007 follows from 0006 at the implementation level. Other providers *will* arrive after MVP. So the agent loop itself must not be tied to one provider's SDK or wire format. (2026-07-29: using OpenCode instead of Claude as the POC provider was considered and rejected. See the status note in [[0006-single-provider-for-agent-mvp]].)

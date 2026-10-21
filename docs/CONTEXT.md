@@ -8,67 +8,67 @@ tags:
   - domain
 ---
 
-A single-user, self-hosted application for finding and evaluating real estate listings through a conversational AI agent. The user drives ingestion and evaluation through a Chat, not through forms. Extends the domain model of [[../dev-property-finder/CONTEXT|dev-property-finder/CONTEXT]] — Criterion, Grade, Score, Weight are unchanged; this glossary only defines what's new.
+A single-user, self-hosted app. It helps you find and judge real estate listings through a conversational AI agent. The user adds and evaluates listings in a Chat, not in forms. It builds on the domain model of the predecessor project. Criterion, Grade, Score and Weight stay the same. This glossary only defines what is new.
 
 ## Language
 
 **Search Profile**:
-Unchanged from [[../dev-property-finder/CONTEXT#Search Profile|dev-property-finder]] — a named, user-defined set of Criteria describing the desired property. Now additionally owns exactly one Profile Context.
+Same as in the predecessor project. It is a named set of Criteria, defined by the user, that describes the property they want. It now also owns exactly one Profile Context.
 
 **Chat Session**:
-A persistent, ordered sequence of messages between the user and the Agent, scoped to exactly one Search Profile. Messages are stored durably — the Chat Session is not ephemeral browser state. Reopening a Search Profile resumes its Chat Session where it left off.
+A saved, ordered list of messages between the user and the Agent. It belongs to exactly one Search Profile. Messages are stored for good. The Chat Session is not temporary browser state. When you reopen a Search Profile, its Chat Session continues where it stopped.
 _Avoid_: Conversation (too generic), thread
 
 **Agent**:
-The LLM acting inside a Chat Session with access to a fixed set of Tools ([[#Tool]]). Distinct from the plain evaluation calls in [[../dev-property-finder/CONTEXT#Evaluation|dev-property-finder]] (`EvaluateListing`, `ParseSearchProfile`) — the Agent runs a multi-turn tool-use loop, not a single request/response call. The old single-shot Evaluation calls remain and are invoked by the Agent as a Tool, not replaced.
+The LLM that works inside a Chat Session. It can use a fixed set of Tools ([[#Tool]]). It is different from the plain evaluation calls in the predecessor project (`EvaluateListing`, `ParseSearchProfile`). The Agent runs a multi-turn tool-use loop. It is not one request and one response. The old single-shot Evaluation calls still exist. The Agent calls them as a Tool. They are not replaced.
 _Avoid_: Assistant, bot, model (model is the underlying LLM; Agent is the role it plays with tools attached)
 
 **Tool**:
-A typed function the Agent can call during a Chat turn (e.g. `fetch_url`, `extract_images`, `save_listing`, `update_profile_context`). Tool results are fed back to the Agent within the same turn before it produces a reply. Full catalogue: [[spec/00_infrastructure_setup/00-03-llm-agent-integration]].
+A typed function that the Agent can call during a Chat turn (for example `fetch_url`, `extract_images`, `save_listing`, `update_profile_context`). The Agent gets the Tool results back in the same turn, before it writes a reply. Full list: [[spec/00_infrastructure_setup/00-03-llm-agent-integration]].
 _Avoid_: Function, action, command
 
 **Context File**:
-A persistent, user- and Agent-editable Markdown text that steers Agent behaviour — the app's equivalent of an `AGENT.md`. Two scopes exist: Global Context and Profile Context. Neither is a prompt template with variable substitution — both are plain instructional text prepended to the Agent's system prompt.
+A saved Markdown text that steers how the Agent behaves. The user and the Agent can both edit it. It is the app's version of an `AGENT.md`. There are two scopes: Global Context and Profile Context. Neither is a prompt template with variables. Both are plain instruction text added at the start of the Agent's system prompt.
 _Avoid_: Prompt, system prompt (the Context File is the *content*; the system prompt is the mechanism that includes it), config
 
 **Global Context**:
-The single, app-wide Context File. Partially pre-seeded by the application (e.g. default image-extraction approach, default table/rating format, star-rating convention) and freely extended by the user or the Agent (with user confirmation — see [[spec/01_mvp/01-02-context-files]]). Applies to every Search Profile's Agent turns.
+The one Context File for the whole app. The app fills part of it in advance (for example the default way to extract images, the default table and rating format, and the star-rating convention). The user or the Agent can add to it freely. The Agent needs user confirmation first (see [[spec/01_mvp/01-02-context-files]]). It applies to the Agent's turns in every Search Profile.
 _Avoid_: Global config, system instructions
 
 **Profile Context**:
-A Context File owned by exactly one Search Profile. Holds profile-specific instructions the user would otherwise repeat every session — e.g. "for Swedish listings, always check water/sewage and follow the Booli broker link." Directly analogous to the "Arbeitsanweisungen für zukünftige Sessions" section maintained today in [[../immobilienplan-schweden-portugal-oesterreich/schweden/00_readme]]. Appended after the Global Context in the Agent's system prompt; more specific instructions here override more general ones in the Global Context.
+A Context File that belongs to exactly one Search Profile. It holds instructions for that profile that the user would otherwise repeat in every session. One example: "for Swedish listings, always check water/sewage and follow the Booli broker link." It works like the "Arbeitsanweisungen für zukünftige Sessions" section (means: "work instructions for future sessions") that is kept by hand today in the reference Obsidian workflow. It is added after the Global Context in the Agent's system prompt. When both say something different, the more specific instruction here wins over the general one in the Global Context.
 _Avoid_: Profile config, profile notes (see [[#Listing Note]] — a different, per-Listing concept)
 
 **Portal Rule**:
-A Context File fragment (living in Global or Profile Context — not a separate structured table) describing how to handle listings from a specific domain: which secondary link to follow (e.g. "Läs mer hos mäklaren"), what fields typically hide only on the broker page, anti-bot quirks. Interpreted by the Agent at runtime via natural language, not compiled into portal-specific scraper code — this is the key architectural break from [[../dev-property-finder/docs/adr/0007-scraping-anti-bot-strategy|dev-property-finder ADR 0007]] and [[../dev-property-finder/docs/adr/0008-html-reduction-pipeline|ADR 0008]].
+A piece of a Context File (in Global or Profile Context, not in a separate structured table). It says how to handle listings from one specific domain. It can say which second link to follow (for example "Läs mer hos mäklaren", Swedish for "read more at the broker"). It can say which fields are often only on the broker page. It can describe anti-bot quirks. The Agent reads it at runtime as natural language. It is not compiled into scraper code for each portal. This is the key break in architecture from the scraping anti-bot strategy and the HTML reduction pipeline of the predecessor project.
 _Avoid_: Scraper config, portal (Portal remains the entity name for a *search source* in the old Phase-3 sense, if that phase is ever ported — Portal Rule is purely a context-file concept)
 
 **Source**:
-What the Agent was given to work from for one Listing: a URL, an uploaded PDF, or an uploaded image. A Listing always has exactly one Source, recorded on ingestion (see [[../dev-property-finder/CONTEXT#Import|dev-property-finder Import]], which this specialises).
+What the Agent got to work from for one Listing: a URL, an uploaded PDF, or an uploaded image. A Listing always has exactly one Source. The app records it when the Listing is added. This makes the Import of the predecessor project more specific.
 _Avoid_: Input, origin
 
 **Listing Document**:
-The long-form, human-readable write-up the Agent produces per Listing — original-language excerpt, German translation, criteria evaluation table, pros/cons versus other Listings in the profile, broker-page details. Stored as structured Markdown in `listing.document_md` (see [[spec/00_infrastructure_setup/00-02-database-schema]]) and rendered in the Listing detail view. This is the direct counterpart of today's per-Inserat `.md` file in the Obsidian vault — the difference is it lives inside one `listing` row instead of being the row.
-_Avoid_: Description (Description remains the shorter structured field inherited from the old model — see [[../dev-property-finder/CONTEXT#Listing|dev-property-finder Listing]]), notes (see [[#Listing Note]] — a separate, user-authored concept)
+The long, human-readable write-up that the Agent makes for each Listing. It holds an excerpt in the original language, a German translation, a table that evaluates the criteria, pros and cons compared with the other Listings in the profile, and details from the broker page. It is stored as structured Markdown in `listing.document_md` (see [[spec/00_infrastructure_setup/00-02-database-schema]]). The Listing detail view shows it. It is the direct match for today's `.md` file for each Inserat (German: listing) in the reference Obsidian workflow. The difference is that it lives inside one `listing` row. It is not the row itself.
+_Avoid_: Description (Description remains the shorter structured field inherited from the old model), notes (see [[#Listing Note]] — a separate, user-authored concept)
 
 **Listing Note**:
-A freeform, timestamped note the user writes about a Listing itself — "called the agent, viewing Saturday," "neighbor mentioned the roof was redone in 2019." Any number per Listing, each independently created/edited/deleted. Stored in `listing_note` (see [[spec/00_infrastructure_setup/00-02-database-schema]]) and shown in the Listing detail view as individual cards ([[spec/01_mvp/01-11-listing-notes]]).
+A free-form note with a timestamp. The user writes it about a Listing itself, for example "called the agent, viewing Saturday" or "neighbor mentioned the roof was redone in 2019." A Listing can have any number of them. Each one can be created, edited and deleted on its own. It is stored in `listing_note` (see [[spec/00_infrastructure_setup/00-02-database-schema]]). The Listing detail view shows each one as its own card ([[spec/01_mvp/01-11-listing-notes]]).
 _Avoid_: Notes (ambiguous — see below), Verkäufer-Notizen/seller notes (that's `listing.seller_notes`, a single field about the seller/contact person, not this)
 
 **Ranking**:
-The user-facing, ordered view of all "active" Listings in a Search Profile, driven by Score. Each Listing carries an AI-written per-listing one-liner (`listing.kurzfazit`), and the profile holds an overall comparison summary (`search_profile.ranking_summary`). Both are regenerated on user request (chat instruction or button), not automatically. Mirrors the Rangliste section of the reference workflow's `00_readme.md`.
+The ordered view of all "active" Listings in a Search Profile, driven by Score. The user sees this view. Each Listing has a one-line summary written by the AI (`listing.kurzfazit`). The profile also holds one overall comparison summary (`search_profile.ranking_summary`). Both are made again when the user asks, by a chat instruction or a button. They are not updated automatically. It matches the Rangliste (German: ranking list) section of the reference Obsidian workflow.
 _Avoid_: List view (List view is the plain sortable/filterable table, unchanged from the old model — Ranking is the curated, narrated variant)
 
 **Photo Set**:
-The images the Agent gathered or was given for a Listing, each tagged by the Agent with a category (exterior, interior, floor plan, outbuilding, other) where determinable. One image is marked as the title image. Extends `listing_image` ([[../dev-property-finder/CONTEXT#Listing|dev-property-finder]]) with a `category` field — see [[spec/00_infrastructure_setup/00-02-database-schema]].
+The images that the Agent collected or received for a Listing. Where it can tell, the Agent tags each image with a category (exterior, interior, floor plan, outbuilding, other). One image is marked as the title image. It extends the `listing_image` of the predecessor project with a `category` field. See [[spec/00_infrastructure_setup/00-02-database-schema]].
 _Avoid_: Gallery, media
 
 **Follow-Up Instruction**:
-A user message inside an existing Listing's Chat context asking the Agent to revisit or extend a specific Listing ("check if this one has a garage", "re-read the broker page, they added a floor plan"). Not a new Import — it updates the existing Listing and triggers re-evaluation, same as a manual field edit in the old model ([[../dev-property-finder/CONTEXT#Evaluation|dev-property-finder Evaluation]]).
+A user message in the Chat context of an existing Listing. It asks the Agent to look at that Listing again or to add to it ("check if this one has a garage", "re-read the broker page, they added a floor plan"). It is not a new Import. It updates the existing Listing and starts a new evaluation. This is the same as a manual field edit in the old model.
 _Avoid_: Edit request, correction
 
-## Carried over unchanged from dev-property-finder
+## Carried over unchanged from the predecessor project
 
-Criterion, Objective/Subjective Criterion, Weight, Evaluation, Grade, Score, Status, Letztkontakt, Rejection, Property. See [[../dev-property-finder/CONTEXT]] for definitions — not restated here to avoid drift between two copies.
+Criterion, Objective/Subjective Criterion, Weight, Evaluation, Grade, Score, Status, Letztkontakt, Rejection, Property. They keep the meaning they had in the predecessor project. They are not repeated here, so that two copies do not drift apart.
 
-**Explicitly dropped**: Proposal (the auto-generated Criteria set after a Rejection). In the chat-driven model, the equivalent happens conversationally — the user tells the Agent why a Listing doesn't fit, and the Agent proposes Profile Context or Criteria changes directly in the chat reply, which the user accepts by saying so or by editing the Context File / Criteria list. No separate pending-Proposal entity is needed. Portal (the Phase-3 automated recurring search source) is deferred, not dropped — out of scope for this spec's MVP, see [[spec.md#Development Phases]].
+**Explicitly dropped**: Proposal (the set of Criteria that was made automatically after a Rejection). In the chat-driven model, the same thing happens in conversation. The user tells the Agent why a Listing does not fit. The Agent then suggests changes to the Profile Context or Criteria directly in its chat reply. The user accepts by saying so, or by editing the Context File or the Criteria list. No separate pending-Proposal entity is needed. Portal (the Phase-3 source for automated recurring search) is postponed, not dropped. It is out of scope for the MVP of this spec, see [[spec.md#Development Phases]].

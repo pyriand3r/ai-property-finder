@@ -19,74 +19,60 @@ tags:
 
 ## Overview
 
-OSM + OpenLayers, one marker per Listing with coordinates, colour-coded by Status. Master-detail
-split layout, same pattern as the List View ([[01-10-listing-views-overhaul]]) — map on the left,
-selected Listing's full `ListingDetailPanel.vue` on the right, no page navigation on selection.
-Originally modelled on the reference workflow's
-[[../../immobilienplan-schweden-portugal-oesterreich/schweden/00_karte.html]]; the split-pane
-layout supersedes that reference's popup-only interaction once List View established the
-master-detail pattern first.
+The map uses OSM and OpenLayers. Each Listing with coordinates gets one marker. The marker colour shows the Status. The layout is a master-detail split, the same pattern as the List View ([[01-10-listing-views-overhaul]]). The map is on the left. The full `ListingDetailPanel.vue` of the selected Listing is on the right. Selecting a Listing does not navigate to a new page.
+The view was first modelled on the map of the reference Obsidian workflow. The split-pane
+layout replaces that reference's popup-only interaction. The List View set the master-detail pattern first.
 
 ---
 
 ## Layout
 
-`ListingsMapPanel.vue` — a new "Karte" tab in `ProfileShellView.vue`, alongside Chat/Context/
-Kriterien/Inserate. Fetches its own Listing set via `useListings` (independent of the Inserate
-tab's own fetch — each tab owns its data, no cross-tab coupling). Renders `ListingMap.vue` inside
-`ListingSplitPane.vue`, the same shared split-layout component the List View's "Liste" tab uses
-(extracted from `ListingsPanel.vue` once Map View needed the identical sticky-right-pane/
-empty-state/`:key`-forced-remount pattern — see that component for why the remount key is
-necessary).
+`ListingsMapPanel.vue` is a new "Karte" tab in `ProfileShellView.vue`. It sits next to Chat/Context/
+Kriterien/Inserate. It fetches its own Listing set with `useListings`. This is separate from the Inserate tab's fetch. Each tab owns its data, so tabs are not coupled. It renders `ListingMap.vue` inside
+`ListingSplitPane.vue`. This is the same shared split-layout component that the "Liste" tab of the List View uses. It was extracted from `ListingsPanel.vue` when Map View needed the same pattern: a sticky right pane, an empty state, and a `:key`-forced remount. See that component for why the remount key is
+needed.
 
-`ListingMap.vue` is heavy (OpenLayers, ~300kB) and lazy-loaded via `defineAsyncComponent` in
-`ProfileShellView.vue` — the other tabs shouldn't pay for it until the Karte tab is actually
-opened.
+`ListingMap.vue` is heavy (OpenLayers, ~300kB). It is lazy-loaded with `defineAsyncComponent` in
+`ProfileShellView.vue`. The other tabs should not pay for it until the Karte tab is opened.
 
-**Known issue**: the split pane's right-hand scroll falls through to page scroll near the bottom
-of long content — same bug as the List View's split pane, tracked in
-[[../../buglist#Split-pane detail scroll falls through to page scroll near the bottom]]. Not
-specific to Map View, not fixed here.
+**Known issue**: The right-hand scroll of the split pane falls through to the page scroll near the bottom
+of long content. This is the same bug as in the List View's split pane. It is tracked in
+[[../../buglist#Split-pane detail scroll falls through to page scroll near the bottom]]. It is not specific to Map View, and it is not fixed here.
 
 ---
 
 ## Markers
 
-- One marker per Listing with both `latitude` and `longitude` set. Coordinates are populated by
-  the Agent via the `geocode` Tool (Nominatim/OSM, [[../../docs/adr/0011-nominatim-geocoding-tool]])
-  during or after ingestion.
-- Listings without coordinates (Agent couldn't geocode the address, or no address was present)
-  simply don't appear on the map; the List View remains the complete record.
-- Marker color follows `listing.status`, using the shared `statusColor` map in
-  `src/utils/listingStatus.ts` (also home to the shared `statusLabel`/`statusOptions`,
-  centralized there once needed in more than one place — see `ListingListTable.vue`/
-  `ListingDetailPanel.vue`'s status dropdowns).
-- The selected Listing's marker renders larger with a white outline; selection state is pushed
-  into the map via a prop (`selectedListingId`), not re-derived from map state — the split pane's
-  right side is the source of truth for "what's selected."
-- On load, the map view fits its extent to all geocoded markers (`ol/extent.boundingExtent` +
-  `View.fit`); with no geocoded Listings it falls back to a default center over Sweden (most
+- There is one marker per Listing that has both `latitude` and `longitude` set. The Agent fills in the coordinates with the `geocode` Tool (Nominatim/OSM, [[../../docs/adr/0011-nominatim-geocoding-tool]]). It does this during or after ingestion.
+- Listings without coordinates do not appear on the map. This happens when the Agent could not geocode the address, or when there was no address. The List View stays the complete record.
+- The marker colour follows `listing.status`. It uses the shared `statusColor` map in
+  `src/utils/listingStatus.ts`. That file also holds the shared `statusLabel` and `statusOptions`. They were
+  moved there once more than one place needed them. See the status dropdowns in `ListingListTable.vue` and
+  `ListingDetailPanel.vue`.
+- The selected Listing's marker is drawn larger, with a white outline. The selection state is pushed
+  into the map through a prop (`selectedListingId`). It is not worked out again from the map state. The right side of the split pane is the source of truth for "what is selected."
+- On load, the map fits its extent to all geocoded markers (`ol/extent.boundingExtent` +
+  `View.fit`). If no Listing is geocoded, it falls back to a default centre over Sweden (most
   seeded data is Swedish) at a low zoom.
 
 ---
 
 ## Marker Click Behavior
 
-Clicking a marker does two things simultaneously:
+A click on a marker does two things at the same time:
 
-1. **Selects the Listing** — emits `select(listingId)`, exactly like `ListingListTable.vue`'s row
-   click, driving the same `ListingSplitPane`'s right-hand `ListingDetailPanel`.
-2. **Opens a small popup** anchored to the marker (an OpenLayers `Overlay`) showing: title, price,
-   score, and a 100x100 thumbnail (same `useListingThumbnails` composable as List View/Rangliste/
-   Detail View, resolving `title_image_id` → `/media/{file_path}`). The popup has its own close
-   button; clicking empty map area also closes it.
+1. **Selects the Listing.** It emits `select(listingId)`, just like the row
+   click in `ListingListTable.vue`. This drives the right-hand `ListingDetailPanel` of the same `ListingSplitPane`.
+2. **Opens a small popup** anchored to the marker (an OpenLayers `Overlay`). The popup shows the title, price,
+   score, and a 100x100 thumbnail. The thumbnail uses the same `useListingThumbnails` composable as the List View, Rangliste, and
+   Detail View. It resolves `title_image_id` → `/media/{file_path}`. The popup has its own close
+   button. A click on an empty map area also closes it.
 
-This differs from the List View, which has no per-row popup — the map's popup exists because a
-marker click doesn't otherwise give at-a-glance context the way a table row's visible columns do.
+This differs from the List View, which has no popup per row. The map needs a popup because a marker click gives no quick overview. A table row gives this through its visible columns.
 
 ---
 
 ## Open Questions / TBD
 
-- Whether to add a "Karte aktualisieren" chat affordance for bulk re-geocoding if several older
-  Listings are missing coordinates, or handle it per-Listing via a Follow-Up Instruction
+- Should we add a "Karte aktualisieren" chat action? It would re-geocode in bulk when several older
+  Listings have no coordinates. The other option is to handle each Listing with a Follow-Up Instruction.

@@ -19,34 +19,34 @@ tags:
 
 ## Overview
 
-Every field the Agent writes must be traceable and correctable outside the chat. This is the app's transparency guarantee: a conversational ingestion pipeline is only trustworthy if the user can always fall back to a plain form and see/fix exactly what's stored.
+The user must be able to trace and correct every field the Agent writes, outside the chat. This is the app's transparency guarantee. A conversational ingestion pipeline is only trustworthy if the user can always fall back to a plain form and see and fix exactly what is stored.
 
 ---
 
 ## Listing Detail View
 
-Plain form view of every structured field (title, price, sizes, address, coordinates, seller info including `seller_notes`) plus a rendered view of `document_md`, the Criteria grade grid, and — distinct from `seller_notes` — the Listing's own freeform Notes ([[01-11-listing-notes]]). `status` sits in the page header, not the field grid; the grade grid sits above the form, not below `document_md` — see [[01-10-listing-views-overhaul]] for the full layout and the reasoning (evaluation results are what most visits are checking).
+This is a plain form view of every structured field: title, price, sizes, address, coordinates, and seller info including `seller_notes`. It also shows a rendered view of `document_md` and the Criteria grade grid. It also shows the Listing's own freeform Notes ([[01-11-listing-notes]]). These are different from `seller_notes`. `status` is in the page header, not in the field grid. The grade grid is above the form, not below `document_md`. See [[01-10-listing-views-overhaul]] for the full layout and the reasons (most visits check the evaluation results).
 
-Reachable via a master-detail split alongside the List View, as a standalone full-page route for deep links (chat inline card, bookmarks), and via the inline card in a chat turn (see [[01-01-chat-interface]], [[01-10-listing-views-overhaul]]).
+You can reach it in three ways: through a master-detail split next to the List View; as a standalone full-page route for deep links (chat inline card, bookmarks); and through the inline card in a chat turn (see [[01-01-chat-interface]], [[01-10-listing-views-overhaul]]).
 
 ---
 
 ## Editing Behaviour
 
-- Editing is explicit: a "Bearbeiten" button switches the form into an editable state; "Speichern" batches every field changed since Bearbeiten into one `PATCH` call, "Abbrechen" discards the draft. Not save-on-blur-per-field — see [[01-10-listing-views-overhaul]] for why this changed from the original save-immediately design (low-friction per-field autosave read as unpredictable once the form had eighteen fields across several sections)
-- Editing a field appends its name to `listing.user_confirmed_fields` ([[../00_infrastructure_setup/00-02-database-schema#listing]]) — still computed per field that actually changed value, just at Speichern time across the whole batch instead of per blur event
-- A subsequent Agent Follow-Up Instruction that touches a `user_confirmed_fields` entry asks for confirmation before overwriting it ("Preis wurde von dir manuell auf 310.000 kr gesetzt — soll ich das überschreiben?") instead of silently clobbering a manual correction. Fields never manually touched are updated freely
-- Editing any structured field that participates in Criteria evaluation sets `listing.needs_reevaluation = true`. The user triggers re-evaluation manually from the detail view button or the list view banner ([[../../docs/adr/0015-manual-bulk-reevaluation]]).
-- Editing `document_md` directly is also supported (plain Markdown textarea) — it does not itself trigger re-evaluation, since it's prose, not a structured field
+- Editing is explicit. A "Bearbeiten" button (means: "edit") switches the form to an editable state. "Speichern" (means: "save") sends every field changed since Bearbeiten in one `PATCH` call. "Abbrechen" (means: "cancel") discards the draft. It does not save on blur for each field. See [[01-10-listing-views-overhaul]] for why this changed from the first save-immediately design. Easy per-field autosave felt unpredictable once the form had eighteen fields in several sections.
+- Editing a field adds its name to `listing.user_confirmed_fields` ([[../00_infrastructure_setup/00-02-database-schema#listing]]). This is still worked out per field that really changed value. It now happens at Speichern time for the whole batch, not on each blur event.
+- A later Agent Follow-Up Instruction may touch a field listed in `user_confirmed_fields`. The Agent then asks for confirmation before it overwrites the field ("Preis wurde von dir manuell auf 310.000 kr gesetzt — soll ich das überschreiben?", means: "You set the price to 310,000 kr by hand — should I overwrite that?"). It does not silently overwrite a manual correction. Fields the user never touched are updated freely.
+- Editing any structured field that is used in Criteria evaluation sets `listing.needs_reevaluation = true`. The user starts re-evaluation by hand, with the button in the detail view or the banner in the list view ([[../../docs/adr/0015-manual-bulk-reevaluation]]).
+- Editing `document_md` directly is also supported (a plain Markdown textarea). It does not start re-evaluation by itself, because it is prose and not a structured field.
 
 ---
 
 ## Status Management
 
-Unchanged from [[../../dev-property-finder/spec/01_mvp/01-08-listing-status-management|dev-property-finder]]: `new`, `waiting`, `in_negotiation`, `visited`, `rejected`, `archived`, `rejected` requires a comment. Settable both here and conversationally ("das ist raus, zu teuer für die Fläche" → Agent asks to confirm setting Status to `rejected` with that as the comment).
+Unchanged from the predecessor project: `new`, `waiting`, `in_negotiation`, `visited`, `rejected`, `archived`. `rejected` requires a comment. You can set the Status here and also in the chat ("das ist raus, zu teuer für die Fläche" means: "that is out, too expensive for the size"). In that case the Agent asks you to confirm setting Status to `rejected` with that text as the comment.
 
 ---
 
 ## Open Questions / TBD
 
-- Whether `user_confirmed_fields` should ever auto-clear (e.g. after N months) or stay permanent until the user removes it themselves — leaning permanent, since a manual correction rarely becomes wrong again on its own
+- Should `user_confirmed_fields` ever clear by itself (for example after N months)? Or should it stay until the user removes it? The current lean is permanent, because a manual correction rarely becomes wrong again on its own.
