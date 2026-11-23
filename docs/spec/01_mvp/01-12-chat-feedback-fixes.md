@@ -42,13 +42,11 @@ Background for whoever picks this up: `\uXXXX` is valid JSON either way. Claude'
 
 **Re-tested 2026-08-07** (after the turn-in-progress indicator fix above): we made a fresh `propose_criteria` call with `Grundstücksgröße` in both name and description. We checked the raw `GET .../messages` response body with `grep`. It had real UTF-8 throughout and no `\uXXXX`. This is the second clean result in a row. We still cannot reproduce it on current `main`. We leave this open and do not close it. A report that does not reproduce is not a confirmed fix. It just does not happen right now. But with two independent clean checks on record, it is less and less likely to be a live bug. It is more likely stale or misremembered data from before the 01-09 fixes landed.
 
-**Open — needs a live repro to diagnose further**:
-- Confirm whether this still happens on a *fresh* turn (today's build). Or does it only appear in old, already saved messages from earlier in the day (possibly before an unrelated fix landed)? If only the latter, it may already be resolved and the report is stale data.
-- If it happens on a fresh turn: capture the exact API response body for that message (`GET .../chat/sessions/{id}/messages`, look at the specific `tool_calls[].input` value). Then check whether the escape sequence is encoded once or twice. In other words: does the JSON contain `ü` as a normal escape, or literally `\\u00fc`? The second case is a JSON string *value* that itself contains the six characters `\`, `u`, `0`, `0`, `f`, `c`. That would point to a double marshal somewhere in the Go pipeline (`mustJSON` in `tools.go`, `toolCallsJSON`/`humanizeToolResult` in `agent_service.go`, or the argument accumulation of the claude provider). It would be easy to fix once found. The first case would point to somewhere in the frontend that does not use `JSON.parse` for this specific value.
+**Fix (issue #6)**: still not reproduced live, so the fix is defensive and frontend-only. `ChatConfirmCard.vue` decodes literal `\uXXXX` sequences in the displayed name, description and context content with `decodeUnicodeEscapes` (`src/utils/chat.ts`). A normal `JSON.parse` already decodes proper escapes. The only way the UI can still show `\uXXXX` is a double-escaped string value, and this covers that case. Limit: the stored `tool_calls[].input` is not changed. Confirming applies the stored value as is (`ToolCallService`). If a double-escaped value is ever seen live, normalise it in the backend too.
 
 ---
 
 ## Verification
 
 - Turn-in-progress indicator: send a message. Confirm the indicator appears at once. Confirm it disappears the moment streaming text or a tool-progress label arrives. Trigger a turn with several roundtrips. Confirm the indicator comes back during a gap between tool calls, if one occurs.
-- Unicode escapes: reproduce live as described in the open questions above before you try a fix. This section stays open until it is reproduced.
+- Unicode escapes: not reproducible live. Check the fix with a Confirm-Card whose stored input contains the six characters `\u00fc` in a string value. The card should show `ü`.

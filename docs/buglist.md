@@ -104,18 +104,22 @@ there. Do not delete the history of what it took to find and fix it.
   source of truth). Option 2: keep it, but make clear that it is redundant, and only for the
   context of the original text.
 
-### Unicode escape sequences displayed literally in Confirm-Card
-
-- **Found**: reported during the Layer 6 review. The full write-up is in
-  [[spec/01_mvp/01-12-chat-feedback-fixes]] § Unicode Escape Sequences Displayed Literally
-- **Symptom**: Once, a Confirm-Card showed literal `\uXXXX` escape sequences instead of decoded
-  umlauts in the name/description of a proposed criterion.
-- **Status**: Could not be reproduced on a fresh turn right after the report. The next steps
-  for whoever picks this up are in the spec linked above. It stays open until it is reproduced.
-
 ---
 
 ## Fixed
+
+### Unicode escape sequences displayed literally in Confirm-Card
+
+- **Found**: reported during the Layer 6 review. Write-up:
+  [[spec/01_mvp/01-12-chat-feedback-fixes]] § Unicode Escape Sequences Displayed Literally
+- **Symptom**: Once, a Confirm-Card showed literal `\uXXXX` instead of umlauts.
+- **Fix** (issue #6): the bug never reproduced live, so the fix is defensive. `ChatConfirmCard.vue`
+  now runs name, description and content through `decodeUnicodeEscapes` (`src/utils/chat.ts`).
+  This covers a double-escaped string value, the only way a standard `JSON.parse` result can still
+  contain `\uXXXX`.
+- **Known gap**: the display is decoded, but confirming still writes the stored value
+  (`ToolCallService.confirmProposeCriteria` / `confirmUpdateContext`). A double-escaped value would
+  be saved with literal `\uXXXX`. Not fixed here. Fix it in the backend if it is ever seen live.
 
 ### A chat session's history can end up with a dangling `tool_use` again, breaking every future turn in it
 
