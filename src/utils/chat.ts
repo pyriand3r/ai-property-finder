@@ -19,3 +19,17 @@ export function confirmableCalls(message: ChatMessage): { call: StoredToolCall; 
 export function hasPendingConfirmCard(message: ChatMessage): boolean {
   return confirmableCalls(message).some(({ call }) => !call.status);
 }
+
+/**
+ * Decodes literal `\uXXXX` sequences left inside a string value (issue #6,
+ * docs/spec/01_mvp/01-12-chat-feedback-fixes.md). `JSON.parse` already decodes
+ * proper JSON escapes; this covers the case where the model double-escaped
+ * non-ASCII characters in a tool-call argument, so the parsed value itself
+ * still contains the six characters `\u00fc`. Surrogate pairs decode correctly
+ * because each half is converted on its own.
+ */
+export function decodeUnicodeEscapes(text: string): string {
+  return text.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex: string) =>
+    String.fromCharCode(Number.parseInt(hex, 16)),
+  );
+}

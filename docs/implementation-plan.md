@@ -249,9 +249,9 @@ These are bugs and UX gaps found in a manual review of the running app (`docs/re
 
 - [x] **RF.5 — Chat feedback fixes**
   - Turn-in-progress indicator: a `useChat.ts` flag. It runs from a successful POST until the first live signal for the turn (`chat.text_delta`/`chat.tool_progress`/`chat.message`/`chat.turn_error`). In the meantime `ChatMessageList.vue` shows an animated placeholder. This also covers silent gaps between Tool calls inside one turn.
-  - Unicode escape bug (the proposal text shows `\uXXXX` instead of umlauts): not reproducible in a fresh live test. The spec documents open diagnosis steps instead of a fix.
+  - Unicode escape bug (the proposal text shows `\uXXXX` instead of umlauts): not reproducible live. Issue #6 added a defensive decode in `ChatConfirmCard.vue`.
   - Spec: [[../docs/spec/01_mvp/01-12-chat-feedback-fixes]]
-  - **Test:** Send a message → the indicator appears at once and disappears at the first text/tool progress. Trigger a multi-roundtrip turn → the indicator appears again at a gap between Tool calls. The unicode bug stays open until it is reproduced.
+  - **Test:** Send a message → the indicator appears at once and disappears at the first text/tool progress. Trigger a multi-roundtrip turn → the indicator appears again at a gap between Tool calls.
 
 - [x] **Issue #23 — Edit LLM configuration via UI**
   - `PATCH /api/config` (partial, validated, write-only API key), `internal/llm.Runtime` swaps both providers live, Settings view at `/settings`.

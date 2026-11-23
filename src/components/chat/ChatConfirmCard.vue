@@ -3,6 +3,7 @@ import { NButton, NCard, NSpace, NTag, NText } from 'naive-ui';
 import { computed, shallowRef } from 'vue';
 
 import { confirmToolCall, rejectToolCall } from '@/api/toolCalls';
+import { decodeUnicodeEscapes } from '@/utils/chat';
 
 import type { ProposeCriteriaArgs, UpdateContextArgs } from '@/types/chat';
 
@@ -88,8 +89,10 @@ async function reject() {
 <template>
   <NCard size="small" class="chat-confirm-card" :title="title">
     <div v-if="criteriaArgs" class="chat-confirm-card-body">
-      <NText strong>{{ criteriaArgs.name }}</NText>
-      <NText v-if="criteriaArgs.description" depth="3">{{ criteriaArgs.description }}</NText>
+      <NText strong>{{ decodeUnicodeEscapes(criteriaArgs.name) }}</NText>
+      <NText v-if="criteriaArgs.description" depth="3">{{
+        decodeUnicodeEscapes(criteriaArgs.description)
+      }}</NText>
       <NSpace size="small">
         <NTag size="small">Gewicht {{ criteriaArgs.weight ?? 1 }}</NTag>
         <NTag size="small">{{ criteriaArgs.is_subjective ? 'Subjektiv' : 'Objektiv' }}</NTag>
@@ -99,7 +102,9 @@ async function reject() {
       <NTag size="small">{{
         contextArgs.scope === 'global' ? 'Globaler Kontext' : 'Profil-Kontext'
       }}</NTag>
-      <NText class="chat-confirm-card-content">{{ contextArgs.content }}</NText>
+      <NText class="chat-confirm-card-content">{{
+        decodeUnicodeEscapes(contextArgs.content)
+      }}</NText>
     </div>
 
     <NText v-if="error" type="error" class="chat-confirm-card-error">{{ error }}</NText>
