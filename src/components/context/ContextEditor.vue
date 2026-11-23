@@ -15,6 +15,8 @@ import {
 } from 'naive-ui';
 import { computed, ref, watch } from 'vue';
 
+import PortalRulesEditor from '@/components/context/PortalRulesEditor.vue';
+
 import type { ContextRevision } from '@/types/context';
 
 const props = defineProps<{
@@ -68,6 +70,10 @@ function save() {
   }
 }
 
+function savePortalRules(contentMd: string) {
+  emit('save', contentMd);
+}
+
 function confirmRestore(revision: ContextRevision) {
   dialog.warning({
     title: 'Revision wiederherstellen?',
@@ -85,6 +91,13 @@ function confirmRestore(revision: ContextRevision) {
     <NAlert v-if="error" type="error" :title="error" class="context-editor-error" />
 
     <NSpin :show="loading || saving">
+      <PortalRulesEditor
+        v-if="!editing"
+        :content="content"
+        :saving="loading || saving"
+        @save="savePortalRules"
+      />
+
       <div class="context-editor-toolbar">
         <NButton v-if="!editing" size="small" @click="startEditing">Bearbeiten</NButton>
         <NSpace v-else size="small">

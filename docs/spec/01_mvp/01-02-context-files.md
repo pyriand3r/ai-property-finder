@@ -8,7 +8,7 @@ phase: 1
 order: 2
 category: chat
 status: ready
-updated: 2026-07-28
+updated: 2026-11-23
 tags:
   - property-finder-obs-style
   - spec
@@ -81,6 +81,26 @@ Full rationale: [[../../docs/adr/0009-proposal-pending-in-tool-calls]], [[../../
 - The history panel lists `context_revision` rows, newest first. Each row shows a **Nutzer** (means: "User") or **Agent** tag (`changed_by`), the timestamp, and a **Wiederherstellen** (means: "Restore") action. Wiederherstellen asks for confirmation first. It uses the same `useDialog()` pattern as "Neue Session starten?" in `ChatView.vue`. It asks because it overwrites the current text. But nothing is really lost. Restore works as a normal edit whose new text comes from the history. So the text from before the restore is saved as a new revision, like any other change.
 - `POST /api/context/global/revisions/{revisionId}/restore` and `POST /api/profiles/{profileId}/context/revisions/{revisionId}/restore`: the backend checks that the revision's `context_id` matches the target Context before it applies it. If not, it returns `400`. So a revision id from one Context (for example, another profile's history) cannot be replayed onto a different Context.
 - The user reaches the Profile Context editor from the profile's Chat view (`ProfileContextPanel.vue` in the "Context" tab, `ProfileShellView.vue`). The user reaches the Global Context editor (`GlobalContextView.vue`, route `/context`) through a "Globaler Kontext" link (means: "Global context") on the profile list page. There is no dedicated Settings shell yet. So this is a practical entry point near Settings for now. It is not nested under any one profile.
+
+### Portal Rules editor
+
+`PortalRulesEditor.vue` is part of both Context scopes. It is hidden while the raw Markdown editor is active so one view cannot overwrite the other's unsaved draft. It lists Portal Rules by domain. **Regel hinzufügen** (means: "Add rule") and **Bearbeiten** (means: "Edit") open a small form for the domain and its natural-language instruction. Saving emits the complete changed Markdown through the same `PUT` call as a raw Context edit. There is no Portal Rule database table or API resource. This is only a structured view of Context text, as required by ADR 0003 and `spec.md` Phase 2.
+
+The structured editor uses this Markdown convention:
+
+```markdown
+## Portal Rules
+
+### booli.se
+Folge immer dem Link zur Makler-Seite.
+
+### hemnet.se
+Lies die vollständige Beschreibung und lade auch den Grundriss.
+```
+
+The `## Portal Rules` heading starts the section. Each `### domain` heading starts one rule. A following level-1 or level-2 heading ends the section. Level-3 headings inside rule text are not possible because they would start another domain. The form therefore rejects level-1 to level-3 ATX headings in rule text. Level-4 to level-6 headings and other Markdown are allowed.
+
+Domain names are saved in lowercase and must be unique without regard to case. Existing rules can be renamed or edited. Adding or editing a rule preserves Markdown before and after the changed rule. The serializer keeps the current CRLF or LF line-ending style. Other spellings such as `## Portalregeln` remain ordinary raw Markdown and do not appear in the structured list. The editor manages the first canonical `## Portal Rules` section only. A second section with the same name remains raw text.
 
 ---
 
