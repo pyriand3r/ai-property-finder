@@ -26,14 +26,29 @@ type apiError struct {
 	Error string `json:"error"`
 }
 
+// duplicateWarningBody is the 409 body for a possible duplicate listing:
+// the usual error text plus the matching listings (issue #10).
+type duplicateWarningBody struct {
+	Error      string                    `json:"error"`
+	Code       string                    `json:"code"`
+	Duplicates []domain.DuplicateListing `json:"duplicates"`
+}
+
 // writeError maps a domain/service error to an HTTP status code.
 func writeError(writer http.ResponseWriter, err error) {
 	var validationError *domain.ValidationError
 	var notFoundError *domain.NotFoundError
 	var conflictError *domain.ConflictError
 	var upstreamError *domain.UpstreamError
+	var duplicateError *domain.DuplicateListingError
 
 	switch {
+	case errors.As(err, &duplicateError):
+		writeJSON(writer, http.StatusConflict, duplicateWarningBody{
+			Error:      duplicateError.Error(),
+			Code:       "duplicate_listing",
+			Duplicates: duplicateError.Duplicates,
+		})
 	case errors.As(err, &validationError):
 		writeJSON(writer, http.StatusBadRequest, apiError{Error: validationError.Message})
 	case errors.As(err, &notFoundError):

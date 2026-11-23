@@ -98,7 +98,9 @@ func (handler *ListingHandler) List(writer http.ResponseWriter, request *http.Re
 	writeJSON(writer, http.StatusOK, listings)
 }
 
-// Create handles POST /api/profiles/{profileId}/listings.
+// Create handles POST /api/profiles/{profileId}/listings. A listing whose
+// address or coordinates match an existing one in the profile is answered
+// with 409 and the matches, unless ?confirm_duplicate=true is set (issue #10).
 func (handler *ListingHandler) Create(writer http.ResponseWriter, request *http.Request) {
 	profileID, ok := parseUUID(writer, request, "profileId")
 	if !ok {
@@ -114,7 +116,9 @@ func (handler *ListingHandler) Create(writer http.ResponseWriter, request *http.
 		title = *body.Title
 	}
 
-	listing, err := handler.service.Create(request.Context(), profileID, title, body.toPatch())
+	confirmDuplicate := request.URL.Query().Get("confirm_duplicate") == "true"
+
+	listing, err := handler.service.Create(request.Context(), profileID, title, body.toPatch(), confirmDuplicate)
 	if err != nil {
 		writeError(writer, err)
 		return

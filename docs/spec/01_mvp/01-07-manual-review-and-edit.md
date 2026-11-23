@@ -50,3 +50,14 @@ Unchanged from the predecessor project: `new`, `waiting`, `in_negotiation`, `vis
 ## Open Questions / TBD
 
 - Should `user_confirmed_fields` ever clear by itself (for example after N months)? Or should it stay until the user removes it? The current lean is permanent, because a manual correction rarely becomes wrong again on its own.
+
+---
+
+## Creating a Listing by Hand and the Duplicate Warning
+
+The "Inserat anlegen" button in the Listing panel opens a small form (`ListingCreateModal.vue`). It sends `POST /api/profiles/{profileId}/listings`. The unique index on `source_url` only covers URL imports, so a hand-made listing needs its own check (issue #10).
+
+- Before the insert, the backend (`ListingService.Create`, `findDuplicates`) compares the new listing with the profile's existing listings. Two listings match on **address** when the addresses are equal after lower-casing and collapsing whitespace. They match on **coordinates** when latitude and longitude are both set and each differs by at most 0.00001 degrees (about 1 m). An empty address never matches.
+- On a match, the backend does not insert. It answers `409` with `{ "error": "...", "code": "duplicate_listing", "duplicates": [{ "id", "title", "address", "matches": ["address" | "coordinates"] }] }`.
+- This is a warning, not a block. The frontend shows the matching listings in a warning box and offers "Trotzdem anlegen" (means: "create anyway"). That repeats the request with `?confirm_duplicate=true`, which skips the check.
+- Only the REST create path checks. Agent `save_listing` has its own `source_url` deduplication ([[01-03-listing-ingestion-via-chat#Deduplication]]) and is not changed.

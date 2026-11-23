@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"propertyfinder/internal/db"
@@ -109,10 +110,56 @@ func (service *ListingService) Get(ctx context.Context, id uuid.UUID) (*domain.L
 	return repository.NewListingRepo(service.pool).GetByID(ctx, id)
 }
 
+// coordinateTolerance is the largest latitude/longitude difference (degrees,
+// about 1 m) at which two listings count as having the same coordinates.
+const coordinateTolerance = 1e-5
+
+// normalizeAddress lower-cases s and collapses whitespace so that
+// "Rua  Nova 1" and "rua nova 1 " match.
+func normalizeAddress(s string) string {
+	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+}
+
+// findDuplicates returns the listings in existing that share the (non-empty)
+// address or the coordinates of the new listing. Both latitude and longitude
+// must be set for a coordinate match.
+func findDuplicates(existing []domain.Listing, address *string, latitude, longitude *float64) []domain.DuplicateListing {
+	wantAddress := ""
+	if address != nil {
+		wantAddress = normalizeAddress(*address)
+	}
+	hasCoordinates := latitude != nil && longitude != nil
+
+	duplicates := make([]domain.DuplicateListing, 0)
+	for _, other := range existing {
+		var matches []domain.DuplicateMatch
+		if wantAddress != "" && other.Address != nil && normalizeAddress(*other.Address) == wantAddress {
+			matches = append(matches, domain.DuplicateMatchAddress)
+		}
+		if hasCoordinates && other.Latitude != nil && other.Longitude != nil &&
+			math.Abs(*other.Latitude-*latitude) <= coordinateTolerance &&
+			math.Abs(*other.Longitude-*longitude) <= coordinateTolerance {
+			matches = append(matches, domain.DuplicateMatchCoordinates)
+		}
+		if len(matches) > 0 {
+			duplicates = append(duplicates, domain.DuplicateListing{
+				ID: other.ID, Title: other.Title, Address: other.Address, Matches: matches,
+			})
+		}
+	}
+	return duplicates
+}
+
 // Create validates and inserts a new listing. Status defaults to "new",
 // source_type to "manual" — this endpoint is the plain-form fallback (ADR
 // 0001), not chat ingestion.
-func (service *ListingService) Create(ctx context.Context, profileID uuid.UUID, title string, patch ListingPatch) (*domain.Listing, error) {
+//
+// Unless confirmDuplicate is set, Create first checks the profile for a
+// listing with the same address or coordinates and, if there is one, returns
+// *domain.DuplicateListingError instead of inserting (issue #10). This is a
+// warning the user can confirm, not a hard block. The unique index on
+// source_url only covers URL imports.
+func (service *ListingService) Create(ctx context.Context, profileID uuid.UUID, title string, patch ListingPatch, confirmDuplicate bool) (*domain.Listing, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return nil, &domain.ValidationError{Field: "title", Message: "Titel ist erforderlich"}
@@ -132,6 +179,16 @@ func (service *ListingService) Create(ctx context.Context, profileID uuid.UUID, 
 			return nil, validationError
 		}
 		status = *patch.Status
+	}
+
+	if !confirmDuplicate {
+		existing, listError := repository.NewListingRepo(service.pool).ListByProfile(ctx, profileID, nil)
+		if listError != nil {
+			return nil, listError
+		}
+		if duplicates := findDuplicates(existing, patch.Address.Value, patch.Latitude.Value, patch.Longitude.Value); len(duplicates) > 0 {
+			return nil, &domain.DuplicateListingError{Duplicates: duplicates}
+		}
 	}
 
 	now := time.Now().UTC()

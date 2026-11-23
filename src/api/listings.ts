@@ -39,8 +39,14 @@ export type ListingInput = {
     : ListingInputBase[K] | null;
 } & { title_image_id?: string };
 
-export function createListing(profileId: string, input: ListingInput) {
-  return http.post<Listing>(`/api/profiles/${profileId}/listings`, input);
+/**
+ * Creates a listing manually. If the profile already has a listing with the same address or
+ * coordinates, the backend answers 409 with `ApiError.duplicates` (issue #10); repeat the call
+ * with `confirmDuplicate = true` to create it anyway.
+ */
+export function createListing(profileId: string, input: ListingInput, confirmDuplicate = false) {
+  const query = confirmDuplicate ? '?confirm_duplicate=true' : '';
+  return http.post<Listing>(`/api/profiles/${profileId}/listings${query}`, input);
 }
 
 export function updateListing(listingId: string, input: ListingInput) {
