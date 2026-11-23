@@ -367,6 +367,28 @@ and `npm run lint` (`oxlint`). If adding frontend tests, you'll need to introduc
 
 None. No `.github/` directory exists. `go test`, `golangci-lint`, `npm run typecheck`, `oxlint`, and
 `oxfmt --check` are all manual/local-only gates today — run them yourself before considering a change done.
+Introducing CI is tracked as issue #14.
+
+## Agent Pipeline (workflow rules)
+
+This repo is developed through an agent pipeline: an orchestrator (Hermes) starts a coding agent (omp)
+per issue, reviews the result, and merges it. The orchestrator works from GitHub issues — they are the
+authoritative backlog. Rules that apply to every coding run:
+
+- **Issue status labels** (exactly one `status/*` per issue): `status/new` (untriaged) →
+  `status/ready` (startable) → `status/in-progress` (agent running) → `status/merge-request` (PR open).
+  An agent may only start work on an issue labeled `status/ready`. The orchestrator manages the transitions.
+- **Never commit or push to `main`.** Branch off `main`, name the branch `fix/#<n>`, `feature/#<n>` or
+  `improvement/#<n>` after the issue, and open a pull request. Merging happens only via PR, done by the
+  orchestrator after review — never by a local `git merge` into `main`.
+- **Commit format:** `#<n> <short imperative English text>` (e.g. `#23 Edit LLM config via UI`). One
+  issue, one branch, one PR. `Closes: #<n>` in the PR body; if the platform does not auto-close on
+  merge, the orchestrator closes the issue manually.
+- **Definition of done before opening the PR:** `cd backend && go build ./... && go test ./...`,
+  `golangci-lint run` (config: `backend/.golangci.yml`), `npm run typecheck`, `npm run lint`,
+  `npm run format:check` — all from a clean tree. Pre-existing failures (e.g. oxfmt drift in files the
+  change does not touch) are noted in the PR body, not silently fixed.
+- **Docs updated in the same commit** per Documentation Discipline above.
 
 ## Git Hygiene
 
