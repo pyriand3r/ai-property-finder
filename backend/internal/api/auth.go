@@ -76,7 +76,7 @@ func (handler *AuthHandler) Status(writer http.ResponseWriter, _ *http.Request) 
 }
 
 func (handler *AuthHandler) cookie(value string, maxAgeSeconds int) *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ //nolint:gosec // Secure is config-driven (COOKIE_SECURE, docs/adr/0018): plain HTTP only for local dev.
 		Name:     sessionCookieName,
 		Value:    value,
 		Path:     "/",

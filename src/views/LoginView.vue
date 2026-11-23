@@ -44,7 +44,13 @@ async function submit() {
           autofocus
         />
         <p v-if="error" class="login-view__error">{{ error }}</p>
-        <NButton type="primary" attr-type="submit" :disabled="!password" :loading="submitting" block>
+        <NButton
+          type="primary"
+          attr-type="submit"
+          :disabled="!password"
+          :loading="submitting"
+          block
+        >
           Anmelden
         </NButton>
       </form>

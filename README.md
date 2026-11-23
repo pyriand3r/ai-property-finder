@@ -53,7 +53,7 @@ go test ./...
 golangci-lint run           # config: backend/.golangci.yml
 ```
 
-There is no CI setup. All gates (`go test`, `golangci-lint`, `npm run typecheck`, `oxlint`, `oxfmt --check`) are manual, local checks to run before a commit.
+CI (`.github/workflows/ci.yml`) runs `go build`, `go test`, `golangci-lint`, `npm run typecheck`, `oxlint` and `oxfmt --check` on every push and pull request. Run the same checks locally before a commit.
 
 ## Documentation
 
