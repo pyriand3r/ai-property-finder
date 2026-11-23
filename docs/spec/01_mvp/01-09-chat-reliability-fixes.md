@@ -45,6 +45,19 @@ As a side effect, Confirm/Reject become idempotent. Acting on an already-actione
 
 ---
 
+## A stored `tool_use` without a `tool_result` must not break the session
+
+**Symptom**: Every message in one Chat Session fails with `400 ... tool_use ids were found without tool_result blocks immediately after`. The session stays broken until "Neue Session" is used (issue #1). The RF.1 fix above only covered the roundtrip-budget branch.
+
+**Root cause**: The history is replayed in full each turn, so one bad stored row is enough. `persistRoundtrip` wrote the assistant row and the `role=tool` rows as separate INSERTs and only logged a failed INSERT. A stop between them left a stored `tool_use` without a result. Causes: a server restart in the middle (ADR 0008), a failed tool INSERT (for example a result that is not valid JSON for the JSONB column), two turns writing into one session, or rows from before RF.1. A tool input cut off mid-JSON gave the reverse case, an orphan `tool_result`.
+
+**Fix**: [[../../docs/adr/0023-chat-history-repair-and-atomic-persist]].
+- `agent.RepairToolPairing` (`internal/agent/repair.go`) runs on the replayed messages in `AgentService.runTurn`. A `tool_use` without a result gets a synthetic error result (`InterruptedToolResult`, merged into the next user message, tool_result blocks first). A `tool_result` that answers nothing is dropped. In memory only, nothing in the DB is rewritten.
+- `persistRoundtrip` writes the assistant row and its tool rows in one transaction.
+- `toolResultJSON` and `toolCallsJSON` always return valid JSON (invalid result text is stored as a JSON string, invalid tool input as `{}`).
+
+---
+
 ## Verification
 
 Both fixes were tested live against the real Claude API, not only with unit tests. Unit tests exist for the pure logic. But the real API rejection behaviour can only be confirmed against the real service.

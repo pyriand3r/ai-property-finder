@@ -7,6 +7,7 @@ import (
 	"log"
 	"propertyfinder/internal/agent"
 	"propertyfinder/internal/attachment"
+	"propertyfinder/internal/db"
 	"propertyfinder/internal/db/repository"
 	"propertyfinder/internal/domain"
 	"propertyfinder/internal/events"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -185,7 +187,7 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 	}
 	req := agent.TurnRequest{
 		System:   agent.BuildSystemPrompt(len(tools) > 0, agent.EffectiveMaxLLMRoundtrips(llmConfig.MaxLLMRoundtrips), globalContext.ContentMD, profileContext.ContentMD, listingContextMD),
-		Messages: provider.FormatMessages(history),
+		Messages: agent.RepairToolPairing(provider.FormatMessages(history)),
 		Tools:    tools,
 	}
 
@@ -246,7 +248,7 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 	// the wrap-up message a stop itself produces.
 	persistCtx := context.WithoutCancel(ctx)
 	onRoundtrip := func(outcome agent.RoundtripOutcome) {
-		service.persistRoundtrip(persistCtx, chatRepo, sessionID, registry, outcome)
+		service.persistRoundtrip(persistCtx, sessionID, registry, outcome)
 	}
 
 	result, err := loop.Run(ctx, req, onEvent, onRoundtrip)
@@ -293,7 +295,7 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 // Layer 6.5's confirm-cards to read propose_criteria/update_context
 // arguments from) but aren't separately pushed as a visible chat bubble
 // beyond the tool_progress event already sent for each call.
-func (service *AgentService) persistRoundtrip(ctx context.Context, chatRepo *repository.ChatRepo, sessionID uuid.UUID, registry *agent.Registry, outcome agent.RoundtripOutcome) {
+func (service *AgentService) persistRoundtrip(ctx context.Context, sessionID uuid.UUID, registry *agent.Registry, outcome agent.RoundtripOutcome) {
 	isFinal := len(outcome.Results) == 0
 
 	assistantMessage := &domain.ChatMessage{
@@ -307,17 +309,12 @@ func (service *AgentService) persistRoundtrip(ctx context.Context, chatRepo *rep
 	if isFinal {
 		assistantMessage.ListingID = registry.TouchedListingID()
 	}
-	if createErr := chatRepo.CreateMessage(ctx, assistantMessage); createErr != nil {
-		log.Printf("agent: persist assistant message for session %s: %v", sessionID, createErr)
-		return
-	}
-	if isFinal {
-		service.broker.Publish("chat.message", chatMessagePayload{SessionID: sessionID, Message: assistantMessage})
-	}
 
+	messages := make([]*domain.ChatMessage, 0, 1+len(outcome.Results))
+	messages = append(messages, assistantMessage)
 	for _, toolOutcome := range outcome.Results {
 		toolName := toolOutcome.Call.Name
-		toolMessage := &domain.ChatMessage{
+		messages = append(messages, &domain.ChatMessage{
 			ID:         uuid.New(),
 			SessionID:  sessionID,
 			Role:       domain.ChatRoleTool,
@@ -325,10 +322,29 @@ func (service *AgentService) persistRoundtrip(ctx context.Context, chatRepo *rep
 			ToolResult: toolResultJSON(toolOutcome.Call.ID, toolOutcome.Result),
 			ToolName:   &toolName,
 			CreatedAt:  time.Now().UTC(),
+		})
+	}
+
+	// One transaction for the assistant row and all its role=tool rows: a
+	// crash or a failed INSERT in between must never leave a persisted
+	// tool_use without its tool_result (docs/buglist.md "dangling
+	// tool_use"). All or nothing; RepairToolPairing covers rows that were
+	// written before this was atomic.
+	txErr := db.WithTx(ctx, service.pool, func(tx pgx.Tx) error {
+		txRepo := repository.NewChatRepo(tx)
+		for _, message := range messages {
+			if createErr := txRepo.CreateMessage(ctx, message); createErr != nil {
+				return createErr
+			}
 		}
-		if createErr := chatRepo.CreateMessage(ctx, toolMessage); createErr != nil {
-			log.Printf("agent: persist tool result for session %s: %v", sessionID, createErr)
-		}
+		return nil
+	})
+	if txErr != nil {
+		log.Printf("agent: persist roundtrip for session %s: %v", sessionID, txErr)
+		return
+	}
+	if isFinal {
+		service.broker.Publish("chat.message", chatMessagePayload{SessionID: sessionID, Message: assistantMessage})
 	}
 }
 
@@ -367,13 +383,13 @@ func toolCallsJSON(blocks []agent.ContentBlock, results []agent.ToolOutcome) jso
 	seen := make(map[string]bool, len(blocks))
 	for _, block := range blocks {
 		if block.Type == agent.ContentBlockToolUse {
-			calls = append(calls, agent.StoredToolCall{ID: block.ToolUseID, Name: block.ToolName, Input: block.ToolInput})
+			calls = append(calls, agent.StoredToolCall{ID: block.ToolUseID, Name: block.ToolName, Input: validJSONOrEmptyObject(block.ToolInput)})
 			seen[block.ToolUseID] = true
 		}
 	}
 	for _, outcome := range results {
 		if !seen[outcome.Call.ID] {
-			calls = append(calls, agent.StoredToolCall{ID: outcome.Call.ID, Name: outcome.Call.Name, Input: outcome.Call.Arguments})
+			calls = append(calls, agent.StoredToolCall{ID: outcome.Call.ID, Name: outcome.Call.Name, Input: validJSONOrEmptyObject(outcome.Call.Arguments)})
 		}
 	}
 	if len(calls) == 0 {
@@ -386,13 +402,31 @@ func toolCallsJSON(blocks []agent.ContentBlock, results []agent.ToolOutcome) jso
 	return data
 }
 
+// validJSONOrEmptyObject returns raw if it is valid JSON, else "{}".
+// json.Marshal of a StoredToolCall with an invalid json.RawMessage Input
+// fails, and toolCallsJSON would then store no tool_calls at all while the
+// role=tool rows are still written — an orphan tool_result on replay. A
+// tool_use input is cut off mid-JSON when the model hits its output limit.
+func validJSONOrEmptyObject(raw json.RawMessage) json.RawMessage {
+	if json.Valid(raw) {
+		return raw
+	}
+	return json.RawMessage("{}")
+}
+
 // toolResultJSON builds chat_message.tool_result's
-// {"tool_call_id":"...","result":...} shape (ADR 0010). result is already
-// valid JSON — every Registry tool implementation returns it via
-// json.Marshal — so it's spliced in raw rather than re-encoded as a
-// string.
+// {"tool_call_id":"...","result":...} shape (ADR 0010). result is spliced
+// in raw when it is valid JSON — every Registry tool implementation returns
+// it via json.Marshal. If it is not (empty, truncated), it is stored as a
+// JSON string instead: the column is JSONB, so an invalid value would make
+// the INSERT fail and leave the tool_use without a stored result.
 func toolResultJSON(callID, result string) json.RawMessage {
-	return json.RawMessage(fmt.Sprintf(`{"tool_call_id":%q,"result":%s}`, callID, result))
+	idJSON, _ := json.Marshal(callID) //nolint:errchkjson // a string always marshals
+	resultJSON := json.RawMessage(result)
+	if !json.Valid(resultJSON) {
+		resultJSON, _ = json.Marshal(result) //nolint:errchkjson // a string always marshals
+	}
+	return json.RawMessage(`{"tool_call_id":` + string(idJSON) + `,"result":` + string(resultJSON) + `}`)
 }
 
 // humanizeToolResult renders a short, chat-readable line for a tool

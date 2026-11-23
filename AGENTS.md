@@ -43,8 +43,7 @@ editable in a plain form (ADR 0001) — the UI is never chat-only.
 
 **Build state**: all 9 layers (0–8) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
 (RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Remaining work is
-tracked as bugs in `docs/buglist.md` (6 open, none fixed — including a dangling-`tool_use` bug that can
-permanently break a chat session; read it before touching `agent/loop.go`'s dispatch/persist path) and
+tracked as bugs in `docs/buglist.md` (5 open) and
 ideas in `docs/ideas.md` (3 open). UI copy is German (`index.html` is `lang="de"`).
 
 ## Architecture & Data Flow
@@ -128,6 +127,7 @@ and budget separately. The API key is write-only: no GET/PATCH response and no l
   pattern as ADR 0005's PDF path (`internal/attachment`, `Provider.SupportsImageInput()`)
 - **0021**: Project is licensed AGPL-3.0-only (`LICENSE`); the network clause (§13) applies to modified hosted instances
 - **0022**: LLM settings editable via `PATCH /api/config` + `/settings`; applied live through `internal/llm.Runtime` (atomic snapshot, API key write-only)
+- **0023**: Replayed chat history goes through `agent.RepairToolPairing` (synthetic `tool_result` for a dangling `tool_use`, orphans dropped); `persistRoundtrip` writes each roundtrip in one transaction
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -186,7 +186,7 @@ docs/
 ├── spec/00_infrastructure_setup/, spec/01_mvp/   # feature/infra specs (see docs/00_readme.md for the map)
 ├── implementation-plan.md   # authoritative build-order/status (layers 0-8 + RF.1-5)
 ├── CONTEXT.md      # domain glossary — see Domain Vocabulary below
-├── buglist.md      # open bugs found outside the current task (6 open)
+├── buglist.md      # open bugs found outside the current task (5 open)
 └── ideas.md        # open improvement ideas (3 open)
 ```
 
@@ -302,7 +302,7 @@ Env vars (`.env`, from `.env.example`): `DB_PASSWORD` and `APP_PASSWORD` (both r
 - `backend/internal/api/router.go` — composition root + full route table + middleware chain.
 - `backend/internal/api/helpers.go` — shared `writeError`/`writeJSON`/`decodeJSON`/`parseUUID`.
 - `backend/internal/domain/types.go` — canonical domain structs + error types shared across all layers.
-- `backend/internal/agent/loop.go`, `tools.go`, `provider.go`, `context_builder.go` — the agent loop; read
+- `backend/internal/agent/loop.go`, `tools.go`, `provider.go`, `context_builder.go`, `repair.go` — the agent loop; read
   ADR 0007/0013/0016 first.
 - `backend/internal/config/config.go` — two-tier config loader.
 - `backend/internal/web/web.go` — `go:embed` + SPA fallback; never delete `dist/.gitkeep`.

@@ -241,3 +241,32 @@ func TestFormatMessages_TranslatesImageBlock(t *testing.T) {
 		t.Errorf("image media type = %q, want image/png", imageBlock.Source.OfBase64.MediaType)
 	}
 }
+
+// TestFormatMessages_RepairedHistoryHasNoDanglingToolUse replays the
+// buglist scenario end to end through the Claude formatter: stored rows
+// with an assistant tool_use whose role=tool row never got written, then
+// the next user message. After RepairToolPairing the wire messages pair up.
+func TestFormatMessages_RepairedHistoryHasNoDanglingToolUse(t *testing.T) {
+	provider := New(Config{APIKey: "test-key"})
+	toolCalls, _ := json.Marshal([]agent.StoredToolCall{
+		{ID: "call_1", Name: "fetch_url", Input: json.RawMessage(`{"url":"https://x"}`)},
+	})
+	rows := []domain.ChatMessage{
+		{Role: domain.ChatRoleUser, Content: "Check this"},
+		{Role: domain.ChatRoleAssistant, ToolCalls: toolCalls},
+		{Role: domain.ChatRoleUser, Content: "Und jetzt?"},
+	}
+
+	wire := formatMessages(agent.RepairToolPairing(provider.FormatMessages(rows)))
+
+	if len(wire) != 3 {
+		t.Fatalf("got %d wire messages, want 3", len(wire))
+	}
+	results := wire[2].Content
+	if len(results) != 2 || results[0].OfToolResult == nil || results[0].OfToolResult.ToolUseID != "call_1" {
+		t.Fatalf("wire[2] = %+v, want tool_result for call_1 first, then the user text", results)
+	}
+	if results[1].OfText == nil {
+		t.Errorf("user text block missing after the tool_result: %+v", results[1])
+	}
+}

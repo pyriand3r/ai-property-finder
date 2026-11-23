@@ -99,3 +99,56 @@ func TestAttachedImagePath_EmptyHistory(t *testing.T) {
 		t.Errorf("attachedImagePath(nil) = %v, want nil", got)
 	}
 }
+
+// TestToolResultJSON_StaysValidJSONForAnyResultText guards the persist
+// path: chat_message.tool_result is JSONB, so a result that is not valid
+// JSON made the INSERT fail. persistRoundtrip only logged that error, which
+// left the already-written assistant tool_use row without a result — the
+// dangling tool_use that broke the whole session (docs/buglist.md).
+func TestToolResultJSON_StaysValidJSONForAnyResultText(t *testing.T) {
+	tests := []struct {
+		name, id, result string
+		wantResult       string
+	}{
+		{"object passes through raw", "toolu_1", `{"ok":true}`, `{"ok":true}`},
+		{"empty result", "toolu_1", ``, `""`},
+		{"truncated JSON", "toolu_1", `{"title":"Haus`, `"{\"title\":\"Haus"`},
+		{"plain text", "toolu_1", `kein JSON`, `"kein JSON"`},
+		{"id needing JSON escaping", "id\x01\"x", `{}`, `{}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data := toolResultJSON(test.id, test.result)
+			var stored agent.StoredToolResult
+			if err := json.Unmarshal(data, &stored); err != nil {
+				t.Fatalf("toolResultJSON = %s is not valid JSON: %v", data, err)
+			}
+			if stored.ToolCallID != test.id {
+				t.Errorf("tool_call_id = %q, want %q", stored.ToolCallID, test.id)
+			}
+			if string(stored.Result) != test.wantResult {
+				t.Errorf("result = %s, want %s", stored.Result, test.wantResult)
+			}
+		})
+	}
+}
+
+// TestToolCallsJSON_TruncatedToolInputStillStoresCall: a tool_use input cut
+// off mid-JSON (model hit its output limit) made json.Marshal fail, so
+// toolCallsJSON returned nil — no tool_calls on the assistant row, but the
+// role=tool rows were still written, an orphan tool_result on replay.
+func TestToolCallsJSON_TruncatedToolInputStillStoresCall(t *testing.T) {
+	blocks := []agent.ContentBlock{
+		{Type: agent.ContentBlockToolUse, ToolUseID: "toolu_1", ToolName: "save_listing", ToolInput: json.RawMessage(`{"fields":{"title":"Ha`)},
+	}
+
+	data := toolCallsJSON(blocks, nil)
+
+	var calls []agent.StoredToolCall
+	if err := json.Unmarshal(data, &calls); err != nil || len(calls) != 1 {
+		t.Fatalf("toolCallsJSON = %s (err %v), want one stored call", data, err)
+	}
+	if string(calls[0].Input) != "{}" {
+		t.Errorf("input = %s, want {}", calls[0].Input)
+	}
+}

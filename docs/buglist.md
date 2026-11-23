@@ -23,30 +23,6 @@ there. Do not delete the history of what it took to find and fix it.
 
 ## Open
 
-### A chat session's history can end up with a dangling `tool_use` again, breaking every future turn in it
-
-- **Found**: 2026-08-07, while live-checking Layer 8.2 (Listing-Context-Block). A new message
-  was sent in an existing active session ("Schweden" profile, session
-  `e278bb0a-45f7-41e3-a748-76656f1cba0d`).
-- **Symptom**: The turn fails with a 400 from the Claude API:
-  `messages.10: tool_use ids were found without tool_result blocks immediately after`. Every
-  later message sent to that same session fails the same way. The session is stuck for good
-  until "Neue Session" is used, because the invalid history is replayed on every turn.
-- **Confirmed via `docker compose logs`**: `agent: turn failed for session ...: POST
-  "https://api.anthropic.com/v1/messages": 400 Bad Request ... tool_use ids were found without
-  tool_result blocks immediately after: 20af33ee-f72b-4ac8-95bc-50b8f763d401`.
-- **Root cause**: Not investigated yet. The *symptom* is the same as the bug that
-  [[spec/01_mvp/01-09-chat-reliability-fixes]] fixed (RF.1 — dangling `tool_use` blocks from
-  the budget-exhausted branch of `loop.go`). But that fix only targeted the path where the
-  roundtrip limit is hit. This session had already had many ad-hoc live-test turns (fetch_url
-  403s, geocode, download_image validation errors, etc.). The dangling call could come from a
-  different path that is still not fixed. In that path, a tool_use is saved without ever being
-  dispatched, or without its result being saved (for example, a turn that failed or was
-  interrupted in the middle of dispatch). Or it could be old data from before RF.1 shipped,
-  which was simply never replayed until now. A fresh repro is needed to tell which.
-- **Status**: Open, not fixed. For the Layer 8.2 check, we worked around it by starting a new
-  session instead of debugging the broken one in place.
-
 ### Split-pane detail scroll falls through to page scroll near the bottom
 
 - **Found**: 2026-08-06, reported by the user while scrolling a long Listing in the
@@ -141,4 +117,40 @@ there. Do not delete the history of what it took to find and fix it.
 
 ## Fixed
 
-(none yet)
+### A chat session's history can end up with a dangling `tool_use` again, breaking every future turn in it
+
+- **Found**: 2026-08-07, while live-checking Layer 8.2 (Listing-Context-Block). A new message
+  was sent in an existing active session ("Schweden" profile, session
+  `e278bb0a-45f7-41e3-a748-76656f1cba0d`).
+- **Symptom**: The turn fails with a 400 from the Claude API:
+  `messages.10: tool_use ids were found without tool_result blocks immediately after`. Every
+  later message sent to that same session fails the same way. The session is stuck for good
+  until "Neue Session" is used, because the invalid history is replayed on every turn.
+- **Confirmed via `docker compose logs`**: `agent: turn failed for session ...: POST
+  "https://api.anthropic.com/v1/messages": 400 Bad Request ... tool_use ids were found without
+  tool_result blocks immediately after: 20af33ee-f72b-4ac8-95bc-50b8f763d401`.
+- **Root cause (original note)**: Not investigated yet. The *symptom* is the same as the bug that
+  [[spec/01_mvp/01-09-chat-reliability-fixes]] fixed (RF.1 — dangling `tool_use` blocks from
+  the budget-exhausted branch of `loop.go`). But that fix only targeted the path where the
+  roundtrip limit is hit. This session had already had many ad-hoc live-test turns (fetch_url
+  403s, geocode, download_image validation errors, etc.). The dangling call could come from a
+  different path that is still not fixed. In that path, a tool_use is saved without ever being
+  dispatched, or without its result being saved (for example, a turn that failed or was
+  interrupted in the middle of dispatch). Or it could be old data from before RF.1 shipped,
+  which was simply never replayed until now. A fresh repro is needed to tell which.
+- **Root cause (found 2026-11-23, issue #1)**: `AgentService.persistRoundtrip` wrote the assistant
+  row (with `tool_calls`) and then each `role=tool` row as separate INSERTs, and only logged a
+  failed INSERT. Any stop between them left a stored `tool_use` without a result: a server
+  restart (ADR 0008, no recovery), a tool INSERT that failed (for example a result that is not
+  valid JSON for the JSONB column), or two turns interleaving in one session. A `tool_use` input
+  cut off mid-JSON made `toolCallsJSON` return nothing, which gave the reverse (orphan
+  `tool_result`). Nothing in the loop's dispatch path builds this in memory: `Run` only calls
+  `onRoundtrip` after dispatch.
+- **Status**: Fixed in #1 (branch `bugfix/1-dangling-tool-use`). Two parts, see
+  [[adr/0023-chat-history-repair-and-atomic-persist]] and
+  [[spec/01_mvp/01-09-chat-reliability-fixes]]: `agent.RepairToolPairing` repairs the history on
+  every load (this also heals sessions that are already broken), and each roundtrip is now
+  persisted in one transaction with always-valid JSON. Tests: `internal/agent/repair_test.go`,
+  `TestToolResultJSON_*` / `TestToolCallsJSON_TruncatedToolInput*` in
+  `internal/service/agent_service_test.go`, `TestFormatMessages_RepairedHistory*` in the Claude
+  provider tests. Not verified against the live Claude API.
