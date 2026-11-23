@@ -67,6 +67,10 @@ _Avoid_: Gallery, media
 A user message in the Chat context of an existing Listing. It asks the Agent to look at that Listing again or to add to it ("check if this one has a garage", "re-read the broker page, they added a floor plan"). It is not a new Import. It updates the existing Listing and starts a new evaluation. This is the same as a manual field edit in the old model.
 _Avoid_: Edit request, correction
 
+**Proposed Criterion**:
+A Criterion with `status = 'proposed'`. The Agent (chat) or an MCP client suggested it, and the user has not approved it yet. It is shown in the Criteria tab with a "Vorgeschlagen" badge and is ignored by evaluation, Score and ranking until the user approves ("Freischalten"). A Criterion with `status = 'active'` is in use. See [[adr/0024-criterion-proposal-status]].
+_Avoid_: Draft criterion, pending criterion
+
 ## Carried over unchanged from the predecessor project
 
 Criterion, Objective/Subjective Criterion, Weight, Evaluation, Grade, Score, Status, Letztkontakt, Rejection, Property. They keep the meaning they had in the predecessor project. They are not repeated here, so that two copies do not drift apart.

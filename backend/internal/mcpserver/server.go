@@ -23,7 +23,7 @@ import (
 type Deps struct {
 	// Profiles backs list_profiles.
 	Profiles *service.ProfileService
-	// Criteria backs propose_criteria's direct-write path.
+	// Criteria backs propose_criteria (writes proposed criteria only).
 	Criteria *service.CriterionService
 	// Context backs update_context's direct-write path.
 	Context *service.ContextService
@@ -43,8 +43,8 @@ const serverVersion = "0.0.0"
 // exposing internal/agent/tools.go's existing Tool catalog, each
 // dispatched through the identical agent.Registry.Dispatch code path the
 // internal chat Agent uses (backend/internal/service/agent_service.go's
-// runTurn), plus list_profiles (bootstrap discovery) and direct-write
-// variants of propose_criteria/update_context (see package doc). Callers
+// runTurn), plus list_profiles (bootstrap discovery), a proposal-only
+// propose_criteria and a direct-write update_context (docs/adr/0024). Callers
 // must wrap the returned handler with an auth middleware
 // (api.AuthHandler.RequireBearer) — this package has no opinion on
 // authentication. JSONResponse:true makes every tools/call response a
@@ -82,7 +82,7 @@ func NewHandler(deps Deps) http.Handler {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "propose_criteria",
-		Description: "Legt ein neues Bewertungskriterium an oder ändert ein bestehendes — schreibt sofort (über MCP gibt es keine Chat-Confirm-Card, anders als beim gleichnamigen internen Agent-Tool).",
+		Description: "Schlägt ein neues Bewertungskriterium vor (action=add) oder bessert einen noch offenen Vorschlag nach (action=edit). Das Kriterium hat Status 'proposed' und zählt bei Bewertung und Score erst, wenn der Nutzer es im Criteria-Tab freischaltet. Aktive Kriterien lassen sich über MCP nicht ändern; Namen sind pro Profil eindeutig.",
 	}, proposeCriteriaHandler(deps))
 
 	mcp.AddTool(srv, &mcp.Tool{

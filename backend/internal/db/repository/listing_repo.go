@@ -26,7 +26,8 @@ type ListingRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	// RecomputeScores recalculates listing.overall_score for every listing
 	// in profileID that has at least one Grade, using each criterion's
-	// *current* weight. Grade letters map A=100 down to F=0 in steps of 20.
+	// *current* weight; proposed criteria are ignored (docs/adr/0024).
+	// Grade letters map A=100 down to F=0 in steps of 20.
 	// Listings with no grades yet are left untouched. Used on a weight-only
 	// Criterion change (spec 01-04) — no LLM call, no needs_reevaluation
 	// flag.
@@ -222,7 +223,7 @@ scores AS (
     FROM grade_values gv
     JOIN listing_criterion_grade lcg ON lcg.id = gv.id
     JOIN criterion c ON c.id = lcg.criterion_id
-    WHERE c.profile_id = $1
+    WHERE c.profile_id = $1 AND c.status = 'active'
     GROUP BY gv.listing_id
 )
 UPDATE listing l

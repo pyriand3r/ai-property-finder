@@ -21,6 +21,11 @@ export function updateCriterion(criterionId: string, input: CriterionInput) {
   return http.patch<Criterion>(`/api/criteria/${criterionId}`, input);
 }
 
+/** Turns a proposed criterion into an active one (docs/adr/0024). */
+export function approveCriterion(criterionId: string) {
+  return http.post<Criterion>(`/api/criteria/${criterionId}/approve`);
+}
+
 export function deleteCriterion(criterionId: string) {
   return http.delete<void>(`/api/criteria/${criterionId}`);
 }

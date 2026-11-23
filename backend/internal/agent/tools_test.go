@@ -330,10 +330,68 @@ func TestDispatch_EvaluateListing_RejectsListingFromAnotherProfile(t *testing.T)
 	}
 }
 
-func TestDispatch_ProposeCriteria_ReturnsPendingConfirmationWithoutWriting(t *testing.T) {
-	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+// fakeCriterionProposer records Propose calls; err makes it fail like the
+// service does on a duplicate name.
+type fakeCriterionProposer struct {
+	proposed []domain.Criterion
+	err      error
+}
 
-	args := `{"action":"add","name":"Nähe zum Wasser","description":"Distanz zum See","is_subjective":false,"weight":3}`
+func (f *fakeCriterionProposer) Propose(_ context.Context, profileID uuid.UUID, name, description string, weight int, isSubjective bool) (*domain.Criterion, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	criterion := domain.Criterion{
+		ID: uuid.New(), ProfileID: profileID, Name: name, Description: description,
+		Weight: weight, IsSubjective: isSubjective, Status: domain.CriterionStatusProposed,
+	}
+	f.proposed = append(f.proposed, criterion)
+	return &criterion, nil
+}
+
+// TestDispatch_ProposeCriteria_AddStoresProposedCriterion: action=add must
+// write a *proposed* criterion at tool time (docs/adr/0024) and hand its id
+// back; evaluation ignores it until the user approves it.
+func TestDispatch_ProposeCriteria_AddStoresProposedCriterion(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+	proposer := &fakeCriterionProposer{}
+	registry.Criteria = proposer
+
+	args := `{"action":"add","name":"Grundstück &amp; Lage","description":"Distanz zum See","is_subjective":false,"weight":3}`
+	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
+	if isError {
+		t.Fatalf("Dispatch returned an error result: %s", result)
+	}
+	if !strings.Contains(result, `"status":"pending_confirmation"`) || !strings.Contains(result, `"criterion_id"`) {
+		t.Errorf("result = %s, want status=pending_confirmation and a criterion_id", result)
+	}
+	if len(proposer.proposed) != 1 {
+		t.Fatalf("got %d proposed criteria, want 1", len(proposer.proposed))
+	}
+	got := proposer.proposed[0]
+	if got.Name != "Grundstück & Lage" || got.Weight != 3 || got.ProfileID != registry.ProfileID {
+		t.Errorf("proposed = %+v, want HTML-decoded name, weight 3, the registry's profile", got)
+	}
+}
+
+func TestDispatch_ProposeCriteria_AddPropagatesDuplicateNameError(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+	registry.Criteria = &fakeCriterionProposer{err: &domain.ConflictError{Message: "Kriterium existiert bereits: Preis"}}
+
+	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(`{"action":"add","name":"Preis"}`)})
+	if !isError || !strings.Contains(result, "existiert bereits") {
+		t.Errorf("result = %s (isError=%v), want an error naming the duplicate", result, isError)
+	}
+}
+
+// TestDispatch_ProposeCriteria_EditWritesNothing: an edit stays a pending
+// Confirm-Card proposal (ADR 0009); only the confirm call changes the row.
+func TestDispatch_ProposeCriteria_EditWritesNothing(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+	proposer := &fakeCriterionProposer{}
+	registry.Criteria = proposer
+
+	args := `{"action":"edit","criterion_id":"` + uuid.NewString() + `","name":"Preis"}`
 	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
@@ -341,8 +399,8 @@ func TestDispatch_ProposeCriteria_ReturnsPendingConfirmationWithoutWriting(t *te
 	if !strings.Contains(result, `"status":"pending_confirmation"`) {
 		t.Errorf("result = %s, want status=pending_confirmation", result)
 	}
-	if !strings.Contains(result, "Nähe zum Wasser") {
-		t.Errorf("result = %s, want it to name the proposed criterion", result)
+	if len(proposer.proposed) != 0 {
+		t.Errorf("edit proposed %d criteria, want none", len(proposer.proposed))
 	}
 }
 

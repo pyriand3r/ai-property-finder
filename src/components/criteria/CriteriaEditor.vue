@@ -19,6 +19,7 @@ const {
   fetchCriteria,
   createCriterion,
   updateCriterion,
+  approveCriterion,
   deleteCriterion,
 } = useCriteria(props.profileId);
 
@@ -66,6 +67,14 @@ async function handleUpdateText(criterionId: string, name: string, description: 
   }
 }
 
+async function handleApprove(criterionId: string) {
+  try {
+    await approveCriterion(criterionId);
+  } catch (approveError) {
+    message.error(approveError instanceof Error ? approveError.message : String(approveError));
+  }
+}
+
 async function handleDelete(criterionId: string) {
   try {
     await deleteCriterion(criterionId);
@@ -95,6 +104,7 @@ async function handleDelete(criterionId: string) {
             @update-weight="handleUpdateWeight"
             @update-subjective="handleUpdateSubjective"
             @update-text="handleUpdateText"
+            @approve="handleApprove"
             @delete="handleDelete"
           />
         </NListItem>

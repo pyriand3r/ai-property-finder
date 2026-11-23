@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"propertyfinder/internal/db"
 	"propertyfinder/internal/domain"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -13,10 +14,16 @@ import (
 
 // CriterionRepository persists the criterion aggregate.
 type CriterionRepository interface {
+	// ListByProfile returns every criterion, proposed and active.
 	ListByProfile(ctx context.Context, profileID uuid.UUID) ([]domain.Criterion, error)
+	// ListActiveByProfile returns only active criteria — the set evaluation
+	// and scoring use (docs/adr/0024).
+	ListActiveByProfile(ctx context.Context, profileID uuid.UUID) ([]domain.Criterion, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Criterion, error)
 	Create(ctx context.Context, criterion *domain.Criterion) error
 	Update(ctx context.Context, criterion *domain.Criterion) error
+	// Activate sets status = active (approval of a proposal).
+	Activate(ctx context.Context, id uuid.UUID, updatedAt time.Time) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	// CountByProfile is used to assign a new criterion's sort_order
 	// (append at the end).
@@ -34,17 +41,32 @@ func NewCriterionRepo(q db.Querier) *CriterionRepo {
 	return &CriterionRepo{db: q}
 }
 
-// ListByProfile returns a profile's criteria ordered by sort_order.
+// ListByProfile returns a profile's criteria, proposed and active, ordered
+// by sort_order.
 func (repo *CriterionRepo) ListByProfile(ctx context.Context, profileID uuid.UUID) ([]domain.Criterion, error) {
-	const query = `
-SELECT id, profile_id, name, description, weight, is_subjective, sort_order, created_at, updated_at
+	return repo.list(ctx, "criterion list", `
+SELECT id, profile_id, name, description, weight, is_subjective, sort_order, status, created_at, updated_at
 FROM criterion
 WHERE profile_id = $1
 ORDER BY sort_order
-`
+`, profileID)
+}
+
+// ListActiveByProfile returns a profile's active criteria ordered by
+// sort_order.
+func (repo *CriterionRepo) ListActiveByProfile(ctx context.Context, profileID uuid.UUID) ([]domain.Criterion, error) {
+	return repo.list(ctx, "criterion list active", `
+SELECT id, profile_id, name, description, weight, is_subjective, sort_order, status, created_at, updated_at
+FROM criterion
+WHERE profile_id = $1 AND status = 'active'
+ORDER BY sort_order
+`, profileID)
+}
+
+func (repo *CriterionRepo) list(ctx context.Context, op, query string, profileID uuid.UUID) ([]domain.Criterion, error) {
 	rows, err := repo.db.Query(ctx, query, profileID)
 	if err != nil {
-		return nil, fmt.Errorf("criterion list: %w", err)
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	defer rows.Close()
 
@@ -52,12 +74,12 @@ ORDER BY sort_order
 	for rows.Next() {
 		criterion, scanError := scanCriterionRow(rows)
 		if scanError != nil {
-			return nil, fmt.Errorf("criterion list scan: %w", scanError)
+			return nil, fmt.Errorf("%s scan: %w", op, scanError)
 		}
 		criteria = append(criteria, criterion)
 	}
 	if rowsError := rows.Err(); rowsError != nil {
-		return nil, fmt.Errorf("criterion list rows: %w", rowsError)
+		return nil, fmt.Errorf("%s rows: %w", op, rowsError)
 	}
 	return criteria, nil
 }
@@ -65,7 +87,7 @@ ORDER BY sort_order
 // GetByID returns a single criterion by its UUID.
 func (repo *CriterionRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Criterion, error) {
 	const query = `
-SELECT id, profile_id, name, description, weight, is_subjective, sort_order, created_at, updated_at
+SELECT id, profile_id, name, description, weight, is_subjective, sort_order, status, created_at, updated_at
 FROM criterion
 WHERE id = $1
 `
@@ -84,8 +106,8 @@ WHERE id = $1
 // and timestamps.
 func (repo *CriterionRepo) Create(ctx context.Context, criterion *domain.Criterion) error {
 	const query = `
-INSERT INTO criterion (id, profile_id, name, description, weight, is_subjective, sort_order, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO criterion (id, profile_id, name, description, weight, is_subjective, sort_order, status, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 	_, err := repo.db.Exec(ctx, query,
 		criterion.ID,
@@ -95,6 +117,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		criterion.Weight,
 		criterion.IsSubjective,
 		criterion.SortOrder,
+		criterion.Status,
 		criterion.CreatedAt,
 		criterion.UpdatedAt,
 	)
@@ -125,6 +148,19 @@ WHERE id = $1
 	}
 	if tag.RowsAffected() == 0 {
 		return &domain.NotFoundError{Entity: "criterion", ID: criterion.ID.String()}
+	}
+	return nil
+}
+
+// Activate flips a proposed criterion to active and bumps updated_at.
+func (repo *CriterionRepo) Activate(ctx context.Context, id uuid.UUID, updatedAt time.Time) error {
+	const query = `UPDATE criterion SET status = 'active', updated_at = $2 WHERE id = $1`
+	tag, err := repo.db.Exec(ctx, query, id, updatedAt)
+	if err != nil {
+		return fmt.Errorf("criterion activate: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return &domain.NotFoundError{Entity: "criterion", ID: id.String()}
 	}
 	return nil
 }
@@ -165,6 +201,7 @@ func scanCriterionRow(scanner interface {
 		&criterion.Weight,
 		&criterion.IsSubjective,
 		&criterion.SortOrder,
+		&criterion.Status,
 		&criterion.CreatedAt,
 		&criterion.UpdatedAt,
 	)

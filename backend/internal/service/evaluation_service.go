@@ -55,12 +55,14 @@ func (service *EvaluationService) EvaluateListing(ctx context.Context, listingID
 		return nil, err
 	}
 
-	criteria, err := repository.NewCriterionRepo(service.pool).ListByProfile(ctx, listing.ProfileID)
+	// Active criteria only: a proposed one is not part of the evaluation
+	// until the user approves it (docs/adr/0024).
+	criteria, err := repository.NewCriterionRepo(service.pool).ListActiveByProfile(ctx, listing.ProfileID)
 	if err != nil {
 		return nil, err
 	}
 	if len(criteria) == 0 {
-		return nil, &domain.ValidationError{Field: "criteria", Message: "Profil hat keine Kriterien — zuerst Kriterien anlegen"}
+		return nil, &domain.ValidationError{Field: "criteria", Message: "Profil hat keine aktiven Kriterien — zuerst Kriterien anlegen oder freigeben"}
 	}
 
 	scores, err := service.provider.EvaluateListing(ctx, *listing, criteria)

@@ -169,6 +169,7 @@ func (server *Server) Router() http.Handler {
 	timed.Route("/api/criteria/{criterionId}", func(r chi.Router) {
 		r.Patch("/", server.criterion.Update)
 		r.Delete("/", server.criterion.Delete)
+		r.Post("/approve", server.criterion.Approve)
 	})
 
 	timed.Route("/api/listings/{listingId}", func(r chi.Router) {

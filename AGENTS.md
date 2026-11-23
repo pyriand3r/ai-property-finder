@@ -128,6 +128,7 @@ and budget separately. The API key is write-only: no GET/PATCH response and no l
 - **0021**: Project is licensed AGPL-3.0-only (`LICENSE`); the network clause (§13) applies to modified hosted instances
 - **0022**: LLM settings editable via `PATCH /api/config` + `/settings`; applied live through `internal/llm.Runtime` (atomic snapshot, API key write-only)
 - **0023**: Replayed chat history goes through `agent.RepairToolPairing` (synthetic `tool_result` for a dangling `tool_use`, orphans dropped); `persistRoundtrip` writes each roundtrip in one transaction
+- **0024**: Criteria have a `proposed`/`active` status; chat `add` and MCP `propose_criteria` only create `proposed` ones (ignored by evaluation/score), the user approves in the Criteria tab or via the Confirm-Card; MCP cannot change active criteria; names unique per profile. Partly replaces 0017/0019 for criteria
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -146,7 +147,8 @@ backend/
     │                 #   criterion, evaluation, ranking, rejection_analysis, image, note, context,
     │                 #   upload, tool_call)
     ├── domain/       # types.go — shared structs + domain error types (Validation/NotFound/Conflict/Upstream)
-    ├── db/           # querier.go (pgx pool/tx abstraction), db.go, migrations/ (golang-migrate, forward-only)
+    ├── db/           # querier.go (pgx pool/tx abstraction), db.go, migrations/ (golang-migrate, forward-only),
+    │                 #   dbtest/ (throwaway Postgres for integration tests, needs TEST_DATABASE_URL)
     │   └── repository/  # one repo per entity (note, context, chat, image, listing, profile, task, criterion, grade)
     ├── agent/        # provider-independent agent loop: loop.go, tools.go (Registry/Dispatch),
     │                 #   provider.go (interface), context_builder.go (system prompt assembly),
@@ -378,10 +380,16 @@ Covered packages: `internal/agent` (loop, tools, context builder), `internal/age
 Repository tests need no database: `internal/db/repository/fake_querier_test.go` is a hand-written
 `db.Querier` that records SQL/args and replays canned rows, tags and errors. They check argument
 and scan-column counts, `pgx.ErrNoRows`/`RowsAffected() == 0` → `NotFoundError`, and error wrapping.
-They do **not** run SQL, so a wrong query or migration is not caught. **Not yet covered**: SQL
-against a real Postgres, `config.LoadAll`/`SeedFromEnv`/`ConnectPool`, `db.WithTx`, the handlers in
-`internal/api` that need a `*pgxpool.Pool`-backed service, `internal/service` (apart from the chat
-merge logic), `cmd/server`. `geocode.baseURL` is a package variable only so tests can point it at an
+They do **not** run SQL, so a wrong query or migration is not caught.
+
+Postgres integration tests use `internal/db/dbtest` (`NewURL`/`NewPool`: a fresh, migrated database per
+test). They are **skipped unless `TEST_DATABASE_URL`** points at a server the test may create databases
+on (CI sets it; locally e.g. `postgres://app@127.0.0.1:5432/postgres?sslmode=disable`). Current users:
+the migration test (`internal/db/migrations_test.go`), the criterion status workflow
+(`internal/service/criterion_status_test.go`), `PATCH`/approve REST (`internal/api/criteria_test.go`) and
+MCP `propose_criteria` (`internal/mcpserver/propose_criteria_test.go`). **Not yet covered**:
+`config.LoadAll`/`SeedFromEnv`/`ConnectPool`, `db.WithTx` on its own, the other `internal/api` handlers
+that need a `*pgxpool.Pool`-backed service, the rest of `internal/service`, `cmd/server`. `geocode.baseURL` is a package variable only so tests can point it at an
 `httptest` server.
 
 ### Frontend (Vue + TypeScript)
@@ -402,7 +410,7 @@ type-checked by `npm run typecheck` (lib is ES2022: no `toSorted`). There is no 
 ### CI
 
 GitHub Actions, `.github/workflows/ci.yml`, runs on every push and pull request. Two jobs:
-`backend` (`go build ./...`, `go test ./...`, `golangci-lint run` via golangci-lint-action, pinned to v2.15.0)
+`backend` (with a `postgres:18` service and `TEST_DATABASE_URL`, so the integration tests run; `go build ./...`, `go test ./...`, `golangci-lint run` via golangci-lint-action, pinned to v2.15.0)
 and `frontend` (`npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run test:run`). Go version comes from
 `backend/go.mod`; Node is 22, same as `backend/Dockerfile`. Run the same gates locally before opening a PR.
 When you bump the golangci-lint version, change it in the workflow and fix any new findings in the same PR.

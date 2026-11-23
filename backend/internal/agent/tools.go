@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"propertyfinder/internal/domain"
@@ -92,7 +93,7 @@ func Tools() []Tool {
 		},
 		{
 			Name:        "evaluate_listing",
-			Description: "Bewertet ein Inserat anhand der aktuellen Kriterien des Profils — vergibt Note A-F pro Kriterium und berechnet den Gesamt-Score. Nur aufrufen wenn das Profil bereits bestätigte Kriterien hat; falls nicht, zuerst propose_criteria nutzen.",
+			Description: "Bewertet ein Inserat anhand der aktuellen Kriterien des Profils — vergibt Note A-F pro Kriterium und berechnet den Gesamt-Score. Berücksichtigt nur aktive (freigegebene) Kriterien, keine vorgeschlagenen. Nur aufrufen wenn das Profil bereits aktive Kriterien hat; falls nicht, zuerst propose_criteria nutzen.",
 			InputSchema: json.RawMessage(`{
 				"properties": {
 					"listing_id": {"type": "string", "description": "UUID des zu bewertenden Inserats."}
@@ -102,8 +103,9 @@ func Tools() []Tool {
 		},
 		{
 			Name: "propose_criteria",
-			Description: "Schlägt ein neues oder geändertes Bewertungskriterium vor. Schreibt NICHT direkt in die Datenbank — " +
-				"der Nutzer muss im Chat über eine Confirm-Card bestätigen. Nutze dies beim ersten Inserat eines Profils ohne " +
+			Description: "Schlägt ein neues oder geändertes Bewertungskriterium vor. Ein neues Kriterium (action=add) wird als " +
+				"Vorschlag gespeichert und zählt erst, wenn der Nutzer es freischaltet (Confirm-Card im Chat oder Criteria-Tab). " +
+				"Eine Änderung (action=edit) schreibt NICHT direkt — der Nutzer muss im Chat über eine Confirm-Card bestätigen. Nutze dies beim ersten Inserat eines Profils ohne " +
 				"Kriterien, oder wenn der Nutzer mitten im Gespräch ein neues Bewertungskriterium erwähnt oder ein bestehendes ändern möchte.",
 			InputSchema: json.RawMessage(`{
 				"properties": {
@@ -170,6 +172,13 @@ type ListingWriter interface {
 	ListRankable(ctx context.Context, profileID uuid.UUID) ([]domain.Listing, error)
 }
 
+// CriterionProposer backs propose_criteria action=add: it stores a new
+// criterion with status "proposed" (docs/adr/0024). Satisfied by
+// *service.CriterionService without internal/agent importing internal/service.
+type CriterionProposer interface {
+	Propose(ctx context.Context, profileID uuid.UUID, name, description string, weight int, isSubjective bool) (*domain.Criterion, error)
+}
+
 // ImageWriter is the narrow slice of repository.ImageRepository
 // download_image needs.
 type ImageWriter interface {
@@ -220,6 +229,7 @@ var validImageCategories = map[string]bool{
 type Registry struct {
 	ProfileID  uuid.UUID
 	Listings   ListingWriter
+	Criteria   CriterionProposer
 	Images     ImageWriter
 	Fetcher    PageFetcher
 	Downloader ImageDownloader
@@ -251,7 +261,7 @@ func (r *Registry) Dispatch(ctx context.Context, call ToolCall) (string, bool) {
 	case "evaluate_listing":
 		return r.evaluateListing(ctx, call.Arguments)
 	case "propose_criteria":
-		return r.proposeCriteria(call.Arguments)
+		return r.proposeCriteria(ctx, call.Arguments)
 	case "update_context":
 		return r.updateContext(call.Arguments)
 	case "geocode":
@@ -535,13 +545,14 @@ func (r *Registry) evaluateListing(ctx context.Context, raw json.RawMessage) (st
 	}), false
 }
 
-// proposeCriteria validates the shape of a Criterion proposal and returns
-// pending_confirmation without writing anything (ADR 0009/0004) — the
-// proposal itself lives in the tool call's arguments, already persisted
-// verbatim in chat_message.tool_calls by the caller (AgentService), and is
-// only applied once the user confirms via
-// POST /api/chat/messages/{id}/tool-calls/{idx}/confirm.
-func (r *Registry) proposeCriteria(raw json.RawMessage) (string, bool) {
+// proposeCriteria validates a Criterion proposal. action=add stores the
+// criterion with status "proposed" right away (ignored by evaluation until
+// the user approves it, docs/adr/0024); the Confirm-Card then activates
+// that row. action=edit writes nothing — the proposal lives in the tool
+// call's arguments, already persisted verbatim in chat_message.tool_calls
+// by the caller (AgentService), and is applied only once the user confirms
+// via POST /api/chat/messages/{id}/tool-calls/{idx}/confirm (ADR 0009/0004).
+func (r *Registry) proposeCriteria(ctx context.Context, raw json.RawMessage) (string, bool) {
 	var args struct {
 		Action       string  `json:"action"`
 		CriterionID  *string `json:"criterion_id"`
@@ -566,13 +577,29 @@ func (r *Registry) proposeCriteria(raw json.RawMessage) (string, bool) {
 		return errorJSON("weight muss zwischen 1 und 5 liegen"), true
 	}
 
-	verb := "Vorgeschlagen"
 	if args.Action == "edit" {
-		verb = "Änderung vorgeschlagen"
+		return mustJSON(map[string]any{
+			"status":  "pending_confirmation",
+			"summary": fmt.Sprintf("Änderung vorgeschlagen: Kriterium %q — ⚠️ Noch nicht aktiv, Bestätigung ausstehend.", args.Name),
+		}), false
+	}
+
+	weight := 1
+	if args.Weight != nil {
+		weight = *args.Weight
+	}
+	// The model sometimes writes `&amp;` into a tool argument (docs/buglist.md
+	// issue #4); decode it here, where the criterion row is written, so the
+	// Confirm-Card finds it again by name.
+	name, description := html.UnescapeString(args.Name), html.UnescapeString(args.Description)
+	criterion, err := r.Criteria.Propose(ctx, r.ProfileID, name, description, weight, args.IsSubjective)
+	if err != nil {
+		return errorJSON(err.Error()), true
 	}
 	return mustJSON(map[string]any{
-		"status":  "pending_confirmation",
-		"summary": fmt.Sprintf("%s: Kriterium %q — ⚠️ Noch nicht aktiv, Bestätigung ausstehend.", verb, args.Name),
+		"status":       "pending_confirmation",
+		"criterion_id": criterion.ID,
+		"summary":      fmt.Sprintf("Vorgeschlagen: Kriterium %q — ⚠️ Noch nicht aktiv, Freigabe ausstehend.", criterion.Name),
 	}), false
 }
 

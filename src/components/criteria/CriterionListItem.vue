@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { NButton, NInput, NPopconfirm, NSlider, NSpace, NSwitch, NText } from 'naive-ui';
+/**
+ * One row of the Criteria tab. A proposed criterion (docs/adr/0024) carries
+ * a "Vorgeschlagen" badge and a "Freischalten" button; it stays editable and
+ * deletable, but evaluation ignores it until it is approved.
+ */
+import { NButton, NInput, NPopconfirm, NSlider, NSpace, NSwitch, NTag, NText } from 'naive-ui';
 import { shallowRef } from 'vue';
 
 import type { Criterion } from '@/types/criterion';
@@ -12,6 +17,7 @@ const emit = defineEmits<{
   'update-weight': [criterionId: string, weight: number];
   'update-subjective': [criterionId: string, isSubjective: boolean];
   'update-text': [criterionId: string, name: string, description: string];
+  approve: [criterionId: string];
   delete: [criterionId: string];
 }>();
 
@@ -38,7 +44,12 @@ function confirmEdit() {
 <template>
   <div class="criterion-item">
     <div v-if="!editing" class="criterion-item-text" @click="startEdit">
-      <NText strong>{{ criterion.name }}</NText>
+      <NSpace align="center" size="small">
+        <NText strong>{{ criterion.name }}</NText>
+        <NTag v-if="criterion.status === 'proposed'" type="warning" size="small">
+          Vorgeschlagen
+        </NTag>
+      </NSpace>
       <NText depth="3" class="criterion-item-description">{{ criterion.description }}</NText>
     </div>
     <div v-else class="criterion-item-edit">
@@ -68,6 +79,14 @@ function confirmEdit() {
         :marks="{ 1: '1', 2: '2', 3: '3', 4: '4', 5: '5' }"
         @update:value="emit('update-weight', criterion.id, $event)"
       />
+      <NButton
+        v-if="criterion.status === 'proposed'"
+        size="small"
+        type="primary"
+        @click="emit('approve', criterion.id)"
+      >
+        Freischalten
+      </NButton>
       <NPopconfirm @positive-click="emit('delete', criterion.id)">
         <template #trigger>
           <NButton size="small" quaternary type="error">Löschen</NButton>
