@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"propertyfinder/internal/domain"
@@ -127,13 +128,18 @@ func newTestRegistry(t *testing.T, listings *fakeListingWriter, images *fakeImag
 	}
 }
 
+func dispatchText(registry *Registry, call ToolCall) (string, bool) {
+	result := registry.Dispatch(context.Background(), call)
+	return result.Result, result.IsError
+}
+
 func TestDispatch_FetchURL_ReturnsPageContent(t *testing.T) {
 	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
 	registry.Fetcher = &fakePageFetcher{result: &fetch.Result{
 		Title: "Kappmuren 2", Text: "Schönes Haus", ImageURLs: []string{"https://x/1.jpg"}, Links: []string{"https://x/more"},
 	}}
 
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "fetch_url", Arguments: json.RawMessage(`{"url":"https://x"}`)})
+	result, isError := dispatchText(registry, ToolCall{Name: "fetch_url", Arguments: json.RawMessage(`{"url":"https://x"}`)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -142,11 +148,38 @@ func TestDispatch_FetchURL_ReturnsPageContent(t *testing.T) {
 	}
 }
 
+func TestDispatch_FetchURL_ReturnsLinkedPDFAsNativeDocument(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+	pdfData := []byte("%PDF-1.4\n% floor-plan fixture")
+	registry.Fetcher = &fakePageFetcher{result: &fetch.Result{PDFData: pdfData}}
+
+	result := registry.Dispatch(context.Background(), ToolCall{Name: "fetch_url", Arguments: json.RawMessage(`{"url":"https://x/floorplan.pdf"}`)})
+	if result.IsError {
+		t.Fatalf("Dispatch returned an error result: %s", result.Result)
+	}
+	if want := base64.StdEncoding.EncodeToString(pdfData); result.DocumentData != want {
+		t.Errorf("DocumentData = %q, want %q", result.DocumentData, want)
+	}
+	var payload struct {
+		URL       string `json:"url"`
+		MediaType string `json:"media_type"`
+	}
+	if err := json.Unmarshal([]byte(result.Result), &payload); err != nil {
+		t.Fatalf("decode tool result: %v", err)
+	}
+	if payload.URL != "https://x/floorplan.pdf" || payload.MediaType != "application/pdf" {
+		t.Errorf("tool result = %+v, want PDF URL and media type", payload)
+	}
+	if strings.Contains(result.Result, result.DocumentData) {
+		t.Error("JSON tool result contains the base64 PDF; it must stay turn-local")
+	}
+}
+
 func TestDispatch_FetchURL_PropagatesFetchError(t *testing.T) {
 	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
 	registry.Fetcher = &fakePageFetcher{err: errors.New("blocked")}
 
-	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "fetch_url", Arguments: json.RawMessage(`{"url":"https://x"}`)})
+	_, isError := dispatchText(registry, ToolCall{Name: "fetch_url", Arguments: json.RawMessage(`{"url":"https://x"}`)})
 	if !isError {
 		t.Error("expected an error result when the fetch fails")
 	}
@@ -157,7 +190,7 @@ func TestDispatch_SaveListing_CreatesNewListing(t *testing.T) {
 	registry := newTestRegistry(t, listings, &fakeImageWriter{})
 
 	args := `{"fields":{"title":"Kappmuren 2","price":310000,"price_currency":"SEK"}}`
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "save_listing", Arguments: json.RawMessage(args)})
+	result, isError := dispatchText(registry, ToolCall{Name: "save_listing", Arguments: json.RawMessage(args)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -194,7 +227,7 @@ func TestDispatch_SaveListing_SkipsUserConfirmedFieldUnlessForced(t *testing.T) 
 
 	// Normal call: price is protected, should be skipped.
 	args := `{"listing_id":"` + existingID.String() + `","fields":{"price":305000}}`
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "save_listing", Arguments: json.RawMessage(args)})
+	result, isError := dispatchText(registry, ToolCall{Name: "save_listing", Arguments: json.RawMessage(args)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -207,7 +240,7 @@ func TestDispatch_SaveListing_SkipsUserConfirmedFieldUnlessForced(t *testing.T) 
 
 	// Forced call: price should now be overwritten and unprotected.
 	forcedArgs := `{"listing_id":"` + existingID.String() + `","fields":{"price":305000},"force_overwrite":["price"]}`
-	result, isError = registry.Dispatch(context.Background(), ToolCall{Name: "save_listing", Arguments: json.RawMessage(forcedArgs)})
+	result, isError = dispatchText(registry, ToolCall{Name: "save_listing", Arguments: json.RawMessage(forcedArgs)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -228,7 +261,7 @@ func TestDispatch_SaveListing_RejectsListingFromAnotherProfile(t *testing.T) {
 	listings.listings[otherProfileListingID] = &domain.Listing{ID: otherProfileListingID, ProfileID: uuid.New(), Title: "Not yours"}
 
 	args := `{"listing_id":"` + otherProfileListingID.String() + `","fields":{"price":1}}`
-	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "save_listing", Arguments: json.RawMessage(args)})
+	_, isError := dispatchText(registry, ToolCall{Name: "save_listing", Arguments: json.RawMessage(args)})
 	if !isError {
 		t.Error("expected an error result when updating a listing from another profile")
 	}
@@ -244,7 +277,7 @@ func TestDispatch_DownloadImage_StoresFileAndRow(t *testing.T) {
 	registry.Downloader = &fakeImageDownloader{image: &fetch.DownloadedImage{Data: []byte("fake-jpeg-bytes"), Extension: ".jpg"}}
 
 	args := `{"listing_id":"` + listingID.String() + `","image_url":"https://x/1.jpg","category":"exterior"}`
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "download_image", Arguments: json.RawMessage(args)})
+	result, isError := dispatchText(registry, ToolCall{Name: "download_image", Arguments: json.RawMessage(args)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -268,7 +301,7 @@ func TestDispatch_DownloadImage_RejectsUnknownCategory(t *testing.T) {
 	listings.listings[listingID] = &domain.Listing{ID: listingID, ProfileID: registry.ProfileID}
 
 	args := `{"listing_id":"` + listingID.String() + `","image_url":"https://x/1.jpg","category":"basement"}`
-	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "download_image", Arguments: json.RawMessage(args)})
+	_, isError := dispatchText(registry, ToolCall{Name: "download_image", Arguments: json.RawMessage(args)})
 	if !isError {
 		t.Error("expected an error result for an unrecognized category")
 	}
@@ -276,7 +309,7 @@ func TestDispatch_DownloadImage_RejectsUnknownCategory(t *testing.T) {
 
 func TestDispatch_UnknownTool_ReturnsError(t *testing.T) {
 	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
-	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "does_not_exist"})
+	_, isError := dispatchText(registry, ToolCall{Name: "does_not_exist"})
 	if !isError {
 		t.Error("expected an error result for an unknown tool name")
 	}
@@ -304,7 +337,7 @@ func TestDispatch_EvaluateListing_ReturnsGrades(t *testing.T) {
 		scores:  []domain.CriterionScore{{CriterionID: uuid.New(), Grade: domain.GradeA, Reasoning: "Gute Lage"}},
 	}
 
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "evaluate_listing", Arguments: json.RawMessage(`{"listing_id":"` + listingID.String() + `"}`)})
+	result, isError := dispatchText(registry, ToolCall{Name: "evaluate_listing", Arguments: json.RawMessage(`{"listing_id":"` + listingID.String() + `"}`)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -324,7 +357,7 @@ func TestDispatch_EvaluateListing_RejectsListingFromAnotherProfile(t *testing.T)
 	listingID := uuid.New()
 	listings.listings[listingID] = &domain.Listing{ID: listingID, ProfileID: uuid.New()}
 
-	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "evaluate_listing", Arguments: json.RawMessage(`{"listing_id":"` + listingID.String() + `"}`)})
+	_, isError := dispatchText(registry, ToolCall{Name: "evaluate_listing", Arguments: json.RawMessage(`{"listing_id":"` + listingID.String() + `"}`)})
 	if !isError {
 		t.Error("expected an error result for a listing from another profile")
 	}
@@ -358,7 +391,7 @@ func TestDispatch_ProposeCriteria_AddStoresProposedCriterion(t *testing.T) {
 	registry.Criteria = proposer
 
 	args := `{"action":"add","name":"Grundstück &amp; Lage","description":"Distanz zum See","is_subjective":false,"weight":3}`
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
+	result, isError := dispatchText(registry, ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -378,7 +411,7 @@ func TestDispatch_ProposeCriteria_AddPropagatesDuplicateNameError(t *testing.T) 
 	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
 	registry.Criteria = &fakeCriterionProposer{err: &domain.ConflictError{Message: "Kriterium existiert bereits: Preis"}}
 
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(`{"action":"add","name":"Preis"}`)})
+	result, isError := dispatchText(registry, ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(`{"action":"add","name":"Preis"}`)})
 	if !isError || !strings.Contains(result, "existiert bereits") {
 		t.Errorf("result = %s (isError=%v), want an error naming the duplicate", result, isError)
 	}
@@ -392,7 +425,7 @@ func TestDispatch_ProposeCriteria_EditWritesNothing(t *testing.T) {
 	registry.Criteria = proposer
 
 	args := `{"action":"edit","criterion_id":"` + uuid.NewString() + `","name":"Preis"}`
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
+	result, isError := dispatchText(registry, ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -408,7 +441,7 @@ func TestDispatch_ProposeCriteria_RejectsEditWithoutCriterionID(t *testing.T) {
 	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
 
 	args := `{"action":"edit","name":"Preis"}`
-	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
+	_, isError := dispatchText(registry, ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
 	if !isError {
 		t.Error("expected an error result for action=edit without criterion_id")
 	}
@@ -418,7 +451,7 @@ func TestDispatch_ProposeCriteria_RejectsOutOfRangeWeight(t *testing.T) {
 	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
 
 	args := `{"action":"add","name":"Preis","weight":9}`
-	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
+	_, isError := dispatchText(registry, ToolCall{Name: "propose_criteria", Arguments: json.RawMessage(args)})
 	if !isError {
 		t.Error("expected an error result for weight out of 1-5 range")
 	}
@@ -428,7 +461,7 @@ func TestDispatch_UpdateContext_ReturnsPendingConfirmation(t *testing.T) {
 	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
 
 	args := `{"scope":"profile","operation":"append","content":"Bei Booli immer dem Makler-Link folgen."}`
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "update_context", Arguments: json.RawMessage(args)})
+	result, isError := dispatchText(registry, ToolCall{Name: "update_context", Arguments: json.RawMessage(args)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -441,7 +474,7 @@ func TestDispatch_UpdateContext_RejectsUnsupportedOperation(t *testing.T) {
 	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
 
 	args := `{"scope":"global","operation":"replace","content":"x"}`
-	_, isError := registry.Dispatch(context.Background(), ToolCall{Name: "update_context", Arguments: json.RawMessage(args)})
+	_, isError := dispatchText(registry, ToolCall{Name: "update_context", Arguments: json.RawMessage(args)})
 	if !isError {
 		t.Error("expected an error result for an unsupported operation")
 	}
@@ -460,7 +493,7 @@ func TestDispatch_Geocode_ReturnsCoordinates(t *testing.T) {
 	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
 	registry.Geocoder = &fakeGeocoder{result: &geocode.Result{Lat: 55.6, Lon: 13.0, DisplayName: "Malmö, Schweden"}}
 
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "geocode", Arguments: json.RawMessage(`{"address":"Malmö"}`)})
+	result, isError := dispatchText(registry, ToolCall{Name: "geocode", Arguments: json.RawMessage(`{"address":"Malmö"}`)})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -473,7 +506,7 @@ func TestDispatch_Geocode_NotFoundIsAnError(t *testing.T) {
 	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
 	registry.Geocoder = &fakeGeocoder{err: geocode.ErrNotFound}
 
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "geocode", Arguments: json.RawMessage(`{"address":"Nirgendwo"}`)})
+	result, isError := dispatchText(registry, ToolCall{Name: "geocode", Arguments: json.RawMessage(`{"address":"Nirgendwo"}`)})
 	if !isError {
 		t.Error("expected an error result when the address isn't found")
 	}
@@ -491,7 +524,7 @@ func TestDispatch_ListProfileListings_ReturnsOnlyCurrentProfile(t *testing.T) {
 	otherID := uuid.New()
 	listings.listings[otherID] = &domain.Listing{ID: otherID, ProfileID: uuid.New(), Title: "Not yours"}
 
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "list_profile_listings"})
+	result, isError := dispatchText(registry, ToolCall{Name: "list_profile_listings"})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}
@@ -512,7 +545,7 @@ func TestDispatch_ComputeRanking_OrdersByScoreDescending(t *testing.T) {
 	listings.listings[lowID] = &domain.Listing{ID: lowID, ProfileID: registry.ProfileID, Title: "Niedrig", OverallScore: &low}
 	listings.listings[highID] = &domain.Listing{ID: highID, ProfileID: registry.ProfileID, Title: "Hoch", OverallScore: &high}
 
-	result, isError := registry.Dispatch(context.Background(), ToolCall{Name: "compute_ranking"})
+	result, isError := dispatchText(registry, ToolCall{Name: "compute_ranking"})
 	if isError {
 		t.Fatalf("Dispatch returned an error result: %s", result)
 	}

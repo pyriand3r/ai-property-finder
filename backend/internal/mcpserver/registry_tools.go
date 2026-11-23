@@ -32,13 +32,13 @@ func dispatchViaRegistry(ctx context.Context, deps Deps, profileIDRaw, toolName 
 		return nil, fmt.Errorf("encode arguments: %w", err)
 	}
 	registry := deps.NewRegistry(profileID)
-	resultJSON, isError := registry.Dispatch(ctx, agent.ToolCall{Name: toolName, Arguments: raw})
+	result := registry.Dispatch(ctx, agent.ToolCall{Name: toolName, Arguments: raw})
 
 	var output any
-	if err := json.Unmarshal([]byte(resultJSON), &output); err != nil {
+	if err := json.Unmarshal([]byte(result.Result), &output); err != nil {
 		return nil, fmt.Errorf("decode %s result: %w", toolName, err)
 	}
-	if isError {
+	if result.IsError {
 		message := toolName + " failed"
 		if obj, ok := output.(map[string]any); ok {
 			if msg, ok := obj["error"].(string); ok {

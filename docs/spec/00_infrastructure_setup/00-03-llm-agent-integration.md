@@ -84,7 +84,7 @@ The Claude implementation (`internal/agent/provider/claude/`) translates Anthrop
 
 | Tool | Purpose | Backing implementation |
 |---|---|---|
-| `fetch_url` | Load a listing page with HTTP GET. Extract readable text, all discovered image URLs and all outbound links. The Agent uses the links to decide which secondary link to follow, per Portal Rule. | `internal/fetch` (net/http + readability) |
+| `fetch_url` | Load a listing page or linked PDF with HTTP GET. HTML returns readable text, all discovered image URLs and all outbound links. The Agent follows relevant secondary and tertiary links, per Portal Rule or clear document cues. A linked PDF is attached as a native document for the current turn. | `internal/fetch` (net/http + readability + native PDF input) |
 | `read_pdf` | Read an uploaded PDF as a native Claude document content block. The model understands both the text and the embedded images directly. | `internal/pdf` |
 | `download_image` | Fetch an image URL and store it locally under `/data/images/listings/{id}/{uuid}.ext`. Tag the image with a category. Set `listing.title_image_id` if the listing has no title image yet. Returns `{"image_id", "path"}`. | `internal/fetch` |
 | `save_listing` | Create or update a `listing` row with structured fields (title, price, size, address, coordinates, etc.) plus `document_md`. Fields in `user_confirmed_fields` are skipped unless listed in `force_overwrite`. Returns `skipped_fields` when fields were protected ([[../../docs/adr/0016-user-confirmed-fields-agent-context]]). | `internal/db/repository.ListingRepository` |
@@ -118,6 +118,8 @@ The fixed preamble is a Go string constant in `internal/agent/context_builder.go
 ## PDF Handling
 
 The user can upload a PDF as a fallback for a blocked or anti-bot page. This matches the `pymupdf` step in the reference Obsidian workflow. The app sends the PDF to Claude as a native `document` content block in the same turn. No local OCR or image-extraction step is needed for text. Claude reads the PDF directly, including embedded images. This works for the write-up and for photo identification. The app calls `download_image` only afterwards, and only if the user wants a specific photo copied out and stored on the Listing.
+
+`fetch_url` also accepts PDF links discovered on listing or broker pages. The Agent can therefore follow a portal → broker → floor-plan PDF chain without a separate scraper or extraction Tool. The linked PDF is appended after the roundtrip's Tool results as a native `document` block. Its base64 bytes live only in that in-memory turn: the JSON Tool result and chat history retain the source URL and media type, not the document payload. Later turns do not resend it.
 
 On a mobile device, the user may have no PDF-export option and can only screenshot a listing. In that case the user can upload a JPG or PNG instead. The app sends it to Claude the same way, in the same turn, as a native `image` content block (ADR 0020). The flow after that is the same as for a PDF: `download_image` runs only afterwards, and only if a specific photo must be saved on the Listing.
 

@@ -1,4 +1,4 @@
-// Package fetch is the plain-HTTP page/image loader backing the Agent's
+// Package fetch is the plain-HTTP page/PDF/image loader backing the Agent's
 // fetch_url and download_image Tools (spec 00-03). No headless browser —
 // chromedp is explicitly deferred past MVP (AGENTS.md "Deferred / Not in
 // MVP"), so anti-bot-walled pages surface as a fetch error and the Agent
@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	nurl "net/url"
 	"path"
@@ -45,6 +46,9 @@ type Result struct {
 	Text      string
 	ImageURLs []string
 	Links     []string
+	// PDFData contains the raw response when the URL is a PDF. The Agent
+	// sends it as a native document instead of running HTML extraction.
+	PDFData []byte
 }
 
 // DownloadedImage is download_image's fetched payload, ready to write to
@@ -76,9 +80,13 @@ func (c *Client) httpClient() *http.Client {
 
 // FetchPage backs the fetch_url Tool.
 func (c *Client) FetchPage(ctx context.Context, pageURL string) (*Result, error) {
-	parsedURL, body, _, err := c.fetchBytes(ctx, pageURL)
+	parsedURL, body, contentType, err := c.fetchBytes(ctx, pageURL)
 	if err != nil {
 		return nil, err
+	}
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	if strings.EqualFold(mediaType, "application/pdf") || bytes.HasPrefix(bytes.TrimSpace(body), []byte("%PDF-")) {
+		return &Result{PDFData: body}, nil
 	}
 
 	article, err := readability.FromReader(bytes.NewReader(body), parsedURL)

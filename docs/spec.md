@@ -59,7 +59,7 @@ The user can see and edit both at any time. The Agent suggests additions after i
 The user gives a URL or an uploaded PDF. Then the Agent does these steps:
 
 1. It fetches or reads the Source.
-2. It follows a second link if the matching Portal Rule says so. The Portal Rule lives in Context, not in code.
+2. It follows relevant secondary and tertiary links, including linked PDFs such as floor plans. Portal Rules in Context identify important links; clearly labelled listing documents can also be followed without a rule.
 3. It extracts and downloads photos where possible.
 4. It writes the Listing Document (original excerpt, German translation, structured fields).
 5. It evaluates the Listing against the profile's Criteria.

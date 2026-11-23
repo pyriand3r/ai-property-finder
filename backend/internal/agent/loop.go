@@ -58,11 +58,21 @@ type TurnResult struct {
 	Usage Usage
 }
 
-// DispatchFunc resolves one tool call to its result. Returns the result
-// text to feed back to the model as a tool_result block, and whether it
-// represents an error (spec 00-03 "Error Handling": tool failures are
-// reported to the Agent, not raised as a turn failure).
-type DispatchFunc func(ctx context.Context, call ToolCall) (result string, isError bool)
+// ToolResult is one dispatched Tool call's outcome. Result is the JSON text
+// fed back as a tool_result block. DocumentData optionally carries a
+// base64-encoded PDF discovered by the Tool; Loop appends it as a native
+// document block for this turn only and keeps it out of ToolOutcome, so chat
+// history never persists or replays the payload.
+type ToolResult struct {
+	Result       string
+	IsError      bool
+	DocumentData string
+}
+
+// DispatchFunc resolves one tool call to its result. Tool failures are
+// reported to the Agent, not raised as a turn failure (spec 00-03 "Error
+// Handling").
+type DispatchFunc func(ctx context.Context, call ToolCall) ToolResult
 
 // OnEvent is called synchronously for every ChatEvent Run receives from
 // the Provider, across every roundtrip, so the caller can bridge each one
@@ -249,7 +259,8 @@ func assistantResponseBlocks(text string, toolCalls []ToolCall) []ContentBlock {
 // dispatchAll resolves every tool call via Dispatch (or a stand-in error
 // result when no dispatcher is wired) and returns both the tool_result
 // content blocks for the next roundtrip's user turn and the raw outcomes
-// for the caller to persist.
+// for the caller to persist. Native PDF blocks follow all tool_result blocks
+// because Claude rejects non-tool-result content interleaved between them.
 func (loop *Loop) dispatchAll(ctx context.Context, calls []ToolCall) ([]ContentBlock, []ToolOutcome) {
 	// context.WithoutCancel: a "stop" click (spec 01-01) must let any tool
 	// call currently executing run to completion — Dispatch implementations
@@ -259,24 +270,36 @@ func (loop *Loop) dispatchAll(ctx context.Context, calls []ToolCall) ([]ContentB
 	// cancellation check (top of the roundtrip loop) still stops further
 	// LLM requests once this whole batch finishes.
 	dispatchCtx := context.WithoutCancel(ctx)
-	blocks := make([]ContentBlock, 0, len(calls))
+	blocks := make([]ContentBlock, 0, 2*len(calls))
+	documents := make([]ContentBlock, 0, len(calls))
 	outcomes := make([]ToolOutcome, 0, len(calls))
 	for _, call := range calls {
-		resultText, isError := loop.dispatch(dispatchCtx, call)
+		result := loop.dispatch(dispatchCtx, call)
+		if result.DocumentData != "" && !loop.Provider.SupportsDocumentInput() {
+			result.Result = `{"error":"PDF geladen, aber der aktuelle LLM-Provider unterstützt keine PDF-Dokumente."}`
+			result.IsError = true
+			result.DocumentData = ""
+		}
 		blocks = append(blocks, ContentBlock{
 			Type:            ContentBlockToolResult,
 			ToolResultForID: call.ID,
-			ToolResultText:  resultText,
-			ToolResultError: isError,
+			ToolResultText:  result.Result,
+			ToolResultError: result.IsError,
 		})
-		outcomes = append(outcomes, ToolOutcome{Call: call, Result: resultText, IsError: isError})
+		if result.DocumentData != "" {
+			documents = append(documents, ContentBlock{
+				Type:         ContentBlockDocument,
+				DocumentData: result.DocumentData,
+			})
+		}
+		outcomes = append(outcomes, ToolOutcome{Call: call, Result: result.Result, IsError: result.IsError})
 	}
-	return blocks, outcomes
+	return append(blocks, documents...), outcomes
 }
 
-func (loop *Loop) dispatch(ctx context.Context, call ToolCall) (string, bool) {
+func (loop *Loop) dispatch(ctx context.Context, call ToolCall) ToolResult {
 	if loop.Dispatch == nil {
-		return `{"error":"tool not available"}`, true
+		return ToolResult{Result: `{"error":"tool not available"}`, IsError: true}
 	}
 	return loop.Dispatch(ctx, call)
 }

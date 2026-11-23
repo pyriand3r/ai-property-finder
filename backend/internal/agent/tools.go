@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,7 +31,7 @@ func Tools() []Tool {
 	return []Tool{
 		{
 			Name:        "fetch_url",
-			Description: "Lädt eine Webseite per HTTP GET und liefert den lesbaren Haupttext, alle gefundenen Bild-URLs und alle ausgehenden Links zurück. Nutze dies für die Hauptseite eines Inserats und für sekundäre Links, denen eine Portal-Regel folgt (z.B. \"Läs mer hos mäklaren\").",
+			Description: "Lädt eine Webseite oder ein PDF per HTTP GET. Webseiten liefern lesbaren Haupttext, Bild-URLs und ausgehende Links; PDFs werden als natives Dokument angehängt. Nutze dies für die Hauptseite und relevante sekundäre/tertiäre Links (z.B. Maklerseite → Exposé- oder Grundriss-PDF).",
 			InputSchema: json.RawMessage(`{
 				"properties": {
 					"url": {"type": "string", "description": "Absolute URL der zu ladenden Seite."}
@@ -186,7 +187,8 @@ type ImageWriter interface {
 	CountByListing(ctx context.Context, listingID uuid.UUID) (int, error)
 }
 
-// PageFetcher backs fetch_url. Satisfied by *fetch.Client.
+// PageFetcher backs fetch_url for HTML pages and linked PDFs. Satisfied by
+// *fetch.Client.
 type PageFetcher interface {
 	FetchPage(ctx context.Context, pageURL string) (*fetch.Result, error)
 }
@@ -250,49 +252,63 @@ func (r *Registry) TouchedListingID() *uuid.UUID {
 
 // Dispatch implements DispatchFunc, routing a ToolCall to its
 // implementation by name.
-func (r *Registry) Dispatch(ctx context.Context, call ToolCall) (string, bool) {
+func (r *Registry) Dispatch(ctx context.Context, call ToolCall) ToolResult {
+	var result string
+	var isError bool
 	switch call.Name {
 	case "fetch_url":
 		return r.fetchURL(ctx, call.Arguments)
 	case "save_listing":
-		return r.saveListing(ctx, call.Arguments)
+		result, isError = r.saveListing(ctx, call.Arguments)
 	case "download_image":
-		return r.downloadImage(ctx, call.Arguments)
+		result, isError = r.downloadImage(ctx, call.Arguments)
 	case "evaluate_listing":
-		return r.evaluateListing(ctx, call.Arguments)
+		result, isError = r.evaluateListing(ctx, call.Arguments)
 	case "propose_criteria":
-		return r.proposeCriteria(ctx, call.Arguments)
+		result, isError = r.proposeCriteria(ctx, call.Arguments)
 	case "update_context":
-		return r.updateContext(call.Arguments)
+		result, isError = r.updateContext(call.Arguments)
 	case "geocode":
-		return r.geocodeAddress(ctx, call.Arguments)
+		result, isError = r.geocodeAddress(ctx, call.Arguments)
 	case "list_profile_listings":
-		return r.listProfileListings(ctx)
+		result, isError = r.listProfileListings(ctx)
 	case "compute_ranking":
-		return r.computeRanking(ctx)
+		result, isError = r.computeRanking(ctx)
 	default:
-		return errorJSON("unbekanntes Tool: " + call.Name), true
+		result, isError = errorJSON("unbekanntes Tool: "+call.Name), true
 	}
+	return ToolResult{Result: result, IsError: isError}
 }
 
-func (r *Registry) fetchURL(ctx context.Context, raw json.RawMessage) (string, bool) {
+func (r *Registry) fetchURL(ctx context.Context, raw json.RawMessage) ToolResult {
 	var args struct {
 		URL string `json:"url"`
 	}
 	if err := json.Unmarshal(raw, &args); err != nil || strings.TrimSpace(args.URL) == "" {
-		return errorJSON("url ist erforderlich"), true
+		return ToolResult{Result: errorJSON("url ist erforderlich"), IsError: true}
 	}
 
 	result, err := r.Fetcher.FetchPage(ctx, args.URL)
 	if err != nil {
-		return errorJSON(err.Error()), true
+		return ToolResult{Result: errorJSON(err.Error()), IsError: true}
 	}
-	return mustJSON(map[string]any{
+	if len(result.PDFData) > 0 {
+		return ToolResult{
+			Result: mustJSON(map[string]any{
+				"status":     "ok",
+				"url":        args.URL,
+				"media_type": "application/pdf",
+				"note":       "PDF als natives Dokument angehängt. Analysiere Text und eingebettete Grundrisse zusammen mit den anderen Quellen.",
+			}),
+			DocumentData: base64.StdEncoding.EncodeToString(result.PDFData),
+		}
+	}
+	return ToolResult{Result: mustJSON(map[string]any{
 		"title":      result.Title,
 		"text":       result.Text,
 		"image_urls": result.ImageURLs,
 		"links":      result.Links,
-	}), false
+	})}
 }
 
 // saveListingFields mirrors the save_listing schema's "fields" object —
