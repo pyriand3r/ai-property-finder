@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"propertyfinder/internal/agent"
 	"propertyfinder/internal/db/repository"
 	"propertyfinder/internal/domain"
@@ -118,16 +119,36 @@ func (service *ToolCallService) markToolCallStatus(ctx context.Context, message 
 	return repository.NewChatRepo(service.pool).UpdateToolCalls(ctx, message.ID, updated)
 }
 
-func (service *ToolCallService) confirmProposeCriteria(ctx context.Context, message *domain.ChatMessage, call agent.StoredToolCall) (*domain.Criterion, error) {
-	var args struct {
-		Action       string  `json:"action"`
-		CriterionID  *string `json:"criterion_id"`
-		Name         string  `json:"name"`
-		Description  string  `json:"description"`
-		IsSubjective bool    `json:"is_subjective"`
-		Weight       *int    `json:"weight"`
+// criteriaProposal is the parsed input of a stored propose_criteria call.
+type criteriaProposal struct {
+	Action       string  `json:"action"`
+	CriterionID  *string `json:"criterion_id"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	IsSubjective bool    `json:"is_subjective"`
+	Weight       *int    `json:"weight"`
+}
+
+// parseCriteriaProposal decodes a propose_criteria input and undoes HTML
+// entity escaping in Name and Description (docs/buglist.md "Criterion names
+// show literal &amp;", issue #4). Nothing in this backend escapes text: the
+// model itself sometimes writes `Grundstück &amp; Lage` into a tool argument,
+// and that string used to be stored as it was. Criterion text is plain text;
+// escaping belongs at render time only, so decode here, on the one path where
+// model-written text becomes a criterion row.
+func parseCriteriaProposal(raw json.RawMessage) (criteriaProposal, error) {
+	var args criteriaProposal
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return criteriaProposal{}, err
 	}
-	if err := json.Unmarshal(call.Input, &args); err != nil {
+	args.Name = html.UnescapeString(args.Name)
+	args.Description = html.UnescapeString(args.Description)
+	return args, nil
+}
+
+func (service *ToolCallService) confirmProposeCriteria(ctx context.Context, message *domain.ChatMessage, call agent.StoredToolCall) (*domain.Criterion, error) {
+	args, err := parseCriteriaProposal(call.Input)
+	if err != nil {
 		return nil, &domain.ValidationError{Field: "tool_call", Message: "Vorschlag konnte nicht gelesen werden"}
 	}
 	weight := 1
