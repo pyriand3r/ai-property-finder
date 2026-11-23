@@ -23,7 +23,37 @@ there. Do not delete the history of what it took to find and fix it.
 
 ## Open
 
-_No open bugs._
+### SSE Broker: `Publish` can panic with "send on closed channel"
+
+- **Found**: 2026-11-23, while writing the `internal/events` tests (issue #12).
+- **Symptom**: the whole backend process crashes when a client disconnects at the same moment an
+  event is published. A throwaway stress test (200k `Publish` calls against a `Subscribe` +
+  `Unsubscribe` loop) panicked in `Broker.Publish` within milliseconds.
+- **Root cause**: `Publish` copies the client set under the lock, then sends to the channels
+  after it unlocked. `Unsubscribe` can `close(ch)` in that gap. A `select` with `default` does not
+  protect against a send on a closed channel.
+- **Status**: open. Not fixed in #12 (tests only). Fix idea: send while holding the read lock, or
+  never close client channels and signal disconnect with a separate `done` channel.
+
+### SSE Broker: `Replay` sends events out of order after the ring buffer wraps
+
+- **Found**: 2026-11-23, while writing the `internal/events` tests (issue #12).
+- **Symptom**: after more than 200 events, a reconnecting client with `Last-Event-ID: 150` gets
+  events 201..210 first and 151..200 afterwards (verified with a throwaway test). The frontend
+  refetches the full message list on `chat.message`, so the damage is mostly hidden. Task
+  progress events can still arrive in the wrong order.
+- **Root cause**: `Replay` iterates `ringBuffer` in slot order. After the wrap, slot order is not
+  id order (`ringIndex` marks the oldest slot).
+- **Status**: open. Not fixed in #12.
+
+### SSE: a replay gap emits no `resync` event
+
+- **Found**: 2026-11-23, while writing the `internal/api` event handler tests (issue #12).
+- **Symptom**: `Broker.Replay` doc says the caller should "emit a resync event" when
+  `Last-Event-ID` is older than the ring buffer. `EventHandler.Stream` only calls `Flush()` in
+  that case, so the client is never told it missed events. `Replay` also returns false when
+  `lastEventID == oldest-1`, which is not a real gap.
+- **Status**: open. Not fixed in #12. Decide the resync event name and the frontend reaction first.
 
 ---
 
