@@ -43,7 +43,7 @@ editable in a plain form (ADR 0001) — the UI is never chat-only.
 
 **Build state**: all 9 layers (0–8) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
 (RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Remaining work is
-tracked as bugs in `docs/buglist.md` (0 open) and
+tracked as bugs in `docs/buglist.md` (3 open) and
 ideas in `docs/ideas.md` (2 open). UI copy is German (`index.html` is `lang="de"`).
 
 ## Architecture & Data Flow
@@ -186,7 +186,7 @@ docs/
 ├── spec/00_infrastructure_setup/, spec/01_mvp/   # feature/infra specs (see docs/00_readme.md for the map)
 ├── implementation-plan.md   # authoritative build-order/status (layers 0-8 + RF.1-5)
 ├── CONTEXT.md      # domain glossary — see Domain Vocabulary below
-├── buglist.md      # open bugs found outside the current task (0 open)
+├── buglist.md      # open bugs found outside the current task (3 open)
 └── ideas.md        # open improvement ideas (2 open)
 ```
 
@@ -368,9 +368,20 @@ Mocking, no library used, two conventions by collaborator kind:
    (`internal/agent/provider/claude/client_test.go`). No cassette/VCR library.
 
 Covered packages: `internal/agent` (loop, tools, context builder), `internal/agent/provider/claude`,
-`internal/ai` (JSON extraction, grade normalization), `internal/llm` (runtime swap/validation), `internal/api` (config handler only), `internal/service` (chat-history JSON merge logic),
-`internal/attachment`, `internal/fetch`. **Not yet covered**: `internal/api` (all handlers except config), `internal/db`/repositories,
-`internal/events`, `internal/geocode`, `internal/config`, `cmd/server`.
+`internal/ai` (JSON extraction, grade normalization), `internal/llm` (runtime swap/validation),
+`internal/api` (auth, config, events/SSE, geocode validation, helpers, listing patch body),
+`internal/service` (chat-history JSON merge logic), `internal/attachment`, `internal/fetch`,
+`internal/events` (broker, SSE framing), `internal/geocode` (httptest Nominatim, throttle),
+`internal/config` (`LoadEnv`, `SaveLLM`, redaction), `internal/db/repository`.
+
+Repository tests need no database: `internal/db/repository/fake_querier_test.go` is a hand-written
+`db.Querier` that records SQL/args and replays canned rows, tags and errors. They check argument
+and scan-column counts, `pgx.ErrNoRows`/`RowsAffected() == 0` → `NotFoundError`, and error wrapping.
+They do **not** run SQL, so a wrong query or migration is not caught. **Not yet covered**: SQL
+against a real Postgres, `config.LoadAll`/`SeedFromEnv`/`ConnectPool`, `db.WithTx`, the handlers in
+`internal/api` that need a `*pgxpool.Pool`-backed service, `internal/service` (apart from the chat
+merge logic), `cmd/server`. `geocode.baseURL` is a package variable only so tests can point it at an
+`httptest` server.
 
 ### Frontend (Vue + TypeScript)
 

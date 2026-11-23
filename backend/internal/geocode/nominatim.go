@@ -17,8 +17,11 @@ import (
 	"time"
 )
 
+// baseURL is a variable only so tests can point Geocode at an httptest
+// server; production code never reassigns it.
+var baseURL = "https://nominatim.openstreetmap.org/search"
+
 const (
-	baseURL   = "https://nominatim.openstreetmap.org/search"
 	userAgent = "PropertyFinderOBS/1.0 (single-user self-hosted app; https://github.com/pyriand3r/prop-finder)"
 	// minInterval enforces Nominatim's 1 req/s fair-use policy. The Agent
 	// loop dispatches tool calls sequentially anyway, so this is
