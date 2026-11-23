@@ -47,6 +47,10 @@ there. Do not delete the history of what it took to find and fix it.
   Or it could move the split away from `position: sticky`. A fixed-height flex/grid shell with
   independent scroll regions is a more typical split-pane layout.
 
+---
+
+## Fixed
+
 ### Quell-URL link color hard to read in dark mode
 
 - **Found**: 2026-08-06, reported by the user after the clickable source link shipped
@@ -60,11 +64,7 @@ there. Do not delete the history of what it took to find and fix it.
   `NConfigProvider :theme`). Other components style against it (for example, `var(--n-color-target, ...)`
   fallbacks in `ListingListTable.vue`/`RankingView.vue`). This link never got the same
   treatment.
-- **Status**: Open, not fixed.
-
----
-
-## Fixed
+- **Status**: Fixed (issue #3). The link has class `listing-form-source-link` with explicit light/dark colors under `@media (prefers-color-scheme: dark)`, the same approach as `ListingMap.vue`'s popup. `--n-color-target` was not used: it is a Naive UI component-internal variable, not a general theme color.
 
 ### Criterion names show literal `&amp;` instead of `&`
 

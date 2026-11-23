@@ -109,6 +109,7 @@ function save() {
           <NInput v-if="editing" v-model:value="draft.source_url" />
           <a
             v-else-if="listing.source_url"
+            class="listing-form-source-link"
             :href="listing.source_url"
             target="_blank"
             rel="noopener"
@@ -249,5 +250,18 @@ function save() {
 .listing-form-text {
   margin: 0;
   white-space: pre-wrap;
+}
+
+/* The browser's default link blue is too dark on the dark theme. Styled against
+   prefers-color-scheme (what usePreferredDark.ts keys off), like ListingMap.vue's popup. */
+.listing-form-source-link {
+  color: #1a5fb4;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-color-scheme: dark) {
+  .listing-form-source-link {
+    color: #7ab7ff;
+  }
 }
 </style>
