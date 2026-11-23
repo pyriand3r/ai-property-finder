@@ -15,32 +15,34 @@ type ListingHandler struct {
 	service *service.ListingService
 }
 
-// listingPatchBody is the wire shape of a listing create/PATCH body. All
-// fields are pointers so an omitted field means "unchanged", matching the
-// rest of the API (see profiles.go, criteria.go).
+// listingPatchBody is the wire shape of a listing create/PATCH body. An
+// omitted key means "unchanged". The nullable fields use service.Optional so
+// an explicit JSON null can be told apart from an omitted key and clears the
+// field (issue #9). title, status and title_image_id stay plain pointers:
+// they are not clearable, and null on them is treated as omitted.
 type listingPatchBody struct {
-	Title            *string               `json:"title,omitempty"`
-	SourceURL        *string               `json:"source_url,omitempty"`
-	Price            *float64              `json:"price,omitempty"`
-	PriceCurrency    *string               `json:"price_currency,omitempty"`
-	PropertySizeM2   *float64              `json:"property_size_m2,omitempty"`
-	PlotSizeM2       *float64              `json:"plot_size_m2,omitempty"`
-	Address          *string               `json:"address,omitempty"`
-	Region           *string               `json:"region,omitempty"`
-	Country          *string               `json:"country,omitempty"`
-	Latitude         *float64              `json:"latitude,omitempty"`
-	Longitude        *float64              `json:"longitude,omitempty"`
-	Description      *string               `json:"description,omitempty"`
-	TitleImagePath   *string               `json:"title_image_path,omitempty"`
-	TitleImageID     *uuid.UUID            `json:"title_image_id,omitempty"`
-	Status           *domain.ListingStatus `json:"status,omitempty"`
-	RejectionComment *string               `json:"rejection_comment,omitempty"`
-	SellerName       *string               `json:"seller_name,omitempty"`
-	SellerPhone      *string               `json:"seller_phone,omitempty"`
-	SellerEmail      *string               `json:"seller_email,omitempty"`
-	SellerNotes      *string               `json:"seller_notes,omitempty"`
-	LastContactAt    *time.Time            `json:"last_contact_at,omitempty"`
-	DocumentMD       *string               `json:"document_md,omitempty"`
+	Title            *string                     `json:"title,omitempty"`
+	SourceURL        service.Optional[string]    `json:"source_url"`
+	Price            service.Optional[float64]   `json:"price"`
+	PriceCurrency    service.Optional[string]    `json:"price_currency"`
+	PropertySizeM2   service.Optional[float64]   `json:"property_size_m2"`
+	PlotSizeM2       service.Optional[float64]   `json:"plot_size_m2"`
+	Address          service.Optional[string]    `json:"address"`
+	Region           service.Optional[string]    `json:"region"`
+	Country          service.Optional[string]    `json:"country"`
+	Latitude         service.Optional[float64]   `json:"latitude"`
+	Longitude        service.Optional[float64]   `json:"longitude"`
+	Description      service.Optional[string]    `json:"description"`
+	TitleImagePath   service.Optional[string]    `json:"title_image_path"`
+	TitleImageID     *uuid.UUID                  `json:"title_image_id,omitempty"`
+	Status           *domain.ListingStatus       `json:"status,omitempty"`
+	RejectionComment service.Optional[string]    `json:"rejection_comment"`
+	SellerName       service.Optional[string]    `json:"seller_name"`
+	SellerPhone      service.Optional[string]    `json:"seller_phone"`
+	SellerEmail      service.Optional[string]    `json:"seller_email"`
+	SellerNotes      service.Optional[string]    `json:"seller_notes"`
+	LastContactAt    service.Optional[time.Time] `json:"last_contact_at"`
+	DocumentMD       service.Optional[string]    `json:"document_md"`
 }
 
 func (body listingPatchBody) toPatch() service.ListingPatch {

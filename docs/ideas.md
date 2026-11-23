@@ -3,7 +3,7 @@ type: tracking
 title: Feature & Improvement Ideas
 project: property-finder-obs-style
 status: active
-updated: 2026-08-06
+updated: 2026-11-23
 tags:
   - property-finder-obs-style
   - ideas
@@ -57,25 +57,6 @@ When an idea is built, move its entry to **Done**. Link the commit or spec that 
   could also move a shared `statusLabel` map into `src/utils/` at the same time. Follow the
   pattern already used for `gradeColor` in `src/utils/gradeColor.ts` (it was centralized after
   two components needed it).
-
-### Support clearing an already-set optional Listing field via PATCH
-
-- **Where noticed**: 2026-08-06, while reverting test data after live-checking the
-  Bearbeiten/Speichern batch-PATCH flow ([[spec/01_mvp/01-10-listing-views-overhaul]]).
-- **What**: `PATCH /api/listings/{id}` with an explicit JSON `null` for an optional string field
-  (for example `seller_phone`) does not clear it. Go's `encoding/json` turns both `null` and a
-  missing key into the same nil pointer on `*string` fields. And `applyPatch` in
-  `backend/internal/service/listing_service.go` only checks `if patch.Field != nil`. So a
-  `null` looks the same as "field not sent" and is silently ignored. Confirmed live: a
-  listing's `seller_phone` had to be set back to empty with a direct DB `UPDATE`, because the
-  API had no way to do it.
-- **Depends on / touches**: `backend/internal/service/listing_service.go` (`ListingPatch`
-  struct + `applyPatch`), `backend/internal/api/listings.go` (request body struct). It needs an
-  explicit "clear this field" signal that is different from "omit this field". For example, use
-  a sentinel value. Or switch optional fields to a wrapper type that tells "not present" from
-  "present and null" (the standard Go PATCH problem). The frontend `ListingForm.vue` also needs
-  a way to let the user really clear a field. Today the inputs can be emptied to `''`, not to
-  `null`/undefined. That is a separate but related gap.
 
 ---
 

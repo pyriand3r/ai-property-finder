@@ -3,7 +3,7 @@ type: tracking
 title: Bug List
 project: property-finder-obs-style
 status: active
-updated: 2026-08-06
+updated: 2026-11-23
 tags:
   - property-finder-obs-style
   - bugs
@@ -28,6 +28,24 @@ _No open bugs._
 ---
 
 ## Fixed
+
+### PATCH could not clear an optional Listing field (`null` was ignored)
+
+- **Found**: 2026-08-06, while reverting test data after live-checking the Bearbeiten/Speichern
+  batch-PATCH flow ([[spec/01_mvp/01-10-listing-views-overhaul]]). First written down as an idea,
+  then filed as issue #9.
+- **Symptom**: `PATCH /api/listings/{id}` with `"seller_phone": null` did nothing. A listing's
+  `seller_phone` had to be reset with a direct DB `UPDATE`. In the UI, emptying a text input
+  stored `''`, not NULL. Emptying a number input sent `null`, which was ignored.
+- **Root cause**: `encoding/json` turns both `null` and a missing key into a nil `*T`. `applyPatch`
+  only checked `!= nil`, so "clear" and "not sent" looked the same.
+- **Status**: Fixed (issue #9). `service.Optional[T]` (`internal/service/optional.go`) keeps
+  `Set` apart from `Value`. Absent key = unchanged. `null` = clear (column set to NULL, field is
+  added to `user_confirmed_fields`, evaluation-relevant fields set `needs_reevaluation`). All
+  nullable fields of `ListingPatch` use it. `title`, `status` and `title_image_id` are not
+  clearable. `null` on them still means "unchanged". Clearing `rejection_comment` on a rejected
+  listing fails validation. On the frontend, `ListingForm.vue` sends an emptied field
+  (`''`, blank, or `null`) as an explicit `null`. `ListingInput` allows `null` for clearable fields.
 
 ### Split-pane detail scroll falls through to page scroll near the bottom
 

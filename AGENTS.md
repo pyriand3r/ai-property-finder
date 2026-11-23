@@ -44,7 +44,7 @@ editable in a plain form (ADR 0001) — the UI is never chat-only.
 **Build state**: all 9 layers (0–8) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
 (RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Remaining work is
 tracked as bugs in `docs/buglist.md` (0 open) and
-ideas in `docs/ideas.md` (3 open). UI copy is German (`index.html` is `lang="de"`).
+ideas in `docs/ideas.md` (2 open). UI copy is German (`index.html` is `lang="de"`).
 
 ## Architecture & Data Flow
 
@@ -187,7 +187,7 @@ docs/
 ├── implementation-plan.md   # authoritative build-order/status (layers 0-8 + RF.1-5)
 ├── CONTEXT.md      # domain glossary — see Domain Vocabulary below
 ├── buglist.md      # open bugs found outside the current task (0 open)
-└── ideas.md        # open improvement ideas (3 open)
+└── ideas.md        # open improvement ideas (2 open)
 ```
 
 No `scripts/` directory. CI is `.github/workflows/ci.yml` (see Testing & QA → CI).
@@ -251,6 +251,9 @@ Env vars (`.env`, from `.env.example`): `DB_PASSWORD` and `APP_PASSWORD` (both r
   context (`//nolint:contextcheck` + rationale comment marks every instance) — work must outlive the HTTP
   request (ADR 0008). Cooperative cancellation goes through an explicit `sync.Mutex`-guarded
   `map[uuid.UUID]context.CancelFunc` (see `AgentService.turns`), not context cancellation propagation.
+- **PATCH null = clear**: for nullable fields a PATCH body uses `service.Optional[T]` (absent = unchanged,
+  `null` = set NULL), not a bare pointer. See `ListingPatch` / `listingPatchBody`. Use it for any new
+  clearable field.
 - **JSON tags**: snake_case everywhere on domain structs (`profile_id`, `is_subjective`, `created_at`);
   optional fields are pointer types with `omitempty`.
 - Middleware chain (`router.go`): `RequestID` → `Logger` → `Recoverer` on *all* routes; a `Timeout(60s)`
