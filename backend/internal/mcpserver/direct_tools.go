@@ -132,7 +132,7 @@ func proposeCriteriaHandler(deps Deps) mcp.ToolHandlerFor[CriterionProposalInput
 			}
 			for _, criterion := range existing {
 				if strings.EqualFold(criterion.Name, input.Name) {
-					return nil, CriterionOutput{}, fmt.Errorf("Kriterium existiert bereits: %s", input.Name)
+					return nil, CriterionOutput{}, fmt.Errorf("Kriterium existiert bereits: %s", input.Name) //nolint:staticcheck // user-facing German text; nouns are capitalized.
 				}
 			}
 			created, err := deps.Criteria.Create(ctx, profileID, input.Name, input.Description, weight, input.IsSubjective)

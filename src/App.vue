@@ -27,7 +27,9 @@ async function handleLogout() {
     <NGlobalStyle />
     <NMessageProvider>
       <NDialogProvider>
-        <NButton v-if="isAuthenticated" class="app-logout" text @click="handleLogout">Abmelden</NButton>
+        <NButton v-if="isAuthenticated" class="app-logout" text @click="handleLogout"
+          >Abmelden</NButton
+        >
         <RouterView v-slot="{ Component, route }">
           <component :is="Component" :key="route.fullPath" />
         </RouterView>

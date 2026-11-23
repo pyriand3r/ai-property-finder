@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ func TestVerifyToken_WrongSecretFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IssueToken: %v", err)
 	}
-	if err := VerifyToken([]byte("secret-b"), token); err != ErrInvalidToken {
+	if err := VerifyToken([]byte("secret-b"), token); !errors.Is(err, ErrInvalidToken) {
 		t.Errorf("VerifyToken() = %v, want ErrInvalidToken", err)
 	}
 }
@@ -33,13 +34,13 @@ func TestVerifyToken_ExpiredTokenFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IssueToken: %v", err)
 	}
-	if err := VerifyToken(secret, token); err != ErrInvalidToken {
+	if err := VerifyToken(secret, token); !errors.Is(err, ErrInvalidToken) {
 		t.Errorf("VerifyToken() = %v, want ErrInvalidToken", err)
 	}
 }
 
 func TestVerifyToken_MalformedTokenFails(t *testing.T) {
-	if err := VerifyToken([]byte("secret-a"), "not-a-jwt"); err != ErrInvalidToken {
+	if err := VerifyToken([]byte("secret-a"), "not-a-jwt"); !errors.Is(err, ErrInvalidToken) {
 		t.Errorf("VerifyToken() = %v, want ErrInvalidToken", err)
 	}
 }
@@ -64,7 +65,7 @@ func TestVerifyToken_TamperedPayloadFails(t *testing.T) {
 		payload[flipIndex] = 'A'
 	}
 	tampered := parts[0] + "." + string(payload) + "." + parts[2]
-	if err := VerifyToken(secret, tampered); err != ErrInvalidToken {
+	if err := VerifyToken(secret, tampered); !errors.Is(err, ErrInvalidToken) {
 		t.Errorf("VerifyToken() = %v, want ErrInvalidToken", err)
 	}
 }

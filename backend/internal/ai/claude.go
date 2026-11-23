@@ -73,8 +73,7 @@ func classifyProviderError(callCtx context.Context, err error) error {
 	if errors.Is(err, context.Canceled) {
 		return context.Canceled
 	}
-	var apiErr *anthropic.Error
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*anthropic.Error](err); ok {
 		if isContextLengthError(apiErr.Error()) {
 			return ErrListingTooLong
 		}

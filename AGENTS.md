@@ -190,8 +190,7 @@ docs/
 └── ideas.md        # open improvement ideas (3 open)
 ```
 
-No `scripts/` directory and no CI config anywhere (`.github/` does not exist) — lint/test/format are
-manual/local gates today, not enforced automatically.
+No `scripts/` directory. CI is `.github/workflows/ci.yml` (see Testing & QA → CI).
 
 ## Development Commands
 
@@ -203,7 +202,7 @@ npm run preview          # vite preview
 npm run typecheck         # vue-tsc -b --noEmit  (project-reference build mode)
 npm run lint            # oxlint
 npm run format            # oxfmt (format in place)
-npm run format:check       # oxfmt --check (CI gate — not currently wired to any CI)
+npm run format:check       # oxfmt --check (CI gate, `.github/workflows/ci.yml`)
 
 # Backend (from backend/)
 go mod tidy
@@ -379,9 +378,11 @@ and `npm run lint` (`oxlint`). If adding frontend tests, you'll need to introduc
 
 ### CI
 
-None. No `.github/` directory exists. `go test`, `golangci-lint`, `npm run typecheck`, `oxlint`, and
-`oxfmt --check` are all manual/local-only gates today — run them yourself before considering a change done.
-Introducing CI is tracked as issue #14.
+GitHub Actions, `.github/workflows/ci.yml`, runs on every push and pull request. Two jobs:
+`backend` (`go build ./...`, `go test ./...`, `golangci-lint run` via golangci-lint-action, pinned to v2.15.0)
+and `frontend` (`npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`). Go version comes from
+`backend/go.mod`; Node is 22, same as `backend/Dockerfile`. Run the same gates locally before opening a PR.
+When you bump the golangci-lint version, change it in the workflow and fix any new findings in the same PR.
 
 ## Agent Pipeline (workflow rules)
 

@@ -17,8 +17,10 @@ var pdfMagicBytes = []byte("%PDF-")
 
 // jpegMagicBytes / pngMagicBytes are the fixed headers every JPEG/PNG
 // file starts with.
-var jpegMagicBytes = []byte{0xFF, 0xD8, 0xFF}
-var pngMagicBytes = []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+var (
+	jpegMagicBytes = []byte{0xFF, 0xD8, 0xFF}
+	pngMagicBytes  = []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+)
 
 // UploadService stores generic file uploads that aren't yet tied to a
 // domain entity — PDFs and JPG/PNG images (spec 00-03 Layer 3.3, ADR

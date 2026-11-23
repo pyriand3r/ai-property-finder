@@ -94,7 +94,12 @@ function handleFileInput(event: Event) {
     <div class="chat-input-row">
       <label class="chat-input-file-button">
         <NIcon>📎</NIcon>
-        <input type="file" accept="application/pdf,image/jpeg,image/png" hidden @change="handleFileInput" />
+        <input
+          type="file"
+          accept="application/pdf,image/jpeg,image/png"
+          hidden
+          @change="handleFileInput"
+        />
       </label>
       <NInput
         v-model:value="content"
