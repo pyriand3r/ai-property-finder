@@ -78,6 +78,10 @@ there. Do not delete the history of what it took to find and fix it.
   ever happen at render time.
 - **Status**: Open, not fixed.
 
+---
+
+## Fixed
+
 ### Stale "Bewertungstabelle" placeholder at the bottom of the Listing Document
 
 - **Found**: 2026-08-06, reported by the user while reviewing the Detail View after
@@ -99,14 +103,12 @@ there. Do not delete the history of what it took to find and fix it.
   stop filling it in). Now there are two Bewertungstabelle sections. One is either live or a
   stale placeholder. The other is probably redundant with the real grid once the listing is
   graded.
-- **Status**: Open, not fixed. A decision is needed. Option 1: stop telling the Agent to embed
-  its own Bewertungstabelle section in `document_md` (since `ListingGradeGrid.vue` is now the
-  source of truth). Option 2: keep it, but make clear that it is redundant, and only for the
-  context of the original text.
-
----
-
-## Fixed
+- **Status**: Fixed in #5 (branch `bugfix/5-stale-placeholder`). Frontend only: `ListingDocument.vue`
+  hides the "Bewertungstabelle" section (heading up to the next heading of the same or higher level)
+  in the rendered view. This also covers documents that are already stored. The stored `document_md`
+  and the edit view are not changed. The Agent prompt still tells the Agent to write this section
+  (`context_builder.go`, `tools.go`, seeded global context). That wasted text is not removed here.
+  Not verified in a browser.
 
 ### Unicode escape sequences displayed literally in Confirm-Card
 
