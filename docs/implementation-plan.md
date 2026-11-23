@@ -147,7 +147,7 @@ This makes the app usable before the Agent as a manual finder with AI scoring. I
   - **Test:** Change a weight → new Scores, no banner → change a description → banner appears → click "Alle neu bewerten" → SSE progress
 
 - [x] **5.2 — List View + Ranking View**
-  - Sortable/filterable table (Score, price, size, date; filters status/Score/price)
+  - Sortable/filterable table (Score, price, size, date; filters status, Score range, price range, size range, region — issue #11)
   - Ranking: Score sorting + short summary (`kurzfazit`) + overall summary (`search_profile.ranking_summary`)
   - "Rangliste aktualisieren" button: isolated single-shot LLM call (no Agent, uses the provider seam from 2.2), saves `listing.kurzfazit` + `search_profile.ranking_summary`
   - **Model:** Claude 3.5 Sonnet · GPT-4o-mini (text generation, no tool use. Haiku is enough for short texts)

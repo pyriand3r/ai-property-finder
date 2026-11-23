@@ -17,10 +17,12 @@ import { listCriteria } from '@/api/criteria';
 import { useListingGrades } from '@/composables/useListingGrades';
 import { useListingThumbnails } from '@/composables/useListingThumbnails';
 import { gradeColor } from '@/utils/gradeColor';
+import { distinctRegions, matchesListingFilters } from '@/utils/listingFilters';
 import { statusLabel, statusOptions } from '@/utils/listingStatus';
 
 import type { Criterion } from '@/types/criterion';
 import type { Listing, ListingStatus } from '@/types/listing';
+import type { ListingFilters } from '@/utils/listingFilters';
 import type { DataTableColumns } from 'naive-ui';
 
 const props = defineProps<{
@@ -34,23 +36,30 @@ const emit = defineEmits<{
 }>();
 
 const statusFilter = shallowRef<ListingStatus | null>(null);
+const regionFilter = shallowRef<string | null>(null);
 const scoreMin = shallowRef<number | null>(null);
+const scoreMax = shallowRef<number | null>(null);
+const priceMin = shallowRef<number | null>(null);
 const priceMax = shallowRef<number | null>(null);
+const sizeMin = shallowRef<number | null>(null);
+const sizeMax = shallowRef<number | null>(null);
 
-const filteredListings = computed(() =>
-  props.listings.filter((listing) => {
-    if (statusFilter.value && listing.status !== statusFilter.value) {
-      return false;
-    }
-    if (scoreMin.value !== null && (listing.overall_score ?? -1) < scoreMin.value) {
-      return false;
-    }
-    if (priceMax.value !== null && (listing.price ?? Infinity) > priceMax.value) {
-      return false;
-    }
-    return true;
-  }),
+// Region is free text on the listing (no structured state/region column), so
+// the dropdown offers the distinct values present in this profile's listings.
+const regionOptions = computed(() =>
+  distinctRegions(props.listings).map((region) => ({ label: region, value: region })),
 );
+
+const filteredListings = computed(() => {
+  const filters: ListingFilters = {
+    status: statusFilter.value,
+    region: regionFilter.value,
+    score: { min: scoreMin.value, max: scoreMax.value },
+    price: { min: priceMin.value, max: priceMax.value },
+    size: { min: sizeMin.value, max: sizeMax.value },
+  };
+  return props.listings.filter((listing) => matchesListingFilters(listing, filters));
+});
 
 function selectListing(listingId: string) {
   emit('select', listingId);
@@ -209,8 +218,56 @@ const columns = computed<DataTableColumns<Listing>>(() => [
         style="width: 160px"
         :options="statusOptions"
       />
-      <NInputNumber v-model:value="scoreMin" placeholder="Score min." style="width: 140px" />
-      <NInputNumber v-model:value="priceMax" placeholder="Preis max." style="width: 140px" />
+      <NSelect
+        v-model:value="regionFilter"
+        clearable
+        placeholder="Region"
+        style="width: 180px"
+        :options="regionOptions"
+        data-testid="filter-region"
+      />
+      <NInputNumber
+        v-model:value="scoreMin"
+        :show-button="false"
+        placeholder="Score min."
+        style="width: 110px"
+        data-testid="filter-score-min"
+      />
+      <NInputNumber
+        v-model:value="scoreMax"
+        :show-button="false"
+        placeholder="Score max."
+        style="width: 110px"
+        data-testid="filter-score-max"
+      />
+      <NInputNumber
+        v-model:value="priceMin"
+        :show-button="false"
+        placeholder="Preis min."
+        style="width: 120px"
+        data-testid="filter-price-min"
+      />
+      <NInputNumber
+        v-model:value="priceMax"
+        :show-button="false"
+        placeholder="Preis max."
+        style="width: 120px"
+        data-testid="filter-price-max"
+      />
+      <NInputNumber
+        v-model:value="sizeMin"
+        :show-button="false"
+        placeholder="Größe min. (m²)"
+        style="width: 140px"
+        data-testid="filter-size-min"
+      />
+      <NInputNumber
+        v-model:value="sizeMax"
+        :show-button="false"
+        placeholder="Größe max. (m²)"
+        style="width: 140px"
+        data-testid="filter-size-max"
+      />
 
       <NPopover trigger="click" placement="bottom-start">
         <template #trigger>
