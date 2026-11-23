@@ -24,20 +24,7 @@ When an idea is built, move its entry to **Done**. Link the commit or spec that 
 
 ## Open
 
-### Translate List View's Status column to German
-
-- **Where noticed**: 2026-08-06, while live-checking [[spec/01_mvp/01-10-listing-views-overhaul]]
-  in the browser.
-- **What**: The Status column in `ListingListTable.vue` shows the raw `ListingStatus` enum value
-  (`new`, `waiting`, ...) and not a German label. The Status **filter** dropdown right next to
-  it already has the German labels (`statusOptions` in the same file — `Neu`, `Wartend`, `In
-  Verhandlung`, ...). The table column does not reuse that mapping.
-- **Depends on / touches**: `src/components/listings/ListingListTable.vue` (`statusOptions`
-  already has the label map. The column's `render` only needs a lookup that uses it). The same
-  label-vs-value split exists in the header status `NSelect` of `ListingDetailPanel.vue`. You
-  could also move a shared `statusLabel` map into `src/utils/` at the same time. Follow the
-  pattern already used for `gradeColor` in `src/utils/gradeColor.ts` (it was centralized after
-  two components needed it).
+_No open ideas._
 
 ---
 
@@ -48,3 +35,9 @@ When an idea is built, move its entry to **Done**. Link the commit or spec that 
 Done in #7. Route is `/profiles/:profileId/:tab?` with `tab` = `chat|context|criteria|listings|map`
 (`map` is the later "Karte" tab). `ProfileShellView.vue` binds `NTabs` to `route.params.tab` and
 switches with `router.replace`. A missing or unknown `tab` shows Chat.
+
+### Translate List View's Status column to German
+
+Done in #8. The Status column in `ListingListTable.vue` renders `statusLabel[row.status]` from
+`src/utils/listingStatus.ts`, the same map the filter dropdown, the detail panel and the map
+markers use. The filter dropdown is unchanged.
