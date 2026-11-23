@@ -320,6 +320,34 @@ type ConflictError struct {
 
 func (err *ConflictError) Error() string { return err.Message }
 
+// DuplicateMatch names why an existing listing counts as a duplicate.
+type DuplicateMatch string
+
+const (
+	DuplicateMatchAddress     DuplicateMatch = "address"
+	DuplicateMatchCoordinates DuplicateMatch = "coordinates"
+)
+
+// DuplicateListing is an existing listing in the same profile that has the
+// same address or coordinates as a listing being created.
+type DuplicateListing struct {
+	ID      uuid.UUID        `json:"id"`
+	Title   string           `json:"title"`
+	Address *string          `json:"address,omitempty"`
+	Matches []DuplicateMatch `json:"matches"`
+}
+
+// DuplicateListingError signals 409 Conflict with a list of possible
+// duplicates. It is a warning, not a hard block: the caller may repeat the
+// request with confirm_duplicate=true (issue #10).
+type DuplicateListingError struct {
+	Duplicates []DuplicateListing `json:"duplicates"`
+}
+
+func (err *DuplicateListingError) Error() string {
+	return "Ein Inserat mit gleicher Adresse oder gleichen Koordinaten existiert bereits in diesem Profil"
+}
+
 // UpstreamError signals 502 Bad Gateway — a downstream service (the LLM
 // provider) failed transiently. Distinct from ValidationError: the request
 // itself was well-formed, retrying later may succeed.

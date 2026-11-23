@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { NAlert, NSpin, NTabPane, NTabs } from 'naive-ui';
+import { NAlert, NButton, NSpin, NTabPane, NTabs } from 'naive-ui';
 import { onMounted, shallowRef } from 'vue';
 
+import ListingCreateModal from '@/components/listings/ListingCreateModal.vue';
 import ListingListTable from '@/components/listings/ListingListTable.vue';
 import ListingSplitPane from '@/components/listings/ListingSplitPane.vue';
 import RankingView from '@/components/listings/RankingView.vue';
@@ -15,6 +16,12 @@ const props = defineProps<{
 const { listings, loading, error, fetchListings, mergeListings } = useListings(props.profileId);
 
 const selectedListingId = shallowRef<string | null>(null);
+const showCreate = shallowRef(false);
+
+async function handleCreated(listingId: string) {
+  await fetchListings();
+  selectedListingId.value = listingId;
+}
 
 onMounted(fetchListings);
 </script>
@@ -23,6 +30,15 @@ onMounted(fetchListings);
   <div class="listings-panel">
     <ReevaluationBanner :profile-id="profileId" />
     <NAlert v-if="error" type="error" :title="error" class="listings-panel-error" />
+
+    <div class="listings-panel-toolbar">
+      <NButton size="small" @click="showCreate = true">Inserat anlegen</NButton>
+    </div>
+    <ListingCreateModal
+      v-model:show="showCreate"
+      :profile-id="profileId"
+      @created="handleCreated"
+    />
 
     <NSpin :show="loading">
       <NTabs type="segment" animated>
@@ -49,6 +65,12 @@ onMounted(fetchListings);
 </template>
 
 <style scoped>
+.listings-panel-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
 .listings-panel-error {
   margin-bottom: 1rem;
 }

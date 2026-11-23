@@ -1,12 +1,19 @@
-/** Wire shape of any non-2xx response body (backend/internal/api/helpers.go). */
+import type { DuplicateListing } from '@/types/listing';
+
+/**
+ * Wire shape of any non-2xx response body (backend/internal/api/helpers.go).
+ * `duplicates` is set only on the 409 "duplicate_listing" warning (issue #10).
+ */
 interface ApiErrorBody {
   error: string;
+  duplicates?: DuplicateListing[];
 }
 
 export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    public readonly duplicates?: DuplicateListing[],
   ) {
     super(message);
     this.name = 'ApiError';
@@ -33,7 +40,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         void router.push({ name: 'login' });
       }
     }
-    throw new ApiError(body?.error ?? response.statusText, response.status);
+    throw new ApiError(body?.error ?? response.statusText, response.status, body?.duplicates);
   }
   if (response.status === 204) {
     return undefined as T;

@@ -69,3 +69,11 @@ export interface CriterionGradeResult {
   grade: 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
   reasoning: string;
 }
+
+/** Mirrors backend/internal/domain.DuplicateListing JSON (409 body of a possible duplicate). */
+export interface DuplicateListing {
+  id: string;
+  title: string;
+  address?: string;
+  matches: ('address' | 'coordinates')[];
+}

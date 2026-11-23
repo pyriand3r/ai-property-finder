@@ -118,3 +118,71 @@ func TestApplyPatch_ClearingRejectionCommentOfRejectedListingFails(t *testing.T)
 		t.Errorf("got %T, want *domain.ValidationError", err)
 	}
 }
+
+func duplicateTestListing(title string, address *string, latitude, longitude *float64) domain.Listing {
+	return domain.Listing{Title: title, Address: address, Latitude: latitude, Longitude: longitude}
+}
+
+// TestFindDuplicates_MatchesAddressIgnoringCaseAndWhitespace covers issue
+// #10: a manually typed address rarely matches byte for byte.
+func TestFindDuplicates_MatchesAddressIgnoringCaseAndWhitespace(t *testing.T) {
+	existing := []domain.Listing{
+		duplicateTestListing("A", new("Rua Nova  1, Porto"), nil, nil),
+		duplicateTestListing("B", new("Rua Velha 2, Porto"), nil, nil),
+	}
+
+	got := findDuplicates(existing, new(" rua nova 1,   PORTO "), nil, nil)
+
+	if len(got) != 1 || got[0].Title != "A" {
+		t.Fatalf("got %+v, want only listing A", got)
+	}
+	if !slices.Equal(got[0].Matches, []domain.DuplicateMatch{domain.DuplicateMatchAddress}) {
+		t.Errorf("Matches: got %v, want [address]", got[0].Matches)
+	}
+}
+
+func TestFindDuplicates_MatchesCoordinates(t *testing.T) {
+	existing := []domain.Listing{
+		duplicateTestListing("near", nil, new(41.1496), new(-8.6109)),
+		duplicateTestListing("far", nil, new(41.1596), new(-8.6109)),
+	}
+
+	got := findDuplicates(existing, nil, new(41.1496), new(-8.6109))
+
+	if len(got) != 1 || got[0].Title != "near" {
+		t.Fatalf("got %+v, want only listing near", got)
+	}
+	if !slices.Equal(got[0].Matches, []domain.DuplicateMatch{domain.DuplicateMatchCoordinates}) {
+		t.Errorf("Matches: got %v, want [coordinates]", got[0].Matches)
+	}
+}
+
+func TestFindDuplicates_ReportsBothMatchKinds(t *testing.T) {
+	existing := []domain.Listing{duplicateTestListing("A", new("Rua 1"), new(1.0), new(2.0))}
+
+	got := findDuplicates(existing, new("Rua 1"), new(1.0), new(2.0))
+
+	if len(got) != 1 || len(got[0].Matches) != 2 {
+		t.Fatalf("got %+v, want one listing matching on address and coordinates", got)
+	}
+}
+
+// TestFindDuplicates_IgnoresEmptyAndPartialInput makes sure missing data is
+// not a match: two listings without an address are not duplicates, and a
+// lone latitude is not a coordinate pair.
+func TestFindDuplicates_IgnoresEmptyAndPartialInput(t *testing.T) {
+	existing := []domain.Listing{
+		duplicateTestListing("no address", new("  "), new(1.0), new(2.0)),
+		duplicateTestListing("nil address", nil, nil, nil),
+	}
+
+	if got := findDuplicates(existing, new("   "), nil, nil); len(got) != 0 {
+		t.Errorf("blank address: got %+v, want none", got)
+	}
+	if got := findDuplicates(existing, nil, nil, nil); len(got) != 0 {
+		t.Errorf("no input: got %+v, want none", got)
+	}
+	if got := findDuplicates(existing, nil, new(1.0), nil); len(got) != 0 {
+		t.Errorf("latitude only: got %+v, want none", got)
+	}
+}
