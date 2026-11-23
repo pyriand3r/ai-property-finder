@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { NButton, NH1, NTabPane, NTabs } from 'naive-ui';
-import { defineAsyncComponent, onMounted, shallowRef } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, defineAsyncComponent, onMounted, shallowRef } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
 import { getProfile } from '@/api/profiles';
 import ChatView from '@/components/chat/ChatView.vue';
@@ -23,7 +23,26 @@ const props = defineProps<{
   profileId: string;
 }>();
 
+/**
+ * Tab names, matching the `NTabPane name` values below. The active tab lives in the
+ * optional `:tab` route segment (`/profiles/:profileId/:tab?`, see `src/router/index.ts`)
+ * so reload and deep links keep the tab. Missing or unknown values fall back to `chat`.
+ */
+const TABS = ['chat', 'context', 'criteria', 'listings', 'map'] as const;
+type Tab = (typeof TABS)[number];
+
 const router = useRouter();
+const route = useRoute();
+
+const activeTab = computed<Tab>(() => {
+  const tab = route.params.tab;
+  return TABS.find((name) => name === tab) ?? 'chat';
+});
+
+/** `replace`, not `push`: switching tabs must not fill the browser history. */
+function handleTabChange(tab: string) {
+  router.replace({ name: 'profile-shell', params: { profileId: props.profileId, tab } });
+}
 const profile = shallowRef<Profile | null>(null);
 
 useRejectionAnalysisToast(props.profileId);
@@ -39,7 +58,7 @@ onMounted(async () => {
 
     <NH1 v-if="profile">{{ profile.name }}</NH1>
 
-    <NTabs type="line" animated default-value="chat">
+    <NTabs type="line" animated :value="activeTab" @update:value="handleTabChange">
       <NTabPane name="chat" tab="Chat">
         <ChatView :profile-id="profileId" />
       </NTabPane>

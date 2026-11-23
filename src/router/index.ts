@@ -16,7 +16,7 @@ export const router = createRouter({
       component: () => import('@/views/ProfileListView.vue'),
     },
     {
-      path: '/profiles/:profileId',
+      path: '/profiles/:profileId/:tab?',
       name: 'profile-shell',
       component: () => import('@/views/ProfileShellView.vue'),
       props: true,
