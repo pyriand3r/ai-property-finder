@@ -20,6 +20,12 @@ import (
 // chat_message.tool_calls[callIndex].input, put there when the turn was
 // persisted (spec 00-02). Confirm reads it from there, validates against
 // current state, and writes; Reject only validates that the call exists.
+//
+// Exception (docs/adr/0024): propose_criteria action=add has already stored
+// a "proposed" criterion when the tool ran. Confirm approves that row
+// instead of creating one; Reject deletes it. Proposals the rejection
+// analysis wrote straight into chat_message.tool_calls have no such row, so
+// for them Confirm still creates the (active) criterion.
 type ToolCallService struct {
 	pool     *pgxpool.Pool
 	criteria *CriterionService
@@ -70,6 +76,11 @@ func (service *ToolCallService) Reject(ctx context.Context, messageID uuid.UUID,
 	}
 	if call.Name != "propose_criteria" && call.Name != "update_context" {
 		return &domain.ValidationError{Field: "tool", Message: "Tool-Call ist kein Vorschlag mit Bestätigung: " + call.Name}
+	}
+	if call.Name == "propose_criteria" {
+		if discardError := service.discardProposedCriterion(ctx, message, call); discardError != nil {
+			return discardError
+		}
 	}
 	return service.markToolCallStatus(ctx, message, calls, callIndex, "rejected")
 }
@@ -163,16 +174,18 @@ func (service *ToolCallService) confirmProposeCriteria(ctx context.Context, mess
 
 	switch args.Action {
 	case "add":
-		existing, err := repository.NewCriterionRepo(service.pool).ListByProfile(ctx, session.ProfileID)
+		existing, err := service.findCriterionByName(ctx, session.ProfileID, args.Name)
 		if err != nil {
 			return nil, err
 		}
-		for _, criterion := range existing {
-			if strings.EqualFold(criterion.Name, args.Name) {
-				return nil, &domain.ConflictError{Message: "Vorschlag veraltet — Kriterium existiert bereits: " + args.Name}
-			}
+		switch {
+		case existing == nil:
+			return service.criteria.Create(ctx, session.ProfileID, args.Name, args.Description, weight, args.IsSubjective)
+		case existing.Status == domain.CriterionStatusProposed:
+			return service.criteria.Approve(ctx, existing.ID)
+		default:
+			return nil, &domain.ConflictError{Message: "Vorschlag veraltet — Kriterium existiert bereits: " + args.Name}
 		}
-		return service.criteria.Create(ctx, session.ProfileID, args.Name, args.Description, weight, args.IsSubjective)
 	case "edit":
 		if args.CriterionID == nil {
 			return nil, &domain.ValidationError{Field: "criterion_id", Message: "erforderlich bei action=edit"}
@@ -186,6 +199,41 @@ func (service *ToolCallService) confirmProposeCriteria(ctx context.Context, mess
 	default:
 		return nil, &domain.ValidationError{Field: "action", Message: "unbekannte action: " + args.Action}
 	}
+}
+
+// findCriterionByName returns the profile's criterion with the given name
+// (case-insensitive; names are unique per profile, docs/adr/0024), or nil.
+func (service *ToolCallService) findCriterionByName(ctx context.Context, profileID uuid.UUID, name string) (*domain.Criterion, error) {
+	existing, err := repository.NewCriterionRepo(service.pool).ListByProfile(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	name = strings.TrimSpace(name)
+	for i := range existing {
+		if strings.EqualFold(existing[i].Name, name) {
+			return &existing[i], nil
+		}
+	}
+	return nil, nil //nolint:nilnil // nil means "no such criterion", not an error.
+}
+
+// discardProposedCriterion deletes the proposed criterion an action=add
+// call stored, if it is still proposed. An edit, an already approved
+// criterion, or a row the user deleted meanwhile leaves nothing to discard.
+func (service *ToolCallService) discardProposedCriterion(ctx context.Context, message *domain.ChatMessage, call agent.StoredToolCall) error {
+	args, err := parseCriteriaProposal(call.Input)
+	if err != nil || args.Action != "add" {
+		return nil //nolint:nilerr // an unreadable or non-add proposal has no stored row.
+	}
+	session, err := repository.NewChatRepo(service.pool).GetSession(ctx, message.SessionID)
+	if err != nil {
+		return err
+	}
+	existing, err := service.findCriterionByName(ctx, session.ProfileID, args.Name)
+	if err != nil || existing == nil || existing.Status != domain.CriterionStatusProposed {
+		return err
+	}
+	return service.criteria.Delete(ctx, existing.ID)
 }
 
 // confirmUpdateContext always applies onto the *current* content_md,

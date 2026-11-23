@@ -5,7 +5,7 @@ import * as criteriaApi from '@/api/criteria';
 import type { CriterionInput } from '@/api/criteria';
 import type { Criterion } from '@/types/criterion';
 
-/** Loads a profile's Criteria and exposes create/update/delete actions that
+/** Loads a profile's Criteria and exposes create/update/approve/delete actions that
  * keep the local list in sync with the backend. */
 export function useCriteria(profileId: string) {
   const criteria = shallowRef<Criterion[]>([]);
@@ -38,6 +38,14 @@ export function useCriteria(profileId: string) {
     return updated;
   }
 
+  async function approveCriterion(criterionId: string) {
+    const approved = await criteriaApi.approveCriterion(criterionId);
+    criteria.value = criteria.value.map((criterion) =>
+      criterion.id === approved.id ? approved : criterion,
+    );
+    return approved;
+  }
+
   async function deleteCriterion(criterionId: string) {
     await criteriaApi.deleteCriterion(criterionId);
     criteria.value = criteria.value.filter((criterion) => criterion.id !== criterionId);
@@ -50,6 +58,7 @@ export function useCriteria(profileId: string) {
     fetchCriteria,
     createCriterion,
     updateCriterion,
+    approveCriterion,
     deleteCriterion,
   };
 }

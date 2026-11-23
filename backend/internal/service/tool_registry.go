@@ -22,6 +22,7 @@ func NewToolRegistry(pool *pgxpool.Pool, dataDir string, evaluation *EvaluationS
 	return &agent.Registry{
 		ProfileID:  profileID,
 		Listings:   repository.NewListingRepo(pool),
+		Criteria:   NewCriterionService(pool),
 		Images:     repository.NewImageRepo(pool),
 		Fetcher:    fetch.NewClient(),
 		Downloader: fetch.NewClient(),

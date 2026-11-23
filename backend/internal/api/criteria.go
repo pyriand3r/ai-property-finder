@@ -95,3 +95,19 @@ func (handler *CriterionHandler) Delete(writer http.ResponseWriter, request *htt
 	}
 	writer.WriteHeader(http.StatusNoContent)
 }
+
+// Approve handles POST /api/criteria/{criterionId}/approve: turns a proposed
+// criterion into an active one (docs/adr/0024).
+func (handler *CriterionHandler) Approve(writer http.ResponseWriter, request *http.Request) {
+	id, ok := parseUUID(writer, request, "criterionId")
+	if !ok {
+		return
+	}
+
+	criterion, err := handler.service.Approve(request.Context(), id)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, criterion)
+}

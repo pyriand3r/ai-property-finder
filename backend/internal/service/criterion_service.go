@@ -19,6 +19,10 @@ import (
 // name/description/is_subjective edit) flags every listing for
 // re-evaluation. No LLM call either way — that only happens when the user
 // explicitly triggers re-evaluation (ADR 0015, Layer 2.3).
+//
+// A criterion is "proposed" or "active" (docs/adr/0024). Only active ones
+// feed evaluation and scores, so changing or deleting a proposed criterion
+// triggers neither side effect; approving one does, like adding it.
 type CriterionService struct {
 	pool *pgxpool.Pool
 }
@@ -33,15 +37,40 @@ func (service *CriterionService) List(ctx context.Context, profileID uuid.UUID) 
 	return repository.NewCriterionRepo(service.pool).ListByProfile(ctx, profileID)
 }
 
-// Create validates and inserts a new criterion, appended to the end of the
-// profile's ordering, and flags every listing in the profile for
-// re-evaluation.
+// Create validates and inserts a new active criterion (the plain form and
+// the REST API — the user's own write needs no approval, ADR 0001),
+// appended to the end of the profile's ordering, and flags every listing in
+// the profile for re-evaluation.
 func (service *CriterionService) Create(
 	ctx context.Context,
 	profileID uuid.UUID,
 	name, description string,
 	weight int,
 	isSubjective bool,
+) (*domain.Criterion, error) {
+	return service.create(ctx, profileID, name, description, weight, isSubjective, domain.CriterionStatusActive)
+}
+
+// Propose validates and inserts a new criterion with status "proposed".
+// A proposal is ignored by evaluation and scoring until Approve, so no
+// listing is flagged for re-evaluation (docs/adr/0024).
+func (service *CriterionService) Propose(
+	ctx context.Context,
+	profileID uuid.UUID,
+	name, description string,
+	weight int,
+	isSubjective bool,
+) (*domain.Criterion, error) {
+	return service.create(ctx, profileID, name, description, weight, isSubjective, domain.CriterionStatusProposed)
+}
+
+func (service *CriterionService) create(
+	ctx context.Context,
+	profileID uuid.UUID,
+	name, description string,
+	weight int,
+	isSubjective bool,
+	status domain.CriterionStatus,
 ) (*domain.Criterion, error) {
 	name = strings.TrimSpace(name)
 	description = strings.TrimSpace(description)
@@ -53,6 +82,9 @@ func (service *CriterionService) Create(
 	}
 
 	criterionRepo := repository.NewCriterionRepo(service.pool)
+	if conflictError := ensureCriterionNameFree(ctx, criterionRepo, profileID, name, uuid.Nil); conflictError != nil {
+		return nil, conflictError
+	}
 	count, err := criterionRepo.CountByProfile(ctx, profileID)
 	if err != nil {
 		return nil, err
@@ -67,6 +99,7 @@ func (service *CriterionService) Create(
 		Weight:       weight,
 		IsSubjective: isSubjective,
 		SortOrder:    count,
+		Status:       status,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -75,12 +108,61 @@ func (service *CriterionService) Create(
 		if createError := repository.NewCriterionRepo(tx).Create(ctx, criterion); createError != nil {
 			return createError
 		}
+		if status == domain.CriterionStatusProposed {
+			return nil
+		}
 		return repository.NewListingRepo(tx).FlagNeedsReevaluation(ctx, profileID)
 	})
 	if txError != nil {
 		return nil, txError
 	}
 	return criterion, nil
+}
+
+// Approve turns a proposed criterion into an active one and flags every
+// listing in the profile for re-evaluation, exactly as adding an active
+// criterion does. Approving an already active criterion is a 409.
+func (service *CriterionService) Approve(ctx context.Context, id uuid.UUID) (*domain.Criterion, error) {
+	criterion, err := repository.NewCriterionRepo(service.pool).GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if criterion.Status != domain.CriterionStatusProposed {
+		return nil, &domain.ConflictError{Message: "Kriterium ist bereits aktiv: " + criterion.Name}
+	}
+
+	criterion.Status = domain.CriterionStatusActive
+	criterion.UpdatedAt = time.Now().UTC()
+	txError := db.WithTx(ctx, service.pool, func(tx pgx.Tx) error {
+		if activateError := repository.NewCriterionRepo(tx).Activate(ctx, id, criterion.UpdatedAt); activateError != nil {
+			return activateError
+		}
+		return repository.NewListingRepo(tx).FlagNeedsReevaluation(ctx, criterion.ProfileID)
+	})
+	if txError != nil {
+		return nil, txError
+	}
+	return criterion, nil
+}
+
+// UpdateProposed is Update restricted to proposed criteria — the only
+// change an MCP client may make (docs/adr/0024). An active criterion is a
+// 409 and nothing is written.
+func (service *CriterionService) UpdateProposed(
+	ctx context.Context,
+	id uuid.UUID,
+	name, description *string,
+	weight *int,
+	isSubjective *bool,
+) (*domain.Criterion, error) {
+	criterion, err := repository.NewCriterionRepo(service.pool).GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if criterion.Status != domain.CriterionStatusProposed {
+		return nil, &domain.ConflictError{Message: "Aktive Kriterien können nur im Chat oder im Formular geändert werden: " + criterion.Name}
+	}
+	return service.Update(ctx, id, name, description, weight, isSubjective)
 }
 
 // Update applies a partial update. When weight is the only field actually
@@ -113,6 +195,9 @@ func (service *CriterionService) Update(
 			return nil, validationError
 		}
 		if trimmed != criterion.Name {
+			if conflictError := ensureCriterionNameFree(ctx, criterionRepo, criterion.ProfileID, trimmed, criterion.ID); conflictError != nil {
+				return nil, conflictError
+			}
 			otherFieldChanged = true
 		}
 		criterion.Name = trimmed
@@ -146,6 +231,8 @@ func (service *CriterionService) Update(
 		}
 		listingRepo := repository.NewListingRepo(tx)
 		switch {
+		case criterion.Status == domain.CriterionStatusProposed:
+			return nil
 		case otherFieldChanged:
 			return listingRepo.FlagNeedsReevaluation(ctx, criterion.ProfileID)
 		case weightChanged:
@@ -161,7 +248,8 @@ func (service *CriterionService) Update(
 }
 
 // Delete removes a criterion and flags every listing in its profile for
-// re-evaluation (removal is not a weight-only change).
+// re-evaluation (removal is not a weight-only change). Deleting a proposed
+// criterion changes nothing evaluation sees, so it flags nothing.
 func (service *CriterionService) Delete(ctx context.Context, id uuid.UUID) error {
 	criterion, err := repository.NewCriterionRepo(service.pool).GetByID(ctx, id)
 	if err != nil {
@@ -172,8 +260,27 @@ func (service *CriterionService) Delete(ctx context.Context, id uuid.UUID) error
 		if deleteError := repository.NewCriterionRepo(tx).Delete(ctx, id); deleteError != nil {
 			return deleteError
 		}
+		if criterion.Status == domain.CriterionStatusProposed {
+			return nil
+		}
 		return repository.NewListingRepo(tx).FlagNeedsReevaluation(ctx, criterion.ProfileID)
 	})
+}
+
+// ensureCriterionNameFree enforces unique criterion names per profile,
+// case-insensitive, across proposed and active criteria alike (docs/adr/0024).
+// exceptID is the criterion being renamed (uuid.Nil for a new one).
+func ensureCriterionNameFree(ctx context.Context, criterionRepo repository.CriterionRepository, profileID uuid.UUID, name string, exceptID uuid.UUID) error {
+	existing, err := criterionRepo.ListByProfile(ctx, profileID)
+	if err != nil {
+		return err
+	}
+	for _, criterion := range existing {
+		if criterion.ID != exceptID && strings.EqualFold(criterion.Name, name) {
+			return &domain.ConflictError{Message: "Kriterium existiert bereits: " + name}
+		}
+	}
+	return nil
 }
 
 func validateCriterionName(name string) error {

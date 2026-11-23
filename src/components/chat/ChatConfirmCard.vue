@@ -10,9 +10,11 @@ import type { ProposeCriteriaArgs, UpdateContextArgs } from '@/types/chat';
 /**
  * One pending propose_criteria/update_context proposal, rendered as a
  * diff-ish card with Übernehmen/Verwerfen (ADR 0009/0004, Layer 6.5).
- * Nothing was written when the Agent called the tool — the arguments here
+ * Nothing was applied when the Agent called the tool — the arguments here
  * are the full proposal, already persisted verbatim in this message's
  * tool_calls. Clicking a button is the only thing that ever applies it.
+ * A new criterion (action=add) is already stored as "proposed" (docs/adr/0024);
+ * its card shows Freischalten, which activates that row, and Verwerfen deletes it.
  */
 const props = defineProps<{
   messageId: string;
@@ -48,11 +50,15 @@ const contextArgs = computed(() =>
   props.toolName === 'update_context' ? (props.input as UpdateContextArgs) : null,
 );
 
+const confirmLabel = computed(() =>
+  criteriaArgs.value?.action === 'add' ? 'Freischalten' : 'Übernehmen',
+);
+
 const title = computed(() => {
   if (criteriaArgs.value) {
     return criteriaArgs.value.action === 'edit'
       ? 'Kriterium ändern?'
-      : 'Neues Kriterium vorschlagen?';
+      : 'Neues Kriterium freischalten?';
   }
   return 'Kontext-Ergänzung vorschlagen?';
 });
@@ -111,10 +117,14 @@ async function reject() {
 
     <template #footer>
       <NSpace v-if="status === 'pending'">
-        <NButton type="primary" size="small" :loading="busy" @click="confirm">Übernehmen</NButton>
+        <NButton type="primary" size="small" :loading="busy" @click="confirm">{{
+          confirmLabel
+        }}</NButton>
         <NButton size="small" :disabled="busy" @click="reject">Verwerfen</NButton>
       </NSpace>
-      <NTag v-else-if="status === 'confirmed'" type="success" size="small">Übernommen</NTag>
+      <NTag v-else-if="status === 'confirmed'" type="success" size="small">{{
+        criteriaArgs?.action === 'add' ? 'Freigeschaltet' : 'Übernommen'
+      }}</NTag>
       <NTag v-else type="default" size="small">Verworfen</NTag>
     </template>
   </NCard>

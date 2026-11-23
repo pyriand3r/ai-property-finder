@@ -78,6 +78,9 @@ func TestRepositories_WriteByID_ZeroRowsAffectedIsNotFound(t *testing.T) {
 			return NewCriterionRepo(q).Update(ctx, &domain.Criterion{ID: someID})
 		},
 		"criterion delete": func(q *fakeQuerier) error { return NewCriterionRepo(q).Delete(ctx, someID) },
+		"criterion activate": func(q *fakeQuerier) error {
+			return NewCriterionRepo(q).Activate(ctx, someID, time.Now())
+		},
 		"listing update": func(q *fakeQuerier) error {
 			return NewListingRepo(q).Update(ctx, &domain.Listing{ID: someID})
 		},
@@ -493,5 +496,24 @@ func TestImageAndCriterionRepos_ScanCountsAndInsertArgsMatchColumns(t *testing.T
 	}
 	if q.lastRow.scanned != len(q.execArgs[1]) {
 		t.Errorf("criterion scan reads %d columns, insert passes %d args", q.lastRow.scanned, len(q.execArgs[1]))
+	}
+}
+
+// TestCriterionRepo_ListActiveByProfile_FiltersOnStatus: evaluation relies on
+// this query to leave proposed criteria out (docs/adr/0024), while the plain
+// list the Criteria tab shows must not filter.
+func TestCriterionRepo_ListActiveByProfile_FiltersOnStatus(t *testing.T) {
+	q := &fakeQuerier{}
+	if _, err := NewCriterionRepo(q).ListActiveByProfile(ctx, someID); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(q.querySQL, "status = 'active'") {
+		t.Errorf("ListActiveByProfile SQL has no status filter: %s", q.querySQL)
+	}
+	if _, err := NewCriterionRepo(q).ListByProfile(ctx, someID); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(q.querySQL, "status =") {
+		t.Errorf("ListByProfile must return proposed criteria too: %s", q.querySQL)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"propertyfinder/internal/domain"
 	"propertyfinder/internal/service"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,16 +69,15 @@ func listProfilesHandler(deps Deps) mcp.ToolHandlerFor[ListProfilesInput, ListPr
 
 // CriterionProposalInput mirrors propose_criteria's schema in
 // internal/agent/tools.go. Unlike the internal chat Agent's identically
-// named Tool — which only stages a proposal for later chat confirm-card
-// approval (ADR 0004/0009), meaningless outside a real chat_message row —
-// this MCP tool writes immediately: an MCP call is already interactively
-// driven by the human operating the external client, the same trust
-// level as editing the plain Criteria form (ADR 0001), so no separate
-// confirm step applies (docs/adr/0019).
+// named Tool, this one has no Confirm-Card (meaningless outside a real
+// chat_message row): it stores the criterion with status "proposed" right
+// away and can only add or refine proposals. An active criterion cannot be
+// changed through MCP — the user approves proposals in the Criteria tab
+// (docs/adr/0024, partly replacing docs/adr/0019 for criteria).
 type CriterionProposalInput struct {
 	ProfileID    string  `json:"profile_id" jsonschema:"UUID of the Search Profile"`
-	Action       string  `json:"action" jsonschema:"add or edit"`
-	CriterionID  *string `json:"criterion_id,omitempty" jsonschema:"UUID of the criterion to edit; required when action=edit"`
+	Action       string  `json:"action" jsonschema:"add or edit; edit only works on a criterion that is still proposed"`
+	CriterionID  *string `json:"criterion_id,omitempty" jsonschema:"UUID of the proposed criterion to edit; required when action=edit"`
 	Name         string  `json:"name"`
 	Description  string  `json:"description,omitempty"`
 	IsSubjective bool    `json:"is_subjective,omitempty" jsonschema:"true = subjective (LLM judgement only), false = objective (read directly from data)"`
@@ -96,6 +94,7 @@ type CriterionOutput struct {
 	Weight       int       `json:"weight"`
 	IsSubjective bool      `json:"is_subjective"`
 	SortOrder    int       `json:"sort_order"`
+	Status       string    `json:"status"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -109,6 +108,7 @@ func newCriterionOutput(criterion domain.Criterion) CriterionOutput {
 		Weight:       criterion.Weight,
 		IsSubjective: criterion.IsSubjective,
 		SortOrder:    criterion.SortOrder,
+		Status:       string(criterion.Status),
 		CreatedAt:    criterion.CreatedAt,
 		UpdatedAt:    criterion.UpdatedAt,
 	}
@@ -126,16 +126,7 @@ func proposeCriteriaHandler(deps Deps) mcp.ToolHandlerFor[CriterionProposalInput
 		}
 		switch input.Action {
 		case "add":
-			existing, err := deps.Criteria.List(ctx, profileID)
-			if err != nil {
-				return nil, CriterionOutput{}, err
-			}
-			for _, criterion := range existing {
-				if strings.EqualFold(criterion.Name, input.Name) {
-					return nil, CriterionOutput{}, fmt.Errorf("Kriterium existiert bereits: %s", input.Name) //nolint:staticcheck // user-facing German text; nouns are capitalized.
-				}
-			}
-			created, err := deps.Criteria.Create(ctx, profileID, input.Name, input.Description, weight, input.IsSubjective)
+			created, err := deps.Criteria.Propose(ctx, profileID, input.Name, input.Description, weight, input.IsSubjective)
 			if err != nil {
 				return nil, CriterionOutput{}, err
 			}
@@ -149,7 +140,7 @@ func proposeCriteriaHandler(deps Deps) mcp.ToolHandlerFor[CriterionProposalInput
 				return nil, CriterionOutput{}, fmt.Errorf("invalid criterion_id: %w", err)
 			}
 			name, description, isSubjective := input.Name, input.Description, input.IsSubjective
-			updated, err := deps.Criteria.Update(ctx, criterionID, &name, &description, input.Weight, &isSubjective)
+			updated, err := deps.Criteria.UpdateProposed(ctx, criterionID, &name, &description, input.Weight, &isSubjective)
 			if err != nil {
 				return nil, CriterionOutput{}, err
 			}
@@ -160,7 +151,7 @@ func proposeCriteriaHandler(deps Deps) mcp.ToolHandlerFor[CriterionProposalInput
 	}
 }
 
-// UpdateContextInput mirrors update_context's schema. Like
+// UpdateContextInput mirrors update_context's schema. Unlike
 // propose_criteria above, this writes immediately via
 // ContextService.UpdateGlobal/UpdateProfileContext (the same path the
 // plain Context Editor form uses, ADR 0001) — recorded as a

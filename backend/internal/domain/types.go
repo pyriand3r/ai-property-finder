@@ -29,16 +29,27 @@ type SearchProfile struct {
 // deliberately not inverted to an "is_objective" wire field, to avoid a
 // double-negative source of bugs between API and storage.
 type Criterion struct {
-	ID           uuid.UUID `json:"id"`
-	ProfileID    uuid.UUID `json:"profile_id"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	Weight       int       `json:"weight"`
-	IsSubjective bool      `json:"is_subjective"`
-	SortOrder    int       `json:"sort_order"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           uuid.UUID       `json:"id"`
+	ProfileID    uuid.UUID       `json:"profile_id"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description"`
+	Weight       int             `json:"weight"`
+	IsSubjective bool            `json:"is_subjective"`
+	SortOrder    int             `json:"sort_order"`
+	Status       CriterionStatus `json:"status"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
 }
+
+// CriterionStatus is the lifecycle state of a Criterion (docs/adr/0024).
+// Only active criteria are used by evaluation and scoring; a proposed one
+// is visible and editable but ignored until the user approves it.
+type CriterionStatus string
+
+const (
+	CriterionStatusProposed CriterionStatus = "proposed"
+	CriterionStatusActive   CriterionStatus = "active"
+)
 
 // CriterionGrade is the A-F letter mark the AI assigns to one Criterion for
 // one Listing (carried over from dev-property-finder, unchanged — spec

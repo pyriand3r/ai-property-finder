@@ -21,7 +21,7 @@ tags:
 
 These are the same as in the predecessor project: UUID primary keys via `gen_random_uuid()`, `TIMESTAMPTZ` (UTC), hard deletes, `snake_case`, and singular table names.
 
-This spec only lists **new tables** and **changed columns**. All other tables (`criterion`, `listing_criterion_grade`, `listing_note`, `app_config`, `task`) are carried over unchanged from the predecessor project.
+This spec only lists **new tables** and **changed columns**. All other tables (`listing_criterion_grade`, `listing_note`, `app_config`, `task`) are carried over unchanged from the predecessor project.
 
 ---
 
@@ -50,6 +50,16 @@ New columns:
 |---|---|---|---|
 | `archived_at` | TIMESTAMPTZ | NULLABLE | When set, the profile is hidden from the default list. Archived profiles are shown in a separate "Archiv" section (means: "Archive"). NULL = active. |
 | `ranking_summary` | TEXT | | Overall comparison summary of the profile's top listings. It is regenerated when the user asks (button or chat instruction). |
+
+### `criterion`
+
+New column (migration `000004_criterion_status`, [[../../docs/adr/0024-criterion-proposal-status]]):
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `status` | TEXT | NOT NULL, DEFAULT `'active'`, CHECK (`status IN ('proposed','active')`) | `proposed` = suggested by the Agent or an MCP client, not yet approved. It is ignored by `evaluate_listing`, by the Score and by the ranking. `active` = in use. The plain form, the REST create endpoint and approval produce `active`. |
+
+Existing rows become `active` through the DEFAULT, so no profile loses its criteria. Names are unique per profile, case-insensitive, across both statuses. This is checked in `CriterionService`, not by a DB index, because older data may already hold duplicates. A proposed criterion gets the next free `sort_order`, so it never moves an active one.
 
 ### `listing`
 
