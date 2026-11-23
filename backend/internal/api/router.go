@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"propertyfinder/internal/agent"
-	"propertyfinder/internal/ai"
-	"propertyfinder/internal/config"
 	"propertyfinder/internal/events"
+	"propertyfinder/internal/llm"
 	"propertyfinder/internal/mcpserver"
 	"propertyfinder/internal/service"
 	"propertyfinder/internal/web"
@@ -45,18 +44,18 @@ type Server struct {
 // listing service to clean up files on delete and served at /media/.
 // appPassword and cookieSecure configure Frontend + API login (docs/adr/
 // 0018): appPassword's SHA-256 digest signs session JWTs, cookieSecure
-// sets the session cookie's Secure flag. provider is the resolved
-// single-shot LLM provider (internal/ai) used by evaluate_listing (both
-// directly, via EvaluationHandler, and through the Agent's
-// evaluate_listing Tool — the same *EvaluationService instance backs
-// both, Layer 6.5). agentProvider is the resolved multi-turn Provider
-// (ADR 0007) used by the Agent loop — an unconfigured stand-in when
-// llm.api_key is empty (agent.NewUnconfiguredProvider). broker fans out
-// SSE progress for bulk re-evaluation (Layer 2.3) and chat streaming
+// sets the session cookie's Secure flag. llmRuntime holds the live LLM
+// configuration and the providers built from it: it is the single-shot
+// ai.Provider for evaluate_listing/ranking/rejection analysis (the same
+// *EvaluationService instance backs the REST endpoint and the Agent's
+// evaluate_listing Tool, Layer 6.5), supplies the multi-turn
+// agent.Provider (ADR 0007) per Agent turn, and is edited via PATCH
+// /api/config — changes apply without a restart. broker fans out SSE
+// progress for bulk re-evaluation (Layer 2.3) and chat streaming
 // (Layer 6.3).
-func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, appPassword string, cookieSecure bool, provider ai.Provider, agentProvider agent.Provider, broker *events.Broker) *Server {
-	evaluationService := service.NewEvaluationService(pool, provider, broker)
-	rejectionAnalysisService := service.NewRejectionAnalysisService(pool, provider, broker)
+func NewServer(pool *pgxpool.Pool, llmRuntime *llm.Runtime, dataDir, appPassword string, cookieSecure bool, broker *events.Broker) *Server {
+	evaluationService := service.NewEvaluationService(pool, llmRuntime, broker)
+	rejectionAnalysisService := service.NewRejectionAnalysisService(pool, llmRuntime, broker)
 	profileService := service.NewProfileService(pool)
 	criterionService := service.NewCriterionService(pool)
 	contextService := service.NewContextService(pool)
@@ -69,7 +68,7 @@ func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, appPass
 		},
 	})
 	return &Server{
-		config:     &ConfigHandler{llm: llmConfig},
+		config:     &ConfigHandler{runtime: llmRuntime},
 		profile:    &ProfileHandler{service: profileService},
 		context:    &ContextHandler{service: contextService},
 		criterion:  &CriterionHandler{service: criterionService},
@@ -80,8 +79,8 @@ func NewServer(pool *pgxpool.Pool, llmConfig config.LLM, dataDir string, appPass
 		note:       &NoteHandler{service: service.NewNoteService(pool)},
 		upload:     &UploadHandler{service: service.NewUploadService(dataDir)},
 		geocode:    &GeocodeHandler{},
-		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, agentProvider, broker, llmConfig, dataDir, evaluationService)},
-		ranking:    &RankingHandler{service: service.NewRankingService(pool, provider)},
+		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, llmRuntime, broker, dataDir, evaluationService)},
+		ranking:    &RankingHandler{service: service.NewRankingService(pool, llmRuntime)},
 		toolCall:   &ToolCallHandler{service: service.NewToolCallService(pool)},
 		auth:       NewAuthHandler(appPassword, cookieSecure),
 		mcp:        mcpHandler,
@@ -122,6 +121,7 @@ func (server *Server) Router() http.Handler {
 	})
 
 	timed.Get("/api/config", server.config.get)
+	timed.Patch("/api/config", server.config.patch)
 	timed.Post("/api/upload/pdf", server.upload.PDF)
 	timed.Post("/api/upload/image", server.upload.Image)
 	timed.Get("/api/geocode", server.geocode.Get)

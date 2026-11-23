@@ -142,22 +142,26 @@ The respective multipart form handlers enforce these limits (`POST /api/upload/p
 
 ## Config
 
-Carried over from the predecessor project's `app_config`:
+Stored as key-value rows in `app_config` (category `llm`). The DB is the source of truth. `CLAUDE_API_KEY` from the environment is written once, on the very first boot, as `llm.api_key` (`config.SeedFromEnv`) and is never read again.
 
-- `llm.provider`: fixed to `claude` for MVP. `lmstudio` / `opencode` are reserved values for when those implementations exist.
-- `llm.api_key`
-- `llm.base_url`: unused for `claude`, required for `lmstudio`/`opencode`.
-- `llm.model`
-- `llm.timeout_seconds`
-- `llm.max_retries`
-
-New:
-
-- `llm.max_tool_calls_per_turn` (default 15)
-- `llm.max_llm_roundtrips` (default 5, [[../../docs/adr/0013-agent-turn-llm-roundtrip-budget]])
+- `llm.provider`: `claude` is the only implemented provider (default). `lmstudio` / `opencode` are reserved values for when those implementations exist. The selectable providers come from the backend (`llm.Providers()`), not from the frontend.
+- `llm.api_key`: write-only over HTTP (see "Editing" below).
+- `llm.base_url`: optional for `claude` (proxy/gateway override), required for `lmstudio`/`opencode`.
+- `llm.model` (default `claude-sonnet-5`)
+- `llm.timeout_seconds` (default 30, allowed 1–600)
+- `llm.max_retries` (default 2, allowed 0–10)
+- `llm.max_tool_calls_per_turn` (default 15, allowed 1–100)
+- `llm.max_llm_roundtrips` (default 5, allowed 1–50, [[../../docs/adr/0013-agent-turn-llm-roundtrip-budget]])
 - `llm.reasoning_language` (default `de`). It controls both Grade reasoning and chat replies.
 
----
+### Editing (docs/adr/0022)
+
+- `GET /api/config` returns `{ "llm": {...}, "providers": [...] }`. `llm` has every setting above except the key, plus `api_key_configured: true/false`. `providers` is a list of `{ id, label, models, requires_base_url }`. `models` are suggestions for the model picker, not an allow-list.
+- `PATCH /api/config` takes `{ "llm": { ...any subset of the fields above, plus api_key } }` and returns the same body as `GET`. Invalid values return 400 with a German message (`domain.ValidationError`): unknown provider, empty model, `base_url` that is not an http(s) URL, a number outside its range, empty `reasoning_language`. An invalid request changes nothing.
+- The API key is **write-only**. It is never returned by any endpoint and never logged (`config.LLM.String()` redacts it). A `PATCH` without `api_key` keeps the stored key. An empty `api_key` is rejected.
+- Changes apply **without a restart**. `internal/llm.Runtime` rebuilds both providers and swaps them atomically after the DB write succeeds. The next evaluation, ranking or rejection analysis, and the next Agent turn, use the new values. An Agent turn that is already running keeps the settings it started with.
+- The SPA has a Settings view at `/settings` (German UI, linked from the profile list).
+- Edits made directly in SQL are not picked up by the running process. Restart the backend, or save once in the Settings view.
 
 ## Open Questions / TBD
 

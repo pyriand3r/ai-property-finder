@@ -179,13 +179,13 @@ func taskEventPayload(task *domain.Task) map[string]any {
 
 // mapProviderError translates ai package sentinel errors into domain errors
 // the API layer already knows how to render. ErrNotConfigured is a client-
-// actionable 400 (fix app_config); the rest are transient upstream (LLM)
+// actionable 400 (fix the LLM settings); the rest are transient upstream (LLM)
 // failures, mapped to 502 rather than an opaque 500 — the request itself
 // was well-formed, retrying later may succeed.
 func mapProviderError(err error) error {
 	switch {
 	case errors.Is(err, ai.ErrNotConfigured):
-		return &domain.ValidationError{Field: "llm", Message: "LLM-Provider ist nicht konfiguriert (llm.provider/llm.api_key/llm.model in app_config setzen)"}
+		return &domain.ValidationError{Field: "llm", Message: "LLM-Provider ist nicht konfiguriert (Provider, API-Key und Modell unter Einstellungen setzen)"}
 	case errors.Is(err, ai.ErrListingTooLong):
 		return &domain.UpstreamError{Message: "Inserat ist zu umfangreich für das Kontextfenster des Modells"}
 	case errors.Is(err, ai.ErrTimeout):

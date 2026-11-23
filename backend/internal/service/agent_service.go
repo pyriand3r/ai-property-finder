@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"log"
 	"propertyfinder/internal/agent"
-	"propertyfinder/internal/config"
+	"propertyfinder/internal/attachment"
 	"propertyfinder/internal/db/repository"
 	"propertyfinder/internal/domain"
 	"propertyfinder/internal/events"
-	"propertyfinder/internal/attachment"
+	"propertyfinder/internal/llm"
 	"slices"
 	"strings"
 	"sync"
@@ -33,27 +33,28 @@ type AgentService struct {
 	pool       *pgxpool.Pool
 	chat       *ChatService
 	evaluation *EvaluationService
-	provider   agent.Provider
+	llm        *llm.Runtime
 	broker     *events.Broker
-	llm        config.LLM
 	dataDir    string
 
 	turnsMu sync.Mutex
 	turns   map[uuid.UUID]context.CancelFunc
 }
 
-// NewAgentService constructs an AgentService wired to pool, provider (the
-// resolved agent.Provider — an unconfigured stand-in when llm.api_key is
-// empty, per agent.NewUnconfiguredProvider), broker, the current
-// llm.max_llm_roundtrips / llm.max_tool_calls_per_turn config, and dataDir
+// NewAgentService constructs an AgentService wired to pool, llmRuntime (the
+// live LLM configuration: each turn takes one snapshot of the agent.Provider
+// — an unconfigured stand-in when llm.api_key is empty, per
+// agent.NewUnconfiguredProvider — and the llm.max_llm_roundtrips /
+// llm.max_tool_calls_per_turn budget, so a settings change applies from the
+// next turn on and never mid-turn), broker, and dataDir
 // (ADR 0012 — where download_image writes files, same volume root as
 // ImageService). evaluation backs the evaluate_listing Tool — the caller
 // passes the same *EvaluationService instance wired to the
 // POST /api/listings/{id}/evaluate endpoint (Layer 2.2), not a second one,
 // so there's exactly one place that single-shot Grade logic lives.
-func NewAgentService(pool *pgxpool.Pool, provider agent.Provider, broker *events.Broker, llm config.LLM, dataDir string, evaluation *EvaluationService) *AgentService {
+func NewAgentService(pool *pgxpool.Pool, llmRuntime *llm.Runtime, broker *events.Broker, dataDir string, evaluation *EvaluationService) *AgentService {
 	return &AgentService{
-		pool: pool, chat: NewChatService(pool), evaluation: evaluation, provider: provider, broker: broker, llm: llm, dataDir: dataDir,
+		pool: pool, chat: NewChatService(pool), evaluation: evaluation, llm: llmRuntime, broker: broker, dataDir: dataDir,
 		turns: make(map[uuid.UUID]context.CancelFunc),
 	}
 }
@@ -168,17 +169,23 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 		// even without it.
 	}
 
+	// One snapshot for the whole turn: provider, message formatting, and
+	// budget must come from the same configuration generation.
+	llmSnapshot := service.llm.Snapshot()
+	provider := llmSnapshot.Agent
+	llmConfig := llmSnapshot.Config
+
 	tools := agent.Tools()
 	registry := NewToolRegistry(service.pool, service.dataDir, service.evaluation, session.ProfileID)
 	loop := &agent.Loop{
-		Provider:            service.provider,
-		MaxLLMRoundtrips:    service.llm.MaxLLMRoundtrips,
-		MaxToolCallsPerTurn: service.llm.MaxToolCallsPerTurn,
+		Provider:            provider,
+		MaxLLMRoundtrips:    llmConfig.MaxLLMRoundtrips,
+		MaxToolCallsPerTurn: llmConfig.MaxToolCallsPerTurn,
 		Dispatch:            registry.Dispatch,
 	}
 	req := agent.TurnRequest{
-		System:   agent.BuildSystemPrompt(len(tools) > 0, agent.EffectiveMaxLLMRoundtrips(service.llm.MaxLLMRoundtrips), globalContext.ContentMD, profileContext.ContentMD, listingContextMD),
-		Messages: service.provider.FormatMessages(history),
+		System:   agent.BuildSystemPrompt(len(tools) > 0, agent.EffectiveMaxLLMRoundtrips(llmConfig.MaxLLMRoundtrips), globalContext.ContentMD, profileContext.ContentMD, listingContextMD),
+		Messages: provider.FormatMessages(history),
 		Tools:    tools,
 	}
 
@@ -188,7 +195,7 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 	// in the Tools() catalog for exactly this reason). Deleted from disk
 	// once the turn ends either way, so it's never resent on a later turn.
 	pdfAttachment := attachedPDFPath(history)
-	if pdfAttachment != nil && service.provider.SupportsDocumentInput() {
+	if pdfAttachment != nil && provider.SupportsDocumentInput() {
 		if encoded, readErr := attachment.ReadBase64(service.dataDir, *pdfAttachment); readErr != nil {
 			log.Printf("agent: read pdf attachment for session %s: %v", sessionID, readErr)
 		} else if last := len(req.Messages) - 1; last >= 0 {
@@ -202,7 +209,7 @@ func (service *AgentService) runTurn(ctx context.Context, sessionID uuid.UUID) {
 	// An image attached the same way as a PDF above (ADR 0020) — a JPG/PNG
 	// screenshot for when the user has no PDF-export option on mobile.
 	imageAttachment, imageMediaType := attachedImagePath(history)
-	if imageAttachment != nil && service.provider.SupportsImageInput() {
+	if imageAttachment != nil && provider.SupportsImageInput() {
 		if encoded, readErr := attachment.ReadBase64(service.dataDir, *imageAttachment); readErr != nil {
 			log.Printf("agent: read image attachment for session %s: %v", sessionID, readErr)
 		} else if last := len(req.Messages) - 1; last >= 0 {
@@ -455,7 +462,7 @@ func attachedPDFPath(history []domain.ChatMessage) *string {
 // and the Claude MIME type to send it as if it names a JPG or PNG image,
 // or (nil, "") otherwise. Mirrors attachedPDFPath above — same "only the
 // last history row, chronological order" reasoning applies.
-func attachedImagePath(history []domain.ChatMessage) (*string, string) {
+func attachedImagePath(history []domain.ChatMessage) (path *string, mediaType string) {
 	if len(history) == 0 {
 		return nil, ""
 	}
