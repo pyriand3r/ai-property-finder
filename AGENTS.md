@@ -203,6 +203,7 @@ npm run typecheck         # vue-tsc -b --noEmit  (project-reference build mode)
 npm run lint            # oxlint
 npm run format            # oxfmt (format in place)
 npm run format:check       # oxfmt --check (CI gate, `.github/workflows/ci.yml`)
+npm test                  # vitest (watch); `npm run test:run` = one-shot, CI gate
 
 # Backend (from backend/)
 go mod tidy
@@ -385,16 +386,24 @@ merge logic), `cmd/server`. `geocode.baseURL` is a package variable only so test
 
 ### Frontend (Vue + TypeScript)
 
-**No test runner installed and no test files exist** (`src/**/*.test.ts`, `*.spec.ts`, `__tests__/` all
-empty) — no vitest, `@vue/test-utils`, playwright, or cypress in `package.json`. This is a genuine gap, not
-"configured but unused." The only automated frontend gates are `npm run typecheck` (`vue-tsc -b --noEmit`)
-and `npm run lint` (`oxlint`). If adding frontend tests, you'll need to introduce the tooling first.
+Runner: `vitest` + `@vue/test-utils` + `jsdom`, configured in the `test` block of `vite.config.ts`
+(same `@` alias as the app). Tests sit next to the code as `src/**/*.test.ts`.
+
+```bash
+npm test            # vitest, watch mode
+npm run test:run    # one-shot (used by CI)
+```
+
+Conventions: pure helpers in `src/utils` are tested directly; components are mounted with
+`mount()` from `@vue/test-utils`. For a component that uses a composable that calls `/api` or opens an
+`EventSource`, mock the composable with `vi.mock` (see `ReevaluationBanner.test.ts`). Test files are
+type-checked by `npm run typecheck` (lib is ES2022: no `toSorted`). There is no e2e/browser runner.
 
 ### CI
 
 GitHub Actions, `.github/workflows/ci.yml`, runs on every push and pull request. Two jobs:
 `backend` (`go build ./...`, `go test ./...`, `golangci-lint run` via golangci-lint-action, pinned to v2.15.0)
-and `frontend` (`npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`). Go version comes from
+and `frontend` (`npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run test:run`). Go version comes from
 `backend/go.mod`; Node is 22, same as `backend/Dockerfile`. Run the same gates locally before opening a PR.
 When you bump the golangci-lint version, change it in the workflow and fix any new findings in the same PR.
 
@@ -415,7 +424,7 @@ authoritative backlog. Rules that apply to every coding run:
   merge, the orchestrator closes the issue manually.
 - **Definition of done before opening the PR:** `cd backend && go build ./... && go test ./...`,
   `golangci-lint run` (config: `backend/.golangci.yml`), `npm run typecheck`, `npm run lint`,
-  `npm run format:check` — all from a clean tree. Pre-existing failures (e.g. oxfmt drift in files the
+  `npm run format:check`, `npm run test:run` — all from a clean tree. Pre-existing failures (e.g. oxfmt drift in files the
   change does not touch) are noted in the PR body, not silently fixed.
 - **Docs updated in the same commit** per Documentation Discipline above.
 

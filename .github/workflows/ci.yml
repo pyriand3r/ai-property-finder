@@ -39,7 +39,7 @@ jobs:
           working-directory: backend
 
   frontend:
-    name: Frontend (typecheck, lint, format)
+    name: Frontend (typecheck, lint, format, test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,3 +61,6 @@ jobs:
 
       - name: Format check (oxfmt)
         run: npm run format:check
+
+      - name: Test (vitest)
+        run: npm run test:run

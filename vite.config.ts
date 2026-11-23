@@ -1,7 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 
 import vue from '@vitejs/plugin-vue';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 // Dev server proxies /api and /media to the Go backend (docker-compose.yml,
 // AGENTS.md "Dev Commands"). Production build is embedded into the backend
@@ -21,5 +21,10 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+  },
+  // Unit/component tests: `npm test` (watch) / `npm run test:run` (CI, one-shot).
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.test.ts'],
   },
 });
