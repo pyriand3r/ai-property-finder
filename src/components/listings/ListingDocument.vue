@@ -4,6 +4,33 @@ import { marked } from 'marked';
 import { NButton, NEmpty, NInput } from 'naive-ui';
 import { computed, shallowRef } from 'vue';
 
+/**
+ * Drops the Agent-written "Bewertungstabelle" section (heading up to the next heading of the same
+ * or a higher level) from the rendered view. The structured grade grid (`ListingGradeGrid.vue`) is
+ * the source of truth since 01-10; the embedded section is only a stale placeholder or a copy of it.
+ * Display only: the stored `document_md` and the edit view stay untouched. See docs/buglist.md.
+ */
+function stripGradeTableSection(md: string): string {
+  const kept: string[] = [];
+  let skipLevel = 0;
+  for (const line of md.split('\n')) {
+    const heading = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (heading) {
+      const level = heading[1].length;
+      if (skipLevel > 0 && level <= skipLevel) {
+        skipLevel = 0;
+      }
+      if (skipLevel === 0 && /^bewertungstabelle\b/i.test(heading[2])) {
+        skipLevel = level;
+      }
+    }
+    if (skipLevel === 0) {
+      kept.push(line);
+    }
+  }
+  return kept.join('\n');
+}
+
 const props = defineProps<{
   documentMd?: string;
 }>();
@@ -19,7 +46,9 @@ const renderedHtml = computed(() => {
   if (!props.documentMd) {
     return '';
   }
-  return DOMPurify.sanitize(marked.parse(props.documentMd, { async: false }));
+  return DOMPurify.sanitize(
+    marked.parse(stripGradeTableSection(props.documentMd), { async: false }),
+  );
 });
 
 function startEdit() {

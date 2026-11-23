@@ -55,6 +55,8 @@ The List View table gets a control for column visibility. The fixed columns are 
 
 `ListingGradeGrid` moves to the top of `ListingDetailPanel.vue`, above the form. Most visits to the Detail View check the evaluation result. The old order was form, then document, then grades at the bottom. That order hid the result.
 
+The rendered Listing Document (`ListingDocument.vue`) hides its own "Bewertungstabelle" section, because the grade grid is now the source of truth (issue #5). The stored Markdown and the edit view keep it.
+
 `status` moves out of the field grid into the page header, next to the title. It gets the same visual level as the existing `needs_reevaluation` tag ("Bewertung veraltet", meaning "evaluation outdated"). It is no longer one of eighteen fields in a two-column grid, where it is easy to miss.
 
 ---
