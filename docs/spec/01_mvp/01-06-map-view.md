@@ -29,7 +29,7 @@ layout replaces that reference's popup-only interaction. The List View set the m
 
 `ListingsMapPanel.vue` is a new "Karte" tab in `ProfileShellView.vue`. It sits next to Chat/Context/
 Kriterien/Inserate. It fetches its own Listing set with `useListings`. This is separate from the Inserate tab's fetch. Each tab owns its data, so tabs are not coupled. It renders `ListingMap.vue` inside
-`ListingSplitPane.vue`. This is the same shared split-layout component that the "Liste" tab of the List View uses. It was extracted from `ListingsPanel.vue` when Map View needed the same pattern: a sticky right pane, an empty state, and a `:key`-forced remount. See that component for why the remount key is
+`ListingSplitPane.vue`. This is the same shared split-layout component that the "Liste" tab of the List View uses. It was extracted from `ListingsPanel.vue` when Map View needed the same pattern: a fixed-height shell with independently scrolling left and right panes, an empty state, and a `:key`-forced remount. See that component for why the remount key is
 needed.
 
 `ListingMap.vue` is heavy (OpenLayers, ~300kB). It is lazy-loaded with `defineAsyncComponent` in

@@ -250,7 +250,8 @@ function handleCloseClick() {
 
 .listing-map-canvas {
   width: 100%;
-  height: calc(100vh - 12rem);
+  /* Fills the ListingSplitPane shell (see its --listing-split-top). */
+  height: calc(100vh - var(--listing-split-top, 10rem) - 2rem);
   min-height: 400px;
   border-radius: 0.5rem;
   overflow: hidden;
