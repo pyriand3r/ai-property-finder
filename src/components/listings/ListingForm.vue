@@ -72,16 +72,29 @@ function cancel() {
 // / needs_reevaluation still fire per changed field, just computed once
 // here across the whole batch instead of once per blur (backend-side,
 // unchanged).
+//
+// An emptied input ('' from NInput, null from NInputNumber/NDatePicker) is sent as an explicit
+// null, which the backend turns into a cleared (NULL) column (issue #9). The title is required
+// and never cleared. Absent and null count as the same "empty" value when diffing, so an
+// untouched empty field does not produce a patch entry.
+function normalizeEmpty(value: unknown): unknown {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  return value;
+}
+
 function save() {
-  const patch: ListingInput = {};
+  const patch: Record<string, unknown> = {};
   for (const field of editableFields) {
-    const value = draft[field as keyof typeof draft] as ListingInput[typeof field];
-    if (value !== props.listing[field as keyof Listing]) {
-      (patch as Record<string, unknown>)[field] = value;
+    const draftValue = draft[field];
+    const value = field === 'title' ? draftValue : normalizeEmpty(draftValue);
+    const current = field === 'title' ? props.listing[field] : normalizeEmpty(props.listing[field]);
+    if (value !== current) {
+      patch[field] = value;
     }
   }
   if (Object.keys(patch).length > 0) {
-    emit('save', patch);
+    emit('save', patch as ListingInput);
   }
   editing.value = false;
 }

@@ -53,29 +53,33 @@ var validListingStatuses = map[domain.ListingStatus]bool{
 // 3.2). overall_score, user_confirmed_fields, needs_reevaluation,
 // source_type, source_file_path, and kurzfazit are system/Agent-managed
 // and not exposed here.
+//
+// Nullable fields are Optional: absent leaves the field unchanged, an
+// explicit null (Clear) sets it to NULL. Title, Status and TitleImageID are
+// plain pointers — they can be changed but not cleared.
 type ListingPatch struct {
 	Title            *string
-	SourceURL        *string
-	Price            *float64
-	PriceCurrency    *string
-	PropertySizeM2   *float64
-	PlotSizeM2       *float64
-	Address          *string
-	Region           *string
-	Country          *string
-	Latitude         *float64
-	Longitude        *float64
-	Description      *string
-	TitleImagePath   *string
+	SourceURL        Optional[string]
+	Price            Optional[float64]
+	PriceCurrency    Optional[string]
+	PropertySizeM2   Optional[float64]
+	PlotSizeM2       Optional[float64]
+	Address          Optional[string]
+	Region           Optional[string]
+	Country          Optional[string]
+	Latitude         Optional[float64]
+	Longitude        Optional[float64]
+	Description      Optional[string]
+	TitleImagePath   Optional[string]
 	TitleImageID     *uuid.UUID
 	Status           *domain.ListingStatus
-	RejectionComment *string
-	SellerName       *string
-	SellerPhone      *string
-	SellerEmail      *string
-	SellerNotes      *string
-	LastContactAt    *time.Time
-	DocumentMD       *string
+	RejectionComment Optional[string]
+	SellerName       Optional[string]
+	SellerPhone      Optional[string]
+	SellerEmail      Optional[string]
+	SellerNotes      Optional[string]
+	LastContactAt    Optional[time.Time]
+	DocumentMD       Optional[string]
 }
 
 // ListingService orchestrates Listing CRUD (spec 01-07 Layer 2.1).
@@ -113,18 +117,18 @@ func (service *ListingService) Create(ctx context.Context, profileID uuid.UUID, 
 	if title == "" {
 		return nil, &domain.ValidationError{Field: "title", Message: "Titel ist erforderlich"}
 	}
-	if validationError := validateNonNegative("price", patch.Price); validationError != nil {
+	if validationError := validateNonNegative("price", patch.Price.Value); validationError != nil {
 		return nil, validationError
 	}
-	if validationError := validateNonNegative("property_size_m2", patch.PropertySizeM2); validationError != nil {
+	if validationError := validateNonNegative("property_size_m2", patch.PropertySizeM2.Value); validationError != nil {
 		return nil, validationError
 	}
-	if validationError := validateNonNegative("plot_size_m2", patch.PlotSizeM2); validationError != nil {
+	if validationError := validateNonNegative("plot_size_m2", patch.PlotSizeM2.Value); validationError != nil {
 		return nil, validationError
 	}
 	status := domain.ListingStatusNew
 	if patch.Status != nil {
-		if validationError := validateListingStatus(*patch.Status, patch.RejectionComment); validationError != nil {
+		if validationError := validateListingStatus(*patch.Status, patch.RejectionComment.Value); validationError != nil {
 			return nil, validationError
 		}
 		status = *patch.Status
@@ -135,26 +139,26 @@ func (service *ListingService) Create(ctx context.Context, profileID uuid.UUID, 
 		ID:                  uuid.New(),
 		ProfileID:           profileID,
 		Title:               title,
-		SourceURL:           patch.SourceURL,
-		Price:               patch.Price,
-		PriceCurrency:       patch.PriceCurrency,
-		PropertySizeM2:      patch.PropertySizeM2,
-		PlotSizeM2:          patch.PlotSizeM2,
-		Address:             patch.Address,
-		Region:              patch.Region,
-		Country:             patch.Country,
-		Latitude:            patch.Latitude,
-		Longitude:           patch.Longitude,
-		Description:         patch.Description,
-		TitleImagePath:      patch.TitleImagePath,
+		SourceURL:           patch.SourceURL.Value,
+		Price:               patch.Price.Value,
+		PriceCurrency:       patch.PriceCurrency.Value,
+		PropertySizeM2:      patch.PropertySizeM2.Value,
+		PlotSizeM2:          patch.PlotSizeM2.Value,
+		Address:             patch.Address.Value,
+		Region:              patch.Region.Value,
+		Country:             patch.Country.Value,
+		Latitude:            patch.Latitude.Value,
+		Longitude:           patch.Longitude.Value,
+		Description:         patch.Description.Value,
+		TitleImagePath:      patch.TitleImagePath.Value,
 		Status:              status,
-		RejectionComment:    patch.RejectionComment,
-		SellerName:          patch.SellerName,
-		SellerPhone:         patch.SellerPhone,
-		SellerEmail:         patch.SellerEmail,
-		SellerNotes:         patch.SellerNotes,
-		LastContactAt:       patch.LastContactAt,
-		DocumentMD:          patch.DocumentMD,
+		RejectionComment:    patch.RejectionComment.Value,
+		SellerName:          patch.SellerName.Value,
+		SellerPhone:         patch.SellerPhone.Value,
+		SellerEmail:         patch.SellerEmail.Value,
+		SellerNotes:         patch.SellerNotes.Value,
+		LastContactAt:       patch.LastContactAt.Value,
+		DocumentMD:          patch.DocumentMD.Value,
 		SourceType:          domain.SourceTypeManual,
 		UserConfirmedFields: []string{},
 		NeedsReevaluation:   false,
@@ -168,7 +172,8 @@ func (service *ListingService) Create(ctx context.Context, profileID uuid.UUID, 
 	return listing, nil
 }
 
-// Update applies a partial edit. Every field present in patch is appended
+// Update applies a partial edit. Every field present in patch (including one
+// explicitly cleared with null) is appended
 // to user_confirmed_fields (deduplicated) — a PATCH call is, by definition,
 // the user confirming that field's value (spec 01-07, ADR 0016). Fields in
 // evaluationRelevantFields additionally set needs_reevaluation = true;
@@ -241,13 +246,13 @@ func (service *ListingService) Update(ctx context.Context, id uuid.UUID, patch L
 // applyPatch merges patch onto listing in place, validating along the way
 // and tracking user_confirmed_fields / needs_reevaluation.
 func (service *ListingService) applyPatch(listing *domain.Listing, patch ListingPatch) error {
-	if validationError := validateNonNegative("price", patch.Price); validationError != nil {
+	if validationError := validateNonNegative("price", patch.Price.Value); validationError != nil {
 		return validationError
 	}
-	if validationError := validateNonNegative("property_size_m2", patch.PropertySizeM2); validationError != nil {
+	if validationError := validateNonNegative("property_size_m2", patch.PropertySizeM2.Value); validationError != nil {
 		return validationError
 	}
-	if validationError := validateNonNegative("plot_size_m2", patch.PlotSizeM2); validationError != nil {
+	if validationError := validateNonNegative("plot_size_m2", patch.PlotSizeM2.Value); validationError != nil {
 		return validationError
 	}
 
@@ -266,78 +271,78 @@ func (service *ListingService) applyPatch(listing *domain.Listing, patch Listing
 		listing.Title = trimmed
 		touch("title")
 	}
-	if patch.SourceURL != nil {
-		listing.SourceURL = patch.SourceURL
+	if patch.SourceURL.Set {
+		listing.SourceURL = patch.SourceURL.Value
 		touch("source_url")
 	}
-	if patch.Price != nil {
-		listing.Price = patch.Price
+	if patch.Price.Set {
+		listing.Price = patch.Price.Value
 		touch("price")
 	}
-	if patch.PriceCurrency != nil {
-		listing.PriceCurrency = patch.PriceCurrency
+	if patch.PriceCurrency.Set {
+		listing.PriceCurrency = patch.PriceCurrency.Value
 		touch("price_currency")
 	}
-	if patch.PropertySizeM2 != nil {
-		listing.PropertySizeM2 = patch.PropertySizeM2
+	if patch.PropertySizeM2.Set {
+		listing.PropertySizeM2 = patch.PropertySizeM2.Value
 		touch("property_size_m2")
 	}
-	if patch.PlotSizeM2 != nil {
-		listing.PlotSizeM2 = patch.PlotSizeM2
+	if patch.PlotSizeM2.Set {
+		listing.PlotSizeM2 = patch.PlotSizeM2.Value
 		touch("plot_size_m2")
 	}
-	if patch.Address != nil {
-		listing.Address = patch.Address
+	if patch.Address.Set {
+		listing.Address = patch.Address.Value
 		touch("address")
 	}
-	if patch.Region != nil {
-		listing.Region = patch.Region
+	if patch.Region.Set {
+		listing.Region = patch.Region.Value
 		touch("region")
 	}
-	if patch.Country != nil {
-		listing.Country = patch.Country
+	if patch.Country.Set {
+		listing.Country = patch.Country.Value
 		touch("country")
 	}
-	if patch.Latitude != nil {
-		listing.Latitude = patch.Latitude
+	if patch.Latitude.Set {
+		listing.Latitude = patch.Latitude.Value
 		touch("latitude")
 	}
-	if patch.Longitude != nil {
-		listing.Longitude = patch.Longitude
+	if patch.Longitude.Set {
+		listing.Longitude = patch.Longitude.Value
 		touch("longitude")
 	}
-	if patch.Description != nil {
-		listing.Description = patch.Description
+	if patch.Description.Set {
+		listing.Description = patch.Description.Value
 		touch("description")
 	}
-	if patch.TitleImagePath != nil {
-		listing.TitleImagePath = patch.TitleImagePath
+	if patch.TitleImagePath.Set {
+		listing.TitleImagePath = patch.TitleImagePath.Value
 		touch("title_image_path")
 	}
-	if patch.SellerName != nil {
-		listing.SellerName = patch.SellerName
+	if patch.SellerName.Set {
+		listing.SellerName = patch.SellerName.Value
 		touch("seller_name")
 	}
-	if patch.SellerPhone != nil {
-		listing.SellerPhone = patch.SellerPhone
+	if patch.SellerPhone.Set {
+		listing.SellerPhone = patch.SellerPhone.Value
 		touch("seller_phone")
 	}
-	if patch.SellerEmail != nil {
-		listing.SellerEmail = patch.SellerEmail
+	if patch.SellerEmail.Set {
+		listing.SellerEmail = patch.SellerEmail.Value
 		touch("seller_email")
 	}
-	if patch.SellerNotes != nil {
-		listing.SellerNotes = patch.SellerNotes
+	if patch.SellerNotes.Set {
+		listing.SellerNotes = patch.SellerNotes.Value
 		touch("seller_notes")
 	}
-	if patch.LastContactAt != nil {
-		listing.LastContactAt = patch.LastContactAt
+	if patch.LastContactAt.Set {
+		listing.LastContactAt = patch.LastContactAt.Value
 		touch("last_contact_at")
 	}
-	if patch.DocumentMD != nil {
+	if patch.DocumentMD.Set {
 		// Prose, not a structured field (spec 01-07) — deliberately not
 		// touch()'d: no user_confirmed_fields entry, no re-evaluation.
-		listing.DocumentMD = patch.DocumentMD
+		listing.DocumentMD = patch.DocumentMD.Value
 	}
 
 	// Status/rejection_comment validated together, after both are merged,
@@ -347,11 +352,11 @@ func (service *ListingService) applyPatch(listing *domain.Listing, patch Listing
 		listing.Status = *patch.Status
 		touch("status")
 	}
-	if patch.RejectionComment != nil {
-		listing.RejectionComment = patch.RejectionComment
+	if patch.RejectionComment.Set {
+		listing.RejectionComment = patch.RejectionComment.Value
 		touch("rejection_comment")
 	}
-	if patch.Status != nil || patch.RejectionComment != nil {
+	if patch.Status != nil || patch.RejectionComment.Set {
 		if validationError := validateListingStatus(listing.Status, listing.RejectionComment); validationError != nil {
 			return validationError
 		}

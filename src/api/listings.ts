@@ -13,22 +13,31 @@ export function getListing(listingId: string) {
   return http.get<Listing>(`/api/listings/${listingId}`);
 }
 
-export type ListingInput = Partial<
-  Omit<
-    Listing,
-    | 'id'
-    | 'profile_id'
-    | 'overall_score'
-    | 'user_confirmed_fields'
-    | 'needs_reevaluation'
-    | 'kurzfazit'
-    | 'source_type'
-    | 'source_file_path'
-    | 'title_image_id'
-    | 'created_at'
-    | 'updated_at'
-  >
-> & { title_image_id?: string };
+type ListingInputBase = Omit<
+  Listing,
+  | 'id'
+  | 'profile_id'
+  | 'overall_score'
+  | 'user_confirmed_fields'
+  | 'needs_reevaluation'
+  | 'kurzfazit'
+  | 'source_type'
+  | 'source_file_path'
+  | 'title_image_id'
+  | 'created_at'
+  | 'updated_at'
+>;
+
+/**
+ * Body of POST/PATCH listing. An omitted key means "unchanged"; an explicit `null` clears the
+ * field (backend `service.Optional`, issue #9). `title` and `status` are required in the
+ * database and cannot be cleared.
+ */
+export type ListingInput = {
+  [K in keyof ListingInputBase]?: K extends 'title' | 'status'
+    ? ListingInputBase[K]
+    : ListingInputBase[K] | null;
+} & { title_image_id?: string };
 
 export function createListing(profileId: string, input: ListingInput) {
   return http.post<Listing>(`/api/profiles/${profileId}/listings`, input);
