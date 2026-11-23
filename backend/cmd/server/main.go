@@ -6,8 +6,9 @@
 //  3. pgxpool connect
 //  4. run pending migrations (forward-only; fail-fast on error)
 //  5. seed Tier 2 app_config from env (write-once; DB authoritative after)
-//  6. load Tier 2 app_config (llm.*), build the LLM provider from it
-//  7. start HTTP server (GET /health, GET /api/config, GET /api/events, ...)
+//  6. load Tier 2 app_config (llm.*), build the live LLM runtime from it
+//     (internal/llm; editable at runtime via PATCH /api/config)
+//  7. start HTTP server (GET /health, GET/PATCH /api/config, GET /api/events, ...)
 //
 // The rest of the API surface lands in later layers.
 package main
@@ -19,14 +20,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"propertyfinder/internal/agent"
-	"propertyfinder/internal/agent/provider/claude"
-	"propertyfinder/internal/ai"
 	"propertyfinder/internal/api"
 	"propertyfinder/internal/config"
 	"propertyfinder/internal/db"
 	"propertyfinder/internal/events"
-	"strings"
+	"propertyfinder/internal/llm"
 	"syscall"
 	"time"
 
@@ -75,25 +73,15 @@ func run() error {
 	log.Printf("llm config resolved: provider=%s model=%q api_key_configured=%t",
 		llmConfig.Provider, llmConfig.Model, llmConfig.APIKey != "")
 
-	provider, err := ai.NewProvider(ai.Config{
-		Provider:          llmConfig.Provider,
-		APIKey:            llmConfig.APIKey,
-		BaseURL:           llmConfig.BaseURL,
-		Model:             llmConfig.Model,
-		TimeoutSeconds:    llmConfig.TimeoutSeconds,
-		MaxRetries:        llmConfig.MaxRetries,
-		ReasoningLanguage: llmConfig.ReasoningLanguage,
-	})
+	llmRuntime, err := llm.New(llmConfig, llm.PoolStore{Pool: pool})
 	if err != nil {
 		return err
 	}
 
-	agentProvider := newAgentProvider(llmConfig)
-
 	broker := events.NewBroker()
 	defer broker.Stop()
 
-	router := api.NewServer(pool, llmConfig, envConfig.DataDir, envConfig.AppPassword, envConfig.CookieSecure, provider, agentProvider, broker).Router()
+	router := api.NewServer(pool, llmRuntime, envConfig.DataDir, envConfig.AppPassword, envConfig.CookieSecure, broker).Router()
 	server := &http.Server{
 		Addr:              envConfig.HTTPListenAddr,
 		Handler:           router,
@@ -125,21 +113,4 @@ func run() error {
 	}
 	log.Print("shutdown complete")
 	return nil
-}
-
-// newAgentProvider resolves the multi-turn agent.Provider (ADR 0007) from
-// llmConfig, mirroring ai.NewProvider's gating: an empty API key or a
-// non-Claude provider value (lmstudio/opencode reserved, ADR 0006) yields
-// the unconfigured stand-in instead of a Provider that would fail on
-// every call anyway.
-func newAgentProvider(llmConfig config.LLM) agent.Provider {
-	if strings.ToLower(strings.TrimSpace(llmConfig.Provider)) != "claude" || strings.TrimSpace(llmConfig.APIKey) == "" {
-		return agent.NewUnconfiguredProvider()
-	}
-	return claude.New(claude.Config{
-		APIKey:         llmConfig.APIKey,
-		BaseURL:        llmConfig.BaseURL,
-		Model:          llmConfig.Model,
-		TimeoutSeconds: llmConfig.TimeoutSeconds,
-	})
 }

@@ -71,7 +71,10 @@ async function handleDelete(profileId: string) {
   <main class="profile-list-view">
     <div class="profile-list-header">
       <NH1>Property Finder</NH1>
-      <NButton text @click="router.push({ name: 'global-context' })"> Globaler Kontext </NButton>
+      <div class="profile-list-links">
+        <NButton text @click="router.push({ name: 'global-context' })"> Globaler Kontext </NButton>
+        <NButton text @click="router.push({ name: 'settings' })"> Einstellungen </NButton>
+      </div>
     </div>
 
     <ProfileCreateForm :creating="creating" @create="handleCreate" />
@@ -119,6 +122,11 @@ async function handleDelete(profileId: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.profile-list-links {
+  display: flex;
+  gap: 1rem;
 }
 
 .profile-list-error {

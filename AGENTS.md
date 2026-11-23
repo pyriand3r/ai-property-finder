@@ -92,6 +92,16 @@ both directly by REST endpoints and wrapped as the `evaluate_listing` Tool — d
 `CLAUDE_API_KEY` into it once on first boot, then the **DB is authoritative** — the env var is never
 consulted again after that.
 
+**Tier 2 is editable at runtime** (ADR 0022): `PATCH /api/config` (partial `{"llm": {...}}`, validated in
+`internal/llm`, saved with `config.SaveLLM`) and the Settings view `/settings`. `internal/llm.Runtime` holds
+an immutable `Snapshot` (config + `ai.Provider` + `agent.Provider`) behind an `atomic.Pointer`; a change
+rebuilds and swaps it with no restart. `Runtime` is itself the `ai.Provider` handed to the evaluation/
+ranking/rejection services. `AgentService.runTurn` takes **one** snapshot per turn — never read provider
+and budget separately. The API key is write-only: no GET/PATCH response and no log line may contain it
+(`config.LLM.String()` redacts it; keep it that way). The provider list and model suggestions come from
+`llm.Providers()` — add a new provider there plus a branch in `llm.buildSnapshot`. Direct SQL edits of
+`app_config` are not seen by the running process.
+
 ### Key Architecture Decisions (`docs/adr/`)
 
 - **0001**: Chat is primary UI; plain form is mandatory fallback — not optional
@@ -117,6 +127,7 @@ consulted again after that.
 - **0020**: Chat-uploaded JPG/PNG screenshots are sent to Claude as a native `image` content block, same
   pattern as ADR 0005's PDF path (`internal/attachment`, `Provider.SupportsImageInput()`)
 - **0021**: Project is licensed AGPL-3.0-only (`LICENSE`); the network clause (§13) applies to modified hosted instances
+- **0022**: LLM settings editable via `PATCH /api/config` + `/settings`; applied live through `internal/llm.Runtime` (atomic snapshot, API key write-only)
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -141,6 +152,8 @@ backend/
     │                 #   provider.go (interface), context_builder.go (system prompt assembly),
     │                 #   unconfigured.go (no-API-key fallback)
     │   └── provider/claude/  # client.go — the ONLY package importing anthropic-sdk-go
+    ├── llm/          # runtime.go (live config + provider snapshot, PATCH validation), providers.go (selectable
+    │                 #   provider catalog), store.go (app_config persistence) — ADR 0022
     ├── ai/           # single-shot LLM ops: provider.go (interface), claude.go (impl), ops.go
     │                 #   (Evaluate/Rank/AnalyzeRejection), json.go (extractFirstJSON), retry.go, config.go
     ├── fetch/        # HTTP GET + readability text extraction (go-readability; no chromedp in MVP)
@@ -162,10 +175,11 @@ src/                           # Vue 3 + TS SPA, repo root (Go embeds its build 
 │   │                 #   ListingGradeGrid, ListingDocument, ListingNotes, RankingView
 │   ├── context/      # ContextEditor (presentational), ProfileContextPanel (container)
 │   ├── profile/      # ProfileCreateForm, ProfileListItem, ProfileTable
+│   ├── settings/     # LlmConfigForm (presentational; used by SettingsView)
 │   ├── criteria/     # CriteriaEditor, CriterionCreateForm, CriterionListItem
 │   └── shared/       # ReevaluationBanner
-├── views/          # route-level: ProfileListView, ProfileShellView (tab shell), ListingDetailView, GlobalContextView
-└── router/index.ts  # all 4 routes, single source of routing truth
+├── views/          # route-level: ProfileListView, ProfileShellView (tab shell), ListingDetailView, GlobalContextView, SettingsView
+└── router/index.ts  # all 6 routes, single source of routing truth
 
 docs/
 ├── adr/            # numbered decision records + README.md index
@@ -352,8 +366,8 @@ Mocking, no library used, two conventions by collaborator kind:
    (`internal/agent/provider/claude/client_test.go`). No cassette/VCR library.
 
 Covered packages: `internal/agent` (loop, tools, context builder), `internal/agent/provider/claude`,
-`internal/ai` (JSON extraction, grade normalization), `internal/service` (chat-history JSON merge logic),
-`internal/attachment`, `internal/fetch`. **Not yet covered**: `internal/api` (handlers), `internal/db`/repositories,
+`internal/ai` (JSON extraction, grade normalization), `internal/llm` (runtime swap/validation), `internal/api` (config handler only), `internal/service` (chat-history JSON merge logic),
+`internal/attachment`, `internal/fetch`. **Not yet covered**: `internal/api` (all handlers except config), `internal/db`/repositories,
 `internal/events`, `internal/geocode`, `internal/config`, `cmd/server`.
 
 ### Frontend (Vue + TypeScript)

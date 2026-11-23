@@ -1,16 +1,19 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"propertyfinder/internal/config"
+	"propertyfinder/internal/llm"
 )
 
-// configResponse is the GET /api/config body. APIKey is deliberately not
-// echoed back — apiKeyConfigured reports whether one is set without ever
-// exposing the value over HTTP.
+// configResponse is the GET/PATCH /api/config body. APIKey is deliberately
+// not echoed back — api_key_configured reports whether one is set without
+// ever exposing the value over HTTP. providers is the backend-owned list of
+// selectable providers and their model suggestions; the Settings UI renders
+// its pickers from it.
 type configResponse struct {
-	LLM llmConfigResponse `json:"llm"`
+	LLM       llmConfigResponse  `json:"llm"`
+	Providers []llm.ProviderInfo `json:"providers"`
 }
 
 type llmConfigResponse struct {
@@ -25,26 +28,46 @@ type llmConfigResponse struct {
 	APIKeyConfigured    bool   `json:"api_key_configured"`
 }
 
-// ConfigHandler serves the resolved Tier-2 app configuration.
+// ConfigHandler serves and edits the live Tier-2 LLM configuration.
 type ConfigHandler struct {
-	llm config.LLM
+	runtime *llm.Runtime
 }
 
 func (handler *ConfigHandler) get(writer http.ResponseWriter, _ *http.Request) {
-	body := configResponse{
-		LLM: llmConfigResponse{
-			Provider:            handler.llm.Provider,
-			BaseURL:             handler.llm.BaseURL,
-			Model:               handler.llm.Model,
-			TimeoutSeconds:      handler.llm.TimeoutSeconds,
-			MaxRetries:          handler.llm.MaxRetries,
-			MaxToolCallsPerTurn: handler.llm.MaxToolCallsPerTurn,
-			MaxLLMRoundtrips:    handler.llm.MaxLLMRoundtrips,
-			ReasoningLanguage:   handler.llm.ReasoningLanguage,
-			APIKeyConfigured:    handler.llm.APIKey != "",
-		},
+	writeJSON(writer, http.StatusOK, newConfigResponse(handler.runtime.Config()))
+}
+
+// patch applies a partial llm.* update (docs/spec 00-03 "Config"): the
+// request fields are all optional, api_key is write-only, and the change is
+// live for the next chat turn / evaluation without a restart.
+func (handler *ConfigHandler) patch(writer http.ResponseWriter, request *http.Request) {
+	var body struct {
+		LLM llm.Update `json:"llm"`
 	}
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(writer).Encode(body)
+	if !decodeJSON(writer, request, &body) {
+		return
+	}
+	updated, err := handler.runtime.Apply(request.Context(), body.LLM)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, newConfigResponse(updated))
+}
+
+func newConfigResponse(cfg config.LLM) configResponse {
+	return configResponse{
+		LLM: llmConfigResponse{
+			Provider:            cfg.Provider,
+			BaseURL:             cfg.BaseURL,
+			Model:               cfg.Model,
+			TimeoutSeconds:      cfg.TimeoutSeconds,
+			MaxRetries:          cfg.MaxRetries,
+			MaxToolCallsPerTurn: cfg.MaxToolCallsPerTurn,
+			MaxLLMRoundtrips:    cfg.MaxLLMRoundtrips,
+			ReasoningLanguage:   cfg.ReasoningLanguage,
+			APIKeyConfigured:    cfg.APIKey != "",
+		},
+		Providers: llm.Providers(),
+	}
 }

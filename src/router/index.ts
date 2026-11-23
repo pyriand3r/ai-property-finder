@@ -32,6 +32,11 @@ export const router = createRouter({
       name: 'global-context',
       component: () => import('@/views/GlobalContextView.vue'),
     },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('@/views/SettingsView.vue'),
+    },
   ],
 });
 

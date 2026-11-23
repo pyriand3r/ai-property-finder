@@ -66,19 +66,17 @@ REST API, forms, and MCP tools that need no LLM call still work. These tools are
 
 The LLM settings are `provider`, `base_url`, `model`, `timeout_seconds`, `max_retries`,
 `max_tool_calls_per_turn`, `max_llm_roundtrips`, `reasoning_language`, and `api_key`. They are
-stored as key-value rows (`key`, `category`, `value`) in `app_config`. `GET /api/config` shows
-the resolved state, **read-only**. It never returns the API key in plain text. It only returns
-`api_key_configured: true/false`. There is no PUT endpoint and no settings page in the frontend,
-on purpose. To change a setting (for example, the model), use SQL directly:
+stored as key-value rows (`key`, `category`, `value`) in `app_config`.
 
-```bash
-docker compose exec db psql -U app -d propertyfinder -c \
-  "INSERT INTO app_config (key, category, value) VALUES ('llm.model', 'llm', 'claude-sonnet-5')
-   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
-```
+Edit them in the web UI: **Einstellungen** (`/settings`, link on the profile list). The same
+change is possible with `PATCH /api/config`. The API key is write-only. No endpoint ever returns
+it. `GET /api/config` only returns `api_key_configured: true/false`.
 
-You do **not** need to restart the backend. `LoadAll` reads `app_config` on each request path
-that needs the configuration. It is not cached once at boot.
+You do **not** need to restart the backend. A change applies to the next chat turn and the next
+evaluation. A turn that is already running keeps its old settings (docs/adr/0022).
+
+Direct SQL edits (for example `INSERT ... ON CONFLICT` on `app_config`) are **not** picked up by
+the running process. Restart the backend after such an edit, or save once in the Settings view.
 
 ### Change the password
 
@@ -118,7 +116,7 @@ image version only works if no new migration has run since.
 |---|---|---|
 | Login returns 204, then an instant redirect to `/login` | `COOKIE_SECURE=true` (default) in a deployment with no TLS proxy in front | Set `COOKIE_SECURE=false` (only for setups without an HTTPS proxy in front) |
 | Backend container is `unhealthy` or restarts all the time | A migration fails, or `DATABASE_URL`/`APP_PASSWORD` is missing | Run `docker compose logs backend` — the error is in the first lines (fail-fast before the listener) |
-| Chat answers with an error, but REST/forms work | `CLAUDE_API_KEY` was never set → `agent.NewUnconfiguredProvider()` | Set `CLAUDE_API_KEY` in `.env` and re-create the backend (one-time seed) |
+| Chat answers with an error, but REST/forms work | `CLAUDE_API_KEY` was never set → `agent.NewUnconfiguredProvider()` | Set the API key under Einstellungen (`/settings`). `CLAUDE_API_KEY` in `.env` is only a one-time seed for the first boot |
 | `POST /mcp` returns the SPA (`index.html`) instead of JSON-RPC | The image is **older than** ADR 0019 (no `/mcp` route) | Rebuild/load the image (`docker compose up -d --build`, or load the current `property-finder-image.tar.gz`) |
 | `POST /mcp` returns `401` | The `Authorization: Bearer <APP_PASSWORD>` header is missing or wrong | Check the header. A `APP_PASSWORD` change invalidates old tokens immediately |
 

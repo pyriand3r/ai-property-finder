@@ -253,6 +253,11 @@ These are bugs and UX gaps found in a manual review of the running app (`docs/re
   - Spec: [[../docs/spec/01_mvp/01-12-chat-feedback-fixes]]
   - **Test:** Send a message → the indicator appears at once and disappears at the first text/tool progress. Trigger a multi-roundtrip turn → the indicator appears again at a gap between Tool calls. The unicode bug stays open until it is reproduced.
 
+- [x] **Issue #23 — Edit LLM configuration via UI**
+  - `PATCH /api/config` (partial, validated, write-only API key), `internal/llm.Runtime` swaps both providers live, Settings view at `/settings`.
+  - ADR: [[../docs/adr/0022-live-llm-config-runtime]]. Spec: [[../docs/spec/00_infrastructure_setup/00-03-llm-agent-integration#Config]]
+  - **Test:** Change the model in the UI → the next chat turn and the next evaluation use it. `GET`/`PATCH /api/config` never contain the key.
+
 ---
 
 ## Layer 7: Remaining views

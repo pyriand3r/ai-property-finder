@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -72,6 +73,17 @@ type LLM struct {
 	MaxLLMRoundtrips    int
 	ReasoningLanguage   string
 }
+
+// String redacts APIKey so a stray %v/%+v of an LLM value in a log line
+// can never leak the key (it is write-only over HTTP, docs/spec 00-03
+// "Config").
+func (l LLM) String() string {
+	return fmt.Sprintf("{provider=%s model=%q base_url=%q timeout_seconds=%d max_retries=%d max_tool_calls_per_turn=%d max_llm_roundtrips=%d reasoning_language=%s api_key_configured=%t}",
+		l.Provider, l.Model, l.BaseURL, l.TimeoutSeconds, l.MaxRetries, l.MaxToolCallsPerTurn, l.MaxLLMRoundtrips, l.ReasoningLanguage, l.APIKey != "")
+}
+
+// GoString makes %#v redact the key the same way String does.
+func (l LLM) GoString() string { return l.String() }
 
 // LoadEnv reads Env from environ, a slice of "KEY=VALUE" strings such as
 // os.Environ(). DATABASE_URL and APP_PASSWORD are required; HTTP_LISTEN_ADDR
@@ -136,6 +148,48 @@ WHERE NOT EXISTS (SELECT 1 FROM app_config WHERE key = 'llm.api_key')
 `
 	if _, err := pool.Exec(ctx, insertSQL, claudeAPIKey); err != nil {
 		return fmt.Errorf("seed llm.api_key: %w", err)
+	}
+	return nil
+}
+
+// execer is the one method SaveLLM needs; *pgxpool.Pool and pgx.Tx both satisfy it.
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// SaveLLM upserts every editable llm.* key of cfg into app_config in one
+// statement, so a failure never leaves a half-written configuration. The
+// API key row is written only when includeAPIKey is true: the key is
+// write-only over HTTP, so an update that does not carry a new key must
+// leave the stored one untouched. Rows not managed here (anything outside
+// the keys below) are not touched.
+func SaveLLM(ctx context.Context, db execer, cfg LLM, includeAPIKey bool) error {
+	entries := map[string]string{
+		"llm.provider":                cfg.Provider,
+		"llm.base_url":                cfg.BaseURL,
+		"llm.model":                   cfg.Model,
+		"llm.timeout_seconds":         strconv.Itoa(cfg.TimeoutSeconds),
+		"llm.max_retries":             strconv.Itoa(cfg.MaxRetries),
+		"llm.max_tool_calls_per_turn": strconv.Itoa(cfg.MaxToolCallsPerTurn),
+		"llm.max_llm_roundtrips":      strconv.Itoa(cfg.MaxLLMRoundtrips),
+		"llm.reasoning_language":      cfg.ReasoningLanguage,
+	}
+	if includeAPIKey {
+		entries["llm.api_key"] = cfg.APIKey
+	}
+	keys := make([]string, 0, len(entries))
+	values := make([]string, 0, len(entries))
+	for key, value := range entries {
+		keys = append(keys, key)
+		values = append(values, value)
+	}
+	const upsertSQL = `
+INSERT INTO app_config (key, category, value, updated_at)
+SELECT k, 'llm', v, NOW() FROM unnest($1::text[], $2::text[]) AS t(k, v)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+`
+	if _, err := db.Exec(ctx, upsertSQL, keys, values); err != nil {
+		return fmt.Errorf("save llm config: %w", err)
 	}
 	return nil
 }
