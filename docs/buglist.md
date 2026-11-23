@@ -62,25 +62,29 @@ there. Do not delete the history of what it took to find and fix it.
   treatment.
 - **Status**: Open, not fixed.
 
+---
+
+## Fixed
+
 ### Criterion names show literal `&amp;` instead of `&`
 
 - **Found**: 2026-08-06, while live-checking the Detail View grade grid
   ([[spec/01_mvp/01-10-listing-views-overhaul]])
-- **Symptom**: Criterion names that contain an ampersand show as `Grundstück &amp; Lage`
-  instead of `Grundstück & Lage`. This happens in both the optional grade columns of the List
-  View and the grade grid of the Detail View (`ListingGradeGrid.vue`).
-- **Confirmed**: The literal `&amp;` is already in the raw `GET /api/profiles/{id}/criteria`
-  response. So this is not a frontend rendering bug. The string is stored escaped in the
-  `criterion.name` column.
-- **Root cause**: Not investigated yet. We suspect the name was HTML-escaped once when it was
-  created (for example, by a markdown-rendering step somewhere in the Agent's
-  `propose_criteria` path). The escaped string was then saved as it was. Escaping should only
-  ever happen at render time.
-- **Status**: Open, not fixed.
-
----
-
-## Fixed
+- **Symptom**: Criterion names with an ampersand showed as `Grundstück &amp; Lage`. The literal
+  `&amp;` was already in the raw `GET /api/profiles/{id}/criteria` response.
+- **Root cause** (issue #4): no backend code escapes HTML (no `html.EscapeString`, no templating on
+  this path). The model itself wrote the entity into the `propose_criteria` argument, and
+  `ToolCallService.confirmProposeCriteria` stored it as it was. The REST form and MCP paths store
+  what the user or client sends.
+- **Fix** (issue #4): `parseCriteriaProposal` (`internal/service/tool_call_service.go`) runs
+  `html.UnescapeString` on name and description when a proposal is confirmed. This covers live
+  Agent turns and Rejection Analysis proposals, since both are confirmed through that function.
+- **Existing rows**: no migration. It is a single-user app with a handful of criteria, and the
+  migration SQL cannot be tested here (no DB tests exist). Fix old rows by editing the name in the
+  Criteria form, or once with
+  `UPDATE criterion SET name = replace(name, '&amp;', '&'), description = replace(description, '&amp;', '&');`.
+- **Known gap**: a pending Confirm-Card still shows the raw `&amp;` until confirmed, because the
+  stored `tool_calls` input is not rewritten. The confirmed criterion is correct.
 
 ### Stale "Bewertungstabelle" placeholder at the bottom of the Listing Document
 
