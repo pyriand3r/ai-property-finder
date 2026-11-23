@@ -23,6 +23,12 @@ there. Do not delete the history of what it took to find and fix it.
 
 ## Open
 
+_No open bugs._
+
+---
+
+## Fixed
+
 ### Split-pane detail scroll falls through to page scroll near the bottom
 
 - **Found**: 2026-08-06, reported by the user while scrolling a long Listing in the
@@ -32,7 +38,7 @@ there. Do not delete the history of what it took to find and fix it.
   correctly for about the first 3/4 of its content. The list and header stay in place, and only
   the detail pane scrolls. Near the end of the detail content, the scroll no longer stays
   inside the pane. The whole page starts to scroll instead.
-- **Root cause (hypothesis, not confirmed)**: `.listings-panel-split-detail` in
+- **Root cause (confirmed in a browser repro)**: `.listings-panel-split-detail` in
   `ListingsPanel.vue` is `position: sticky` with `max-height: calc(100vh - 2rem)` and
   `overflow-y: auto`. This is the usual pattern for a sticky pane that scrolls on its own. But
   a `position: sticky` element can only stay stuck inside the bounds of its **containing
@@ -42,14 +48,7 @@ there. Do not delete the history of what it took to find and fix it.
   `overflow-y:auto` content finishes scrolling. The second point is when the bottom edge of the
   containing block is reached, the sticky positioning gives up, and the page takes over the
   scroll. This matches the reported symptom: "fine for 3/4, then the whole page scrolls".
-- **Status**: Open, not fixed. A fix probably needs to give `.listings-panel-split` a height
-  tied to the viewport (not only to its content), so the sticky pane has room to stay stuck.
-  Or it could move the split away from `position: sticky`. A fixed-height flex/grid shell with
-  independent scroll regions is a more typical split-pane layout.
-
----
-
-## Fixed
+- **Status**: Fixed (issue #2). `ListingSplitPane.vue` is now a fixed-height shell. Its height is the viewport minus its own offset from the top of the page. It measures that offset in JS (`--listing-split-top`, `ResizeObserver`) because CSS cannot know it. The page no longer scrolls while the shell is in view. Both columns scroll on their own, and the right pane has `overscroll-behavior: contain`. `ListingMap.vue`'s canvas uses the same variable so the map fills the shell. Trade-off: on a short viewport the detail pane is shorter than before (minimum 400px).
 
 ### Quell-URL link color hard to read in dark mode
 
