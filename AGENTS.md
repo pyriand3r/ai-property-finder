@@ -44,7 +44,7 @@ editable in a plain form (ADR 0001) — the UI is never chat-only.
 **Build state**: all 9 layers (0–8) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
 (RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Remaining work is
 tracked as bugs in `docs/buglist.md` (3 open) and
-ideas in `docs/ideas.md` (2 open). UI copy is German (`index.html` is `lang="de"`).
+ideas in `docs/ideas.md` (1 open). UI copy is German (`index.html` is `lang="de"`).
 
 ## Architecture & Data Flow
 
@@ -189,7 +189,7 @@ docs/
 ├── implementation-plan.md   # authoritative build-order/status (layers 0-8 + RF.1-5)
 ├── CONTEXT.md      # domain glossary — see Domain Vocabulary below
 ├── buglist.md      # open bugs found outside the current task (3 open)
-└── ideas.md        # open improvement ideas (2 open)
+└── ideas.md        # open improvement ideas (1 open)
 ```
 
 No `scripts/` directory. CI is `.github/workflows/ci.yml` (see Testing & QA → CI).
