@@ -334,8 +334,8 @@ Spec: [[spec/01_mvp/01-14-external-evaluation-via-mcp]]. ADR: [[adr/0026-externa
   - Service methods `Brief` and `SubmitGrades` with validation (all active Criteria exactly once, A-F, reasoning not empty). Three MCP tools in `internal/mcpserver`.
   - **Test:** integration tests per spec Layer 3 (`TEST_DATABASE_URL`).
 
-- [ ] **9.3 — Docs + live check** (#50)
-  - AGENTS.md, CONTEXT.md, 00-03 spec, ADR index. Live: grade one Listing from an MCP client with no `CLAUDE_API_KEY` set.
+- [x] **9.3 — Docs + live check** (#50)
+  - AGENTS.md, CONTEXT.md, 00-03 spec, operations guide, ADR index. Live: graded one Listing from an MCP client with no `CLAUDE_API_KEY` set (commands and results in the PR body of #50).
 
 ---
 

@@ -41,8 +41,9 @@ Markdown **Context Files** (Global + per-Profile — the app's own AGENT.md equi
 instead of hardcoded per-portal scraper code. Every Agent-written field is also visible and independently
 editable in a plain form (ADR 0001) — the UI is never chat-only.
 
-**Build state**: all 9 layers (0–8) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
-(RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Remaining work is
+**Build state**: all 10 layers (0–9) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
+(RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Layer 9 (ADR 0026)
+lets an MCP client grade a Listing itself with no `CLAUDE_API_KEY`. Remaining work is
 tracked as bugs in `docs/buglist.md` (3 open) and
 ideas in `docs/ideas.md` (6 open). UI copy is German (`index.html` is `lang="de"`).
 
@@ -129,7 +130,7 @@ fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-rating
 - **0017**: Confirm-Card confirmed/rejected status is stored in the same `chat_message.tool_calls` JSONB (extends 0009) so it survives reload/tab-switch
 - **0018**: Single password (APP_PASSWORD) gates Frontend+API access via an HS256 JWT in an httpOnly cookie; Secure flag toggled by COOKIE_SECURE for the documented behind-a-reverse-proxy deployments
 - **0019**: MCP Streamable HTTP interface (`internal/mcpserver`) exposes the existing Agent Tool catalog
-  plus `list_profiles` to external MCP clients, gated by a static Bearer token reusing APP_PASSWORD
+  plus `list_profiles` to external MCP clients, gated by a static Bearer token reusing APP_PASSWORD; extended by 0026
 - **0020**: Chat-uploaded JPG/PNG screenshots are sent to Claude as a native `image` content block, same
   pattern as ADR 0005's PDF path (`internal/attachment`, `Provider.SupportsImageInput()`)
 - **0021**: Project is licensed AGPL-3.0-only (`LICENSE`); the network clause (§13) applies to modified hosted instances
@@ -330,7 +331,8 @@ Env vars (`.env`, from `.env.example`): `DB_PASSWORD` and `APP_PASSWORD` (both r
 - `.env.example`, `docker-compose.yml`, `backend/Dockerfile` — deployment/env contract.
 - `backend/internal/mcpserver/` — MCP Streamable HTTP interface exposing the Agent Tool catalog to
   external clients (docs/adr/0019); `internal/service/tool_registry.go`'s `NewToolRegistry` is the shared
-  Registry constructor both this and `AgentService.runTurn` use.
+  Registry constructor both this and `AgentService.runTurn` use. `evaluation_tools.go` holds the three
+  external-evaluation tools (docs/adr/0026); they call `EvaluationService` directly, not the Registry.
 
 ## Runtime/Tooling Preferences
 
@@ -483,7 +485,9 @@ PDFs and listing images).
 - **Tool** — a typed function the Agent calls mid-turn: `fetch_url`, `save_listing`, `download_image`,
   `evaluate_listing`, `geocode`, `compute_ranking`, `read_pdf`, `propose_criteria`, `update_context`,
   `list_profile_listings`. The same catalog (plus `list_profiles` for discovery) is also reachable
-  outside a chat session via the MCP interface at `POST /mcp` (docs/adr/0019).
+  outside a chat session via the MCP interface at `POST /mcp` (docs/adr/0019). MCP additionally has
+  `list_pending_evaluations`, `get_evaluation_brief`, `submit_evaluation` (13 tools in total): an external
+  client grades a Listing itself and needs no LLM key (docs/adr/0026, spec 01-14).
 - **Context File** — persistent Markdown steering Agent behavior (avoid "Prompt"). Two scopes: **Global**
   (app-wide) and **Profile** (per-Search-Profile; overrides Global).
 - **Portal Rule** — a Context File *fragment* describing per-domain handling, not a structured entity.

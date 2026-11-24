@@ -60,7 +60,9 @@ If `DATABASE_URL` or `APP_PASSWORD` is missing, the start fails (fail-fast, no s
 run). Without `CLAUDE_API_KEY` the backend still starts. The Agent then falls back to
 `agent.NewUnconfiguredProvider()` and rejects every chat request with an error message. The
 REST API, forms, and MCP tools that need no LLM call still work. These tools are `fetch_url`,
-`download_image`, `geocode`, `list_profile_listings`, `compute_ranking`, and `list_profiles`.
+`download_image`, `geocode`, `list_profile_listings`, `compute_ranking`, `list_profiles`, and the
+external evaluation tools `list_pending_evaluations`, `get_evaluation_brief`, and
+`submit_evaluation` (an MCP client can grade a listing itself, ADR 0026).
 
 ### Tier 2 — `app_config` table (the DB is the source of truth after the first boot)
 
@@ -154,6 +156,9 @@ a required field. Outside a chat session, there is no other way to get a profile
 | `geocode` | Turn an address into coordinates (Nominatim) | `profile_id`, `address`, `country` (optional, ISO-3166-1 alpha-2) |
 | `list_profile_listings` | Overview of all listings in the profile (title, price, Score, status, source URL) | `profile_id` |
 | `compute_ranking` | Ranking of all graded listings that are not rejected/archived, highest Score first | `profile_id` |
+| `list_pending_evaluations` | List the listings of a profile that need a (new) evaluation (`needs_reevaluation = true`). No LLM key needed | `profile_id` |
+| `get_evaluation_brief` | Get everything to grade one listing yourself: grading instruction, active criteria with IDs, the listing incl. document, both Context Files, user-confirmed fields, response format. No LLM key needed | `listing_id` |
+| `submit_evaluation` | Send your grades for one listing. The server checks them (every active criterion exactly once, A–F, reasoning not empty), stores them, and computes the Score. No LLM key needed | `listing_id`, `grades[]` of `criterion_id`, `grade`, `reasoning` |
 
 Over MCP, `propose_criteria` and `update_context` have **no undo**. The internal chat tools
 with the same names (ADR 0004/0009) use a Confirm-Card. The MCP versions write directly with
@@ -247,3 +252,18 @@ Add it as a local stdio MCP server in the Claude Desktop configuration (Command:
 5. `geocode` for the address (fills `latitude`/`longitude` for the map).
 6. `evaluate_listing` → grade per criterion + Score.
 7. `list_profile_listings` / `compute_ranking` for the overview/Ranking.
+
+### Grading a Listing from the MCP Client (ADR 0026)
+
+This works without `CLAUDE_API_KEY`. The client does the grading, the server only validates and
+computes the Score.
+
+1. `list_pending_evaluations` with the `profile_id` → listings that need a grade. (You can also
+   take any `listing_id` from `list_profile_listings`.)
+2. `get_evaluation_brief` with the `listing_id` → instruction, active criteria, listing, context.
+3. Grade each active criterion by its `criterion_id`.
+4. `submit_evaluation` with `listing_id` and one `{criterion_id, grade, reasoning}` per active
+   criterion. A wrong set of criteria, a bad grade, or an empty reasoning is rejected and nothing
+   is stored.
+5. The Grades, the Score, and the Listing view in the UI show the result. The listing is no
+   longer pending.
