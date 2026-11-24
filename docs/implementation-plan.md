@@ -322,6 +322,23 @@ These are bugs and UX gaps found in a manual review of the running app (`docs/re
 
 ---
 
+## Layer 9: External evaluation via MCP
+
+Spec: [[spec/01_mvp/01-14-external-evaluation-via-mcp]]. ADR: [[adr/0026-external-evaluation-via-mcp]]. Internal evaluation stays unchanged.
+
+- [ ] **9.1 — Shared evaluation code** (#48)
+  - Export the grading instruction from `internal/ai/ops.go`. Split `EvaluateListing` so `ApplyGrades` holds the transaction.
+  - **Test:** `go test ./internal/ai/... ./internal/service/...`. Internal evaluation gives the same result as before.
+
+- [ ] **9.2 — `get_evaluation_brief`, `submit_evaluation`, `list_pending_evaluations`**  (#49)
+  - Service methods `Brief` and `SubmitGrades` with validation (all active Criteria exactly once, A-F, reasoning not empty). Three MCP tools in `internal/mcpserver`.
+  - **Test:** integration tests per spec Layer 3 (`TEST_DATABASE_URL`).
+
+- [ ] **9.3 — Docs + live check** (#50)
+  - AGENTS.md, CONTEXT.md, 00-03 spec, ADR index. Live: grade one Listing from an MCP client with no `CLAUDE_API_KEY` set.
+
+---
+
 ## Dependencies
 
 ```
@@ -343,7 +360,9 @@ These are bugs and UX gaps found in a manual review of the running app (`docs/re
                                                                                                                                        │
                                                                                                                                        ├──→ 7.1 ──→ 7.2 ──→ 7.3
                                                                                                                                        │
-                                                                                                                                       └──→ 8.x (parallel)
+                                                                                                                                       ├──→ 8.x (parallel)
+                                                                                                                                       │
+                                                                                                                                       └──→ 9.1 ──→ 9.2 ──→ 9.3
 ```
 
 Layer 7 can run in parallel with Layer 6. The views use the REST APIs from Layers 1-3 and the UI patterns from Layer 5. You can pull 7.2 (Context Editor) forward if needed. Then you can steer the Agent behavior from 6.3 on in the UI instead of with curl.

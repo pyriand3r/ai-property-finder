@@ -71,6 +71,9 @@ _Avoid_: Edit request, correction
 A Criterion with `status = 'proposed'`. The Agent (chat) or an MCP client suggested it, and the user has not approved it yet. It is shown in the Criteria tab with a "Vorgeschlagen" badge and is ignored by evaluation, Score and ranking until the user approves ("Freischalten"). A Criterion with `status = 'active'` is in use. See [[adr/0024-criterion-proposal-status]].
 _Avoid_: Draft criterion, pending criterion
 
+**Evaluation Brief**:
+What an external grader gets from the MCP tool `get_evaluation_brief`: the grading instruction, the active Criteria with their IDs, the Listing, both Context Files and the user-confirmed fields. The grader answers with `submit_evaluation`. The server checks the Grades and computes the Score. See [[spec/01_mvp/01-14-external-evaluation-via-mcp]] and [[adr/0026-external-evaluation-via-mcp]].
+
 **Hazard Rating**:
 A whole number from 1 (very low) to 5 (very high). It says how exposed one Hazard Region is to one Hazard Type. **Higher is worse**, the opposite direction of the Score. It belongs to the region, not to a Listing, and it is never an input to the Score, the ranking or the evaluation. Ratings of different hazard types come from different methods and are not comparable. A hazard with no source data for a region has no Hazard Rating. See [[spec/01_mvp/01-13-hazard-ratings]] and [[adr/0025-hazard-ratings-region-level-static-data]].
 _Avoid_: Risk score, Naturrisiko-Score (means: natural-risk score), hazard grade (a Grade is the A-F mark of a Criterion)
