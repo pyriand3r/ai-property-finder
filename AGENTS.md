@@ -44,7 +44,7 @@ editable in a plain form (ADR 0001) — the UI is never chat-only.
 **Build state**: all 9 layers (0–8) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
 (RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Remaining work is
 tracked as bugs in `docs/buglist.md` (3 open) and
-ideas in `docs/ideas.md` (0 open). UI copy is German (`index.html` is `lang="de"`).
+ideas in `docs/ideas.md` (5 open). UI copy is German (`index.html` is `lang="de"`).
 
 ## Architecture & Data Flow
 
@@ -101,6 +101,13 @@ and budget separately. The API key is write-only: no GET/PATCH response and no l
 `llm.Providers()` — add a new provider there plus a branch in `llm.buildSnapshot`. Direct SQL edits of
 `app_config` are not seen by the running process.
 
+**Natural-hazard ratings are static data** (ADR 0025): per region (Portugal: municipality, key `PT-<DICO>`) and
+hazard type, 1–5, higher is worse, never part of the Score. `internal/hazard` embeds one JSON dataset per
+country (`datasets/pt.json`). `main` calls `HazardService.SeedStatic` after the migrations to sync it into
+the `hazard_*` tables (idempotent; it deletes what a file no longer holds). Nothing is fetched at runtime and
+no request writes those tables. Read API: `GET /api/hazards/regions` and `.../{regionKey}`. A dataset that
+fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-ratings.md`.
+
 ### Key Architecture Decisions (`docs/adr/`)
 
 - **0001**: Chat is primary UI; plain form is mandatory fallback — not optional
@@ -129,6 +136,7 @@ and budget separately. The API key is write-only: no GET/PATCH response and no l
 - **0022**: LLM settings editable via `PATCH /api/config` + `/settings`; applied live through `internal/llm.Runtime` (atomic snapshot, API key write-only)
 - **0023**: Replayed chat history goes through `agent.RepairToolPairing` (synthetic `tool_result` for a dangling `tool_use`, orphans dropped); `persistRoundtrip` writes each roundtrip in one transaction
 - **0024**: Criteria have a `proposed`/`active` status; chat `add` and MCP `propose_criteria` only create `proposed` ones (ignored by evaluation/score), the user approves in the Criteria tab or via the Confirm-Card; MCP cannot change active criteria; names unique per profile. Partly replaces 0017/0019 for criteria
+- **0025**: Natural-hazard ratings are region-level, 1–5 (higher is worse), separate from the Score; static datasets embedded in the binary (`internal/hazard`) are synced into `hazard_*` tables at boot; read-only `GET /api/hazards/regions`
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -136,20 +144,20 @@ and budget separately. The API key is write-only: no GET/PATCH response and no l
 
 ```
 backend/
-├── cmd/server/main.go        # entrypoint: env → DB pool → migrations → config seed →
+├── cmd/server/main.go        # entrypoint: env → DB pool → migrations → hazard dataset sync → config seed →
 │                              #   providers → api.NewServer → HTTP listen + graceful shutdown
 └── internal/
     ├── api/          # chi handlers, one file per resource (chat, listings, profiles, criteria,
     │                 #   context_files, notes, images, upload, geocode, evaluate, ranking, tool_calls,
-    │                 #   events, config_handler); router.go = composition root; helpers.go = shared
+    │                 #   events, config_handler, hazards); router.go = composition root; helpers.go = shared
     │                 #   writeError/writeJSON/decodeJSON/parseUUID
     ├── service/      # business logic, one service per concern (agent, chat, listing, profile,
     │                 #   criterion, evaluation, ranking, rejection_analysis, image, note, context,
-    │                 #   upload, tool_call)
+    │                 #   upload, tool_call, hazard)
     ├── domain/       # types.go — shared structs + domain error types (Validation/NotFound/Conflict/Upstream)
     ├── db/           # querier.go (pgx pool/tx abstraction), db.go, migrations/ (golang-migrate, forward-only),
     │                 #   dbtest/ (throwaway Postgres for integration tests, needs TEST_DATABASE_URL)
-    │   └── repository/  # one repo per entity (note, context, chat, image, listing, profile, task, criterion, grade)
+    │   └── repository/  # one repo per entity (note, context, chat, image, listing, profile, task, criterion, grade, hazard)
     ├── agent/        # provider-independent agent loop: loop.go, tools.go (Registry/Dispatch),
     │                 #   provider.go (interface), context_builder.go (system prompt assembly),
     │                 #   unconfigured.go (no-API-key fallback)
@@ -161,6 +169,7 @@ backend/
     ├── fetch/        # HTTP GET + readability text extraction (go-readability; no chromedp in MVP)
     ├── attachment/   # attachment.go — read/delete uploaded PDFs (ADR 0005) and images (ADR 0020) on disk (base64 in/out)
     ├── geocode/      # nominatim.go — Nominatim HTTP client, rate-limited
+    ├── hazard/       # hazard.go — loads and validates the embedded per-country hazard datasets (datasets/*.json); HazardService syncs them into hazard_* at boot — ADR 0025
     ├── events/       # broker.go — single SSE Broker for chat streaming + background task progress
     ├── config/       # two-tier config loader (Env + DB-backed LLM config)
     └── web/          # web.go — go:embed of dist/, SPA-fallback handler; dist/ is gitignored except .gitkeep
@@ -189,7 +198,7 @@ docs/
 ├── implementation-plan.md   # authoritative build-order/status (layers 0-8 + RF.1-5)
 ├── CONTEXT.md      # domain glossary — see Domain Vocabulary below
 ├── buglist.md      # open bugs found outside the current task (3 open)
-└── ideas.md        # open improvement ideas (0 open)
+└── ideas.md        # open improvement ideas (5 open)
 ```
 
 No `scripts/` directory. CI is `.github/workflows/ci.yml` (see Testing & QA → CI).
@@ -375,7 +384,8 @@ Covered packages: `internal/agent` (loop, tools, context builder), `internal/age
 `internal/api` (auth, config, events/SSE, geocode validation, helpers, listing patch body),
 `internal/service` (chat-history JSON merge logic), `internal/attachment`, `internal/fetch`,
 `internal/events` (broker, SSE framing), `internal/geocode` (httptest Nominatim, throttle),
-`internal/config` (`LoadEnv`, `SaveLLM`, redaction), `internal/db/repository`.
+`internal/config` (`LoadEnv`, `SaveLLM`, redaction), `internal/db/repository`, `internal/hazard` (dataset
+validation, the shipped Portugal data).
 
 Repository tests need no database: `internal/db/repository/fake_querier_test.go` is a hand-written
 `db.Querier` that records SQL/args and replays canned rows, tags and errors. They check argument
@@ -385,12 +395,18 @@ They do **not** run SQL, so a wrong query or migration is not caught.
 Postgres integration tests use `internal/db/dbtest` (`NewURL`/`NewPool`: a fresh, migrated database per
 test). They are **skipped unless `TEST_DATABASE_URL`** points at a server the test may create databases
 on (CI sets it; locally e.g. `postgres://app@127.0.0.1:5432/postgres?sslmode=disable`). Current users:
-the migration test (`internal/db/migrations_test.go`), the criterion status workflow
-(`internal/service/criterion_status_test.go`), `PATCH`/approve REST (`internal/api/criteria_test.go`) and
-MCP `propose_criteria` (`internal/mcpserver/propose_criteria_test.go`). **Not yet covered**:
+the migration tests (`internal/db/migrations_test.go`, incl. the hazard constraints), the criterion status
+workflow (`internal/service/criterion_status_test.go`), the hazard sync and lookups
+(`internal/service/hazard_service_test.go`, `internal/api/hazards_test.go`), `PATCH`/approve REST
+(`internal/api/criteria_test.go`) and MCP `propose_criteria` (`internal/mcpserver/propose_criteria_test.go`).
+**Not yet covered**:
 `config.LoadAll`/`SeedFromEnv`/`ConnectPool`, `db.WithTx` on its own, the other `internal/api` handlers
 that need a `*pgxpool.Pool`-backed service, the rest of `internal/service`, `cmd/server`. `geocode.baseURL` is a package variable only so tests can point it at an
 `httptest` server.
+
+No Docker or `psql` on the machine? A throwaway Go program outside the repo that starts
+`github.com/fergusstrange/embedded-postgres` (it downloads server binaries and runs as a normal user) gives a
+server for `TEST_DATABASE_URL`, for example `postgres://app:app@127.0.0.1:54329/postgres?sslmode=disable`.
 
 ### Frontend (Vue + TypeScript)
 
@@ -474,6 +490,8 @@ PDFs and listing images).
 - **Ranking** — the curated, AI-narrated ordered view of active listings, regenerated only on request —
   distinct from the plain sortable List View.
 - **Photo Set** — images per listing, tagged by category (exterior/interior/floor-plan/outbuilding/other).
+- **Hazard Rating** — region-level 1–5 per Hazard Type (wildfire/flood/earthquake/landslide), higher is worse;
+  separate from the Score (ADR 0025). Region = municipality in Portugal, key `PT-<DICO>`.
 
 ## Deferred / Not in MVP
 

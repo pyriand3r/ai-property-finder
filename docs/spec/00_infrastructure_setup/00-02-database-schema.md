@@ -7,7 +7,7 @@ spec: database-schema
 phase: 0
 order: 2
 status: ready
-updated: 2026-08-02
+updated: 2026-11-24
 tags:
   - property-finder-obs-style
   - spec
@@ -151,6 +151,51 @@ One row per Search Profile.
 | `listing_id`    | UUID        | FK → listing, NULL                  | Set when the tool calls of this turn created or updated a specific Listing. It lets the UI link from the chat straight to the Listing. |
 | `created_at`    | TIMESTAMPTZ | NOT NULL                            | Sort key within the session |
 
+### Hazard tables
+
+Region-level natural hazard ratings (migration `000005_hazard_rating`, [[../../docs/adr/0025-hazard-ratings-region-level-static-data]], [[../01_mvp/01-13-hazard-ratings]]). They are **static reference data**: the backend syncs them at boot from the dataset files embedded in the binary, and no request writes them. They have no relation to `listing` or `search_profile`, and they never feed the Score. `hazard_type` is TEXT with a CHECK constraint, not an ENUM, so a new hazard type needs one replaced constraint (same reason as `criterion.status`, ADR 0024).
+
+**`hazard_source`**: where ratings come from.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | TEXT | PK | Stable slug, for example `pt-icnf-wildfire-hazard-2020-2030` |
+| `hazard_type` | TEXT | NOT NULL, CHECK (`hazard_type IN ('wildfire','flood','earthquake','landslide')`) | The one hazard type this source rates |
+| `title` | TEXT | NOT NULL | Name of the published dataset |
+| `publisher` | TEXT | NOT NULL | Who publishes it |
+| `url` | TEXT | NOT NULL | Landing page of the dataset |
+| `license` | TEXT | NOT NULL | Terms of use, and what attribution is required |
+| `dataset_version` | TEXT | NOT NULL | Edition or date of the dataset as published (free text) |
+| `retrieved_on` | DATE | NOT NULL | The day the data was taken |
+| `method` | TEXT | NOT NULL | How the dataset's own values became the 1-5 scale. It says which step is an app-specific interpretation. |
+| `notes` | TEXT | NOT NULL, DEFAULT `''` | Coverage and limits |
+
+`UNIQUE (id, hazard_type)` is the target of the composite foreign key of `hazard_rating`.
+
+**`hazard_region`**: the places ratings are given for.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `key` | TEXT | PK, CHECK (`key ~ '^[A-Z]{2}-[0-9A-Z]+$'`) | `<country>-<national code>`, for example `PT-1106` (DICO code of the municipality) |
+| `country` | TEXT | NOT NULL, CHECK (`country ~ '^[A-Z]{2}$'`) | ISO 3166-1 alpha-2 |
+| `name` | TEXT | NOT NULL | Display name. It is not unique ("Lagoa"). |
+| `parent_name` | TEXT | NOT NULL, DEFAULT `''` | District or island. It tells regions with the same name apart. |
+| `name_search` | TEXT | NOT NULL | `name` in lower case, without diacritics, hyphens as spaces. Name searches compare against it. It is not part of the API. |
+
+`CHECK (key LIKE country || '-%')` ties the key to the country.
+
+**`hazard_rating`**: one row per region and hazard type.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `region_key` | TEXT | NOT NULL, FK → hazard_region, ON DELETE CASCADE | |
+| `hazard_type` | TEXT | NOT NULL | One of the four hazard types. It is checked through the composite foreign key below. |
+| `rating` | SMALLINT | NOT NULL, CHECK (`rating BETWEEN 1 AND 5`) | 1 = very low hazard, 5 = very high. Higher is worse. |
+| `source_id` | TEXT | NOT NULL | The source of this rating |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | The last time the rating or its source id changed. A boot that syncs identical data does not move it. |
+
+Primary key `(region_key, hazard_type)`. `FOREIGN KEY (source_id, hazard_type) REFERENCES hazard_source (id, hazard_type)`: a rating can only cite a source of its own hazard type. A hazard with no source data for a region has no row.
+
 ---
 
 ## Foreign Key Delete Behaviour (new/changed only)
@@ -163,6 +208,8 @@ One row per Search Profile.
 | `chat_session.profile_id` → `search_profile` | CASCADE | |
 | `chat_message.session_id` → `chat_session` | CASCADE | |
 | `chat_message.listing_id` → `listing` | SET NULL | The chat history stays after a Listing is deleted |
+| `hazard_rating.region_key` → `hazard_region` | CASCADE | Deleting a region deletes its ratings |
+| `hazard_rating.(source_id, hazard_type)` → `hazard_source` | NO ACTION | A source cannot be deleted while a rating cites it. The sync removes ratings first. |
 
 **Listing delete order**: delete the files first (`os.RemoveAll("/data/images/listings/{id}")`), then the DB row. If deleting the files fails, the DB row is not deleted. This leaves no orphaned files and no orphaned DB references. `listing_image` rows are deleted by cascade through the FK after the `listing` row is deleted.
 
@@ -177,6 +224,8 @@ All FK behaviours from the predecessor project stay the same for the carried-ove
 | `chat_message`      | `session_id, created_at` | Load the history of a session in order |
 | `chat_message`      | `listing_id`           | Jump from a Listing to the chat turn that created or updated it |
 | `context_revision`  | `context_id, created_at` | Look up history, newest first |
+
+The hazard tables have no extra index. The primary keys cover the lookups by key and by region, and the tables hold a few hundred rows.
 
 ---
 

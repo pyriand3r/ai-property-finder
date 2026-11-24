@@ -3,7 +3,7 @@ type: tracking
 title: Feature & Improvement Ideas
 project: property-finder-obs-style
 status: active
-updated: 2026-11-23
+updated: 2026-11-24
 tags:
   - property-finder-obs-style
   - ideas
@@ -24,7 +24,33 @@ When an idea is built, move its entry to **Done**. Link the commit or spec that 
 
 ## Open
 
-_No open ideas._
+### Find the hazard region of a Listing
+
+Found in #44. A Listing has a free-text `region`, a `country` and optional coordinates (`Listing` in `backend/internal/domain/types.go`, `src/types/listing.ts`). Hazard ratings are stored per region key such as `PT-1106` ([[adr/0025-hazard-ratings-region-level-static-data]], [[spec/01_mvp/01-13-hazard-ratings]]). Nothing maps one to the other. Issue #45 (hazard UI, badges plus sort and filter) cannot show ratings for a Listing without this step.
+
+Options:
+
+- Match `listing.region` against the names from `GET /api/hazards/regions?country=&q=`. It is cheap. It fails for regions that are not municipalities ("Alentejo") and is ambiguous for "Lagoa", which exists twice.
+- Let the Agent resolve the municipality when it geocodes (`geocode` Tool, [[adr/0011-nominatim-geocoding-tool]]; Nominatim returns the municipality) and store the key on the Listing, for example in a new `listing.hazard_region_key` column.
+- Bundle simplified CAOP municipality boundaries and look the key up from `latitude` and `longitude`. It needs no network and no Agent, but adds tens of MB.
+
+Depends on: issue #45. Touches: the `listing` table and migration, `ListingService`, `ListingPatch` (a manual edit must be possible, [[adr/0001-chat-first-with-form-fallback]]), the Agent's `save_listing` Tool.
+
+### Hazard lookup as an Agent Tool and an MCP tool
+
+Found in #44. The Agent cannot answer "wie hoch ist das Erdbebenrisiko dort?" (means: how high is the earthquake risk there?) from the ratings. `HazardService.SearchRegions` and `GetRegionHazards` (`backend/internal/service/hazard_service.go`) already return everything a Tool needs. Add the Tool to `NewToolRegistry` (`backend/internal/service/tool_registry.go`, `backend/internal/agent/tools.go`). The MCP interface ([[adr/0019-mcp-tool-interface]], `backend/internal/mcpserver/`) reuses the same registry. The Tool is read-only, so it needs no Confirm-Card. It is most useful together with the entry above (the region of the current Listing). Related: issue #46 (Agent source suggestions).
+
+### Hazard data for Madeira and the Azores (wildfire, flood, landslide)
+
+Found in #44. Only earthquake covers the 30 island municipalities. The three other sources are mainland-only: the ICNF wildfire map, the APA flood hazard maps and ELSUS v2 ([[spec/01_mvp/01-13-hazard-ratings#Coverage]]). The flood research found that the Azores publish their own flood-risk areas and landslide data through a regional government service (`visualizador-idea.ambiente.azores.gov.pt`). It was not ingested. Madeira was not checked. Touches: `backend/internal/hazard/datasets/pt.json`, the coverage table in spec 01-13, and `TestLoad_EmbeddedPortugal_CoversEveryMunicipalityAsDocumented` in `backend/internal/hazard/hazard_test.go` (its rule says the islands have earthquake only).
+
+### Use a Portuguese national landslide source instead of ELSUS
+
+Found in #44. The landslide rating comes from the EU-level ELSUS v2 map because no national dataset could be downloaded: the ANEPC WFS refuses connections, the 2023 national risk assessment has only an image, and the REN layer has no unstable-slope breakdown ([[spec/01_mvp/01-13-hazard-ratings#Landslide (ELSUS v2, EU-level)]]). The issue named "EROS/CCDR" data, which no search found. If a national source becomes downloadable (a working ANEPC or APA service, or a REN layer split by land type), replace the source and its method text, and follow "Updating a dataset" in the same spec. Touches: `backend/internal/hazard/datasets/pt.json`, spec 01-13, [[adr/0025-hazard-ratings-region-level-static-data]] only if the decision changes.
+
+### Keep the hazard dataset build scripts in the repository
+
+Found in #44. `pt.json` was produced by one-off Python GIS scripts (raster and polygon overlays with the CAOP 2025 boundaries) that are not in the repository. Spec 01-13 lists every source, layer and threshold, so a person can repeat the work, but nobody can re-run it. A documented tool (inputs, pinned versions, one command per hazard) would make the next update, and the first one for Sweden or Austria (issue #46), much cheaper. `AGENTS.md` says there is no `scripts/` directory today, so first decide where such a tool lives and that it stays outside `go build ./...`. Touches: spec 01-13 "Updating a dataset", `backend/internal/hazard/datasets/`.
 
 ---
 
