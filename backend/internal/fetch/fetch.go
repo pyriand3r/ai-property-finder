@@ -151,9 +151,12 @@ func (c *Client) fetchBytes(ctx context.Context, rawURL string) (parsedURL *nurl
 		return nil, nil, "", fmt.Errorf("fetch %s: unexpected status %s", rawURL, resp.Status)
 	}
 
-	body, err = io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	body, err = io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("read response body from %s: %w", rawURL, err)
+	}
+	if len(body) > maxBodyBytes {
+		return nil, nil, "", fmt.Errorf("response body from %s exceeds %d bytes", rawURL, maxBodyBytes)
 	}
 	return parsedURL, body, resp.Header.Get("Content-Type"), nil
 }
