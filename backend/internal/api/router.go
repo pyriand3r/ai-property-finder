@@ -61,9 +61,10 @@ func NewServer(pool *pgxpool.Pool, llmRuntime *llm.Runtime, dataDir, appPassword
 	criterionService := service.NewCriterionService(pool)
 	contextService := service.NewContextService(pool)
 	mcpHandler := mcpserver.NewHandler(mcpserver.Deps{
-		Profiles: profileService,
-		Criteria: criterionService,
-		Context:  contextService,
+		Profiles:   profileService,
+		Criteria:   criterionService,
+		Context:    contextService,
+		Evaluation: evaluationService,
 		NewRegistry: func(profileID uuid.UUID) *agent.Registry {
 			return service.NewToolRegistry(pool, dataDir, evaluationService, profileID)
 		},

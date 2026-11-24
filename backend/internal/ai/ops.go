@@ -71,7 +71,7 @@ func runEvaluate(ctx context.Context, c completer, listing domain.Listing, crite
 	var user strings.Builder
 	fmt.Fprintf(&user, "Reasoning language: %s.\n\n", cfg.reasoningLanguage())
 	user.WriteString("Listing:\n")
-	user.WriteString(renderListing(listing))
+	user.WriteString(RenderListing(listing))
 	user.WriteString("\n\nCriteria (grade every one, in order):\n")
 	for i, criterion := range criteria {
 		kind := "objective"
@@ -149,7 +149,7 @@ func runGenerateRanking(ctx context.Context, c completer, listings []domain.List
 		if listing.OverallScore != nil {
 			score = fmt.Sprintf("%.0f", *listing.OverallScore)
 		}
-		fmt.Fprintf(&user, "%d. [Score %s] %s\n", i+1, score, renderListing(listing))
+		fmt.Fprintf(&user, "%d. [Score %s] %s\n", i+1, score, RenderListing(listing))
 	}
 
 	return callWithRetries(ctx, c, rankingSystem, user.String(), func(raw string) (RankingResult, error) {
@@ -232,7 +232,7 @@ func runAnalyzeRejection(
 	var user strings.Builder
 	fmt.Fprintf(&user, "Reasoning language: %s.\n\n", cfg.reasoningLanguage())
 	user.WriteString("Rejected listing:\n")
-	user.WriteString(renderListing(listing))
+	user.WriteString(RenderListing(listing))
 	fmt.Fprintf(&user, "\n\nRejection comment: %s\n", strings.TrimSpace(rejectionComment))
 
 	user.WriteString("\nCurrent criteria:\n")
@@ -331,9 +331,9 @@ func parseRejectionAnalysis(raw string, criterionIDs map[string]bool) (Rejection
 	return result, nil
 }
 
-// renderListing serializes the evaluation-relevant listing fields as
+// RenderListing serializes the evaluation-relevant listing fields as
 // compact labeled lines, omitting empty optional fields.
-func renderListing(listing domain.Listing) string {
+func RenderListing(listing domain.Listing) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Title: %s\n", listing.Title)
 	writeFloat(&b, "Price", listing.Price, listing.PriceCurrency)

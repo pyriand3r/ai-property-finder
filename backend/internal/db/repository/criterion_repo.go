@@ -52,14 +52,15 @@ ORDER BY sort_order
 `, profileID)
 }
 
-// ListActiveByProfile returns a profile's active criteria ordered by
-// sort_order.
+// ListActiveByProfile returns a profile's active criteria in a stable order:
+// sort_order, then created_at and id as tie-breakers (the external evaluation
+// brief, docs/adr/0026, relies on a deterministic list).
 func (repo *CriterionRepo) ListActiveByProfile(ctx context.Context, profileID uuid.UUID) ([]domain.Criterion, error) {
 	return repo.list(ctx, "criterion list active", `
 SELECT id, profile_id, name, description, weight, is_subjective, sort_order, status, created_at, updated_at
 FROM criterion
 WHERE profile_id = $1 AND status = 'active'
-ORDER BY sort_order
+ORDER BY sort_order, created_at, id
 `, profileID)
 }
 

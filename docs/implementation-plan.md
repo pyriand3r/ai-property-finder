@@ -330,7 +330,7 @@ Spec: [[spec/01_mvp/01-14-external-evaluation-via-mcp]]. ADR: [[adr/0026-externa
   - Export the grading instruction from `internal/ai/ops.go`. Split `EvaluateListing` so `ApplyGrades` holds the transaction.
   - **Test:** `go test ./internal/ai/... ./internal/service/...`. Internal evaluation gives the same result as before.
 
-- [ ] **9.2 — `get_evaluation_brief`, `submit_evaluation`, `list_pending_evaluations`**  (#49)
+- [x] **9.2 — `get_evaluation_brief`, `submit_evaluation`, `list_pending_evaluations`**  (#49)
   - Service methods `Brief` and `SubmitGrades` with validation (all active Criteria exactly once, A-F, reasoning not empty). Three MCP tools in `internal/mcpserver`.
   - **Test:** integration tests per spec Layer 3 (`TEST_DATABASE_URL`).
 
