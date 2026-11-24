@@ -50,19 +50,19 @@ func TestNormalizeGrade(t *testing.T) {
 		{"F", domain.GradeF},
 	}
 	for _, tc := range cases {
-		got, err := normalizeGrade(tc.input)
+		got, err := NormalizeGrade(tc.input)
 		if err != nil {
-			t.Errorf("normalizeGrade(%q) unexpected error: %v", tc.input, err)
+			t.Errorf("NormalizeGrade(%q) unexpected error: %v", tc.input, err)
 		}
 		if got != tc.want {
-			t.Errorf("normalizeGrade(%q) = %q, want %q", tc.input, got, tc.want)
+			t.Errorf("NormalizeGrade(%q) = %q, want %q", tc.input, got, tc.want)
 		}
 	}
 
-	if _, err := normalizeGrade("G"); !errors.Is(err, ErrParse) {
-		t.Errorf("normalizeGrade(\"G\") should be ErrParse, got %v", err)
+	if _, err := NormalizeGrade("G"); !errors.Is(err, ErrParse) {
+		t.Errorf("NormalizeGrade(\"G\") should be ErrParse, got %v", err)
 	}
-	if _, err := normalizeGrade(""); !errors.Is(err, ErrParse) {
-		t.Errorf("normalizeGrade(\"\") should be ErrParse, got %v", err)
+	if _, err := NormalizeGrade(""); !errors.Is(err, ErrParse) {
+		t.Errorf("NormalizeGrade(\"\") should be ErrParse, got %v", err)
 	}
 }

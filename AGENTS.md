@@ -44,7 +44,7 @@ editable in a plain form (ADR 0001) — the UI is never chat-only.
 **Build state**: all 9 layers (0–8) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
 (RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Remaining work is
 tracked as bugs in `docs/buglist.md` (3 open) and
-ideas in `docs/ideas.md` (5 open). UI copy is German (`index.html` is `lang="de"`).
+ideas in `docs/ideas.md` (6 open). UI copy is German (`index.html` is `lang="de"`).
 
 ## Architecture & Data Flow
 
@@ -137,6 +137,7 @@ fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-rating
 - **0023**: Replayed chat history goes through `agent.RepairToolPairing` (synthetic `tool_result` for a dangling `tool_use`, orphans dropped); `persistRoundtrip` writes each roundtrip in one transaction
 - **0024**: Criteria have a `proposed`/`active` status; chat `add` and MCP `propose_criteria` only create `proposed` ones (ignored by evaluation/score), the user approves in the Criteria tab or via the Confirm-Card; MCP cannot change active criteria; names unique per profile. Partly replaces 0017/0019 for criteria
 - **0025**: Natural-hazard ratings are region-level, 1–5 (higher is worse), separate from the Score; static datasets embedded in the binary (`internal/hazard`) are synced into `hazard_*` tables at boot; read-only `GET /api/hazards/regions`
+- **0026**: MCP also lets an external client grade a Listing: `get_evaluation_brief` → `submit_evaluation` (+ `list_pending_evaluations`); server validates, computes the Score; internal evaluation unchanged; evaluation only (plan: layer 9, spec 01-14)
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -198,7 +199,7 @@ docs/
 ├── implementation-plan.md   # authoritative build-order/status (layers 0-8 + RF.1-5)
 ├── CONTEXT.md      # domain glossary — see Domain Vocabulary below
 ├── buglist.md      # open bugs found outside the current task (3 open)
-└── ideas.md        # open improvement ideas (5 open)
+└── ideas.md        # open improvement ideas (6 open)
 ```
 
 No `scripts/` directory. CI is `.github/workflows/ci.yml` (see Testing & QA → CI).

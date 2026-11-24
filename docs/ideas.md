@@ -24,6 +24,10 @@ When an idea is built, move its entry to **Done**. Link the commit or spec that 
 
 ## Open
 
+### Full MCP coverage (everything the UI can do)
+
+Asked on 2026-11-24, scoped down to evaluation only ([[adr/0026-external-evaluation-via-mcp]], [[spec/01_mvp/01-14-external-evaluation-via-mcp]]). The rest of the wish: profile, listing (incl. `ListingPatch`, status), note, image, Context replace/history, chat-session and read-only hazard/ranking tools on `/mcp`, plus MCP resources and prompts (`pf://profiles/{id}/criteria`, `evaluate_listing`). Each tool should call the same service as the REST handler (`backend/internal/service`, `backend/internal/mcpserver`). Decided limits that stay: no change of active Criteria over MCP ([[adr/0024-criterion-proposal-status]]), no delete tools. Ranking and rejection analysis as external operations (`get_ranking_brief` / `submit_ranking`) are also open. Builds on [[adr/0019-mcp-tool-interface]].
+
 ### Find the hazard region of a Listing
 
 Found in #44. A Listing has a free-text `region`, a `country` and optional coordinates (`Listing` in `backend/internal/domain/types.go`, `src/types/listing.ts`). Hazard ratings are stored per region key such as `PT-1106` ([[adr/0025-hazard-ratings-region-level-static-data]], [[spec/01_mvp/01-13-hazard-ratings]]). Nothing maps one to the other. Issue #45 (hazard UI, badges plus sort and filter) cannot show ratings for a Listing without this step.

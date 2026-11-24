@@ -3,6 +3,7 @@ package ai
 import (
 	"errors"
 	"propertyfinder/internal/domain"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -214,5 +215,34 @@ func TestRenderListing_IncludesSetFields(t *testing.T) {
 	want := "Title: Kappmuren 2\nPrice: 310000.00 SEK"
 	if rendered != want {
 		t.Errorf("renderListing = %q, want %q", rendered, want)
+	}
+}
+
+// TestEvaluationInstruction_ByPositionIsTheOriginalPrompt pins the internal
+// evaluate_listing system prompt: it was a single constant before the text
+// was split into base + format part (docs/adr/0026), and must not drift.
+func TestEvaluationInstruction_ByPositionIsTheOriginalPrompt(t *testing.T) {
+	want := `You grade a real-estate listing against an ordered, numbered list of criteria.
+
+For EACH criterion, assign a letter grade A (best) to F (worst) and a short reasoning text. Grade only against the criterion's meaning; if the listing lacks the information a criterion needs, grade it low and say so.
+
+Return ONLY a JSON array with EXACTLY one object per criterion, in the SAME ORDER as the numbered list:
+{"index": <1-based position>, "grade": "A".."F", "reasoning": "<short explanation>"}
+
+The array length MUST equal the number of criteria. No prose, no markdown fences.`
+	if got := EvaluationInstruction(EvaluationByPosition); got != want {
+		t.Errorf("by-position instruction changed:\n%s", got)
+	}
+}
+
+// TestEvaluationInstruction_ByCriterionIDDoesNotMentionPosition guards the
+// brief against shipping an instruction that contradicts its answer format.
+func TestEvaluationInstruction_ByCriterionIDDoesNotMentionPosition(t *testing.T) {
+	got := EvaluationInstruction(EvaluationByCriterionID)
+	if strings.Contains(got, "index") || strings.Contains(got, "SAME ORDER") {
+		t.Errorf("by-criterion_id instruction still talks about position:\n%s", got)
+	}
+	if !strings.Contains(got, "criterion_id") {
+		t.Errorf("by-criterion_id instruction does not mention criterion_id:\n%s", got)
 	}
 }

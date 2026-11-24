@@ -44,9 +44,8 @@ func (service *EvaluationService) GetGrades(ctx context.Context, listingID uuid.
 	return repository.NewGradeRepo(service.pool).ListByListing(ctx, listingID)
 }
 
-// EvaluateListing grades listingID against its profile's Criteria, replaces
-// its listing_criterion_grade rows, recomputes overall_score, and clears
-// needs_reevaluation — all in one transaction. Grades are mapped back to
+// EvaluateListing grades listingID against its profile's Criteria with one
+// LLM call and stores the result via ApplyGrades. Grades are mapped back to
 // Criteria by position, never by an ID the model echoes (ADR 0006).
 func (service *EvaluationService) EvaluateListing(ctx context.Context, listingID uuid.UUID) (*EvaluationResult, error) {
 	listingRepo := repository.NewListingRepo(service.pool)
@@ -70,17 +69,8 @@ func (service *EvaluationService) EvaluateListing(ctx context.Context, listingID
 		return nil, mapProviderError(err)
 	}
 
-	txError := db.WithTx(ctx, service.pool, func(tx pgx.Tx) error {
-		if replaceError := repository.NewGradeRepo(tx).ReplaceForListing(ctx, listingID, scores); replaceError != nil {
-			return replaceError
-		}
-		if recomputeError := repository.NewListingRepo(tx).RecomputeScores(ctx, listing.ProfileID); recomputeError != nil {
-			return recomputeError
-		}
-		return repository.NewListingRepo(tx).ClearNeedsReevaluation(ctx, listingID)
-	})
-	if txError != nil {
-		return nil, txError
+	if applyError := service.ApplyGrades(ctx, listingID, scores); applyError != nil {
+		return nil, applyError
 	}
 
 	updated, err := listingRepo.GetByID(ctx, listingID)
@@ -88,6 +78,27 @@ func (service *EvaluationService) EvaluateListing(ctx context.Context, listingID
 		return nil, err
 	}
 	return &EvaluationResult{Listing: updated, Grades: scores}, nil
+}
+
+// ApplyGrades stores grades for listingID: it replaces the listing's
+// listing_criterion_grade rows, recomputes the profile's scores, and clears
+// needs_reevaluation — all in one transaction. It is the single write path
+// for internal (EvaluateListing) and external (MCP, docs/adr/0026)
+// evaluation; callers validate grades before calling it.
+func (service *EvaluationService) ApplyGrades(ctx context.Context, listingID uuid.UUID, grades []domain.CriterionScore) error {
+	listing, err := repository.NewListingRepo(service.pool).GetByID(ctx, listingID)
+	if err != nil {
+		return err
+	}
+	return db.WithTx(ctx, service.pool, func(tx pgx.Tx) error {
+		if replaceError := repository.NewGradeRepo(tx).ReplaceForListing(ctx, listingID, grades); replaceError != nil {
+			return replaceError
+		}
+		if recomputeError := repository.NewListingRepo(tx).RecomputeScores(ctx, listing.ProfileID); recomputeError != nil {
+			return recomputeError
+		}
+		return repository.NewListingRepo(tx).ClearNeedsReevaluation(ctx, listingID)
+	})
 }
 
 // ReevaluateAll finds every listing in profileID with needs_reevaluation =

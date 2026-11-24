@@ -13,14 +13,44 @@ import (
 // prompt design, JSON robustness, and position-based index mapping live
 // here so every provider behaves identically (spec 00-03, ADR 0006).
 
-const evaluateSystem = `You grade a real-estate listing against an ordered, numbered list of criteria.
+// EvaluationFormat selects how a grader must address the criteria in its
+// answer. The internal call maps grades back by position (ADR 0006); an
+// external grader (docs/adr/0026) answers by criterion_id.
+type EvaluationFormat int
 
-For EACH criterion, assign a letter grade A (best) to F (worst) and a short reasoning text. Grade only against the criterion's meaning; if the listing lacks the information a criterion needs, grade it low and say so.
+const (
+	// EvaluationByPosition: one object per criterion, same order as the
+	// numbered list, identified by its 1-based index.
+	EvaluationByPosition EvaluationFormat = iota
+	// EvaluationByCriterionID: one object per criterion, identified by its
+	// criterion_id; order is irrelevant.
+	EvaluationByCriterionID
+)
 
-Return ONLY a JSON array with EXACTLY one object per criterion, in the SAME ORDER as the numbered list:
+// evaluationBase is the format-independent part of the grading instruction.
+const evaluationBase = `You grade a real-estate listing against an ordered, numbered list of criteria.
+
+For EACH criterion, assign a letter grade A (best) to F (worst) and a short reasoning text. Grade only against the criterion's meaning; if the listing lacks the information a criterion needs, grade it low and say so.`
+
+const evaluationFormatByPosition = `Return ONLY a JSON array with EXACTLY one object per criterion, in the SAME ORDER as the numbered list:
 {"index": <1-based position>, "grade": "A".."F", "reasoning": "<short explanation>"}
 
 The array length MUST equal the number of criteria. No prose, no markdown fences.`
+
+const evaluationFormatByCriterionID = `Return ONLY a JSON array with EXACTLY one object per criterion, identified by the criterion's criterion_id (copy it exactly from the criteria list; the order does not matter):
+{"criterion_id": "<criterion id>", "grade": "A".."F", "reasoning": "<short explanation>"}
+
+The array MUST contain every criterion exactly once. No prose, no markdown fences.`
+
+// EvaluationInstruction returns the grading instruction: the shared base
+// text plus the answer-format part for format. It is the single source for
+// the internal evaluate_listing prompt and the external evaluation brief.
+func EvaluationInstruction(format EvaluationFormat) string {
+	if format == EvaluationByCriterionID {
+		return evaluationBase + "\n\n" + evaluationFormatByCriterionID
+	}
+	return evaluationBase + "\n\n" + evaluationFormatByPosition
+}
 
 // rawGrade is the wire shape for one evaluated criterion.
 type rawGrade struct {
@@ -51,7 +81,7 @@ func runEvaluate(ctx context.Context, c completer, listing domain.Listing, crite
 		fmt.Fprintf(&user, "%d. [%s] %s — %s\n", i+1, kind, criterion.Name, criterion.Description)
 	}
 
-	return callWithRetries(ctx, c, evaluateSystem, user.String(), func(raw string) ([]domain.CriterionScore, error) {
+	return callWithRetries(ctx, c, EvaluationInstruction(EvaluationByPosition), user.String(), func(raw string) ([]domain.CriterionScore, error) {
 		return parseGrades(raw, criteria)
 	})
 }
@@ -73,7 +103,7 @@ func parseGrades(raw string, criteria []domain.Criterion) ([]domain.CriterionSco
 	}
 	out := make([]domain.CriterionScore, len(criteria))
 	for i, w := range wire {
-		grade, gradeErr := normalizeGrade(w.Grade)
+		grade, gradeErr := NormalizeGrade(w.Grade)
 		if gradeErr != nil {
 			return nil, gradeErr
 		}
