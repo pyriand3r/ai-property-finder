@@ -48,20 +48,9 @@ func (service *EvaluationService) GetGrades(ctx context.Context, listingID uuid.
 // LLM call and stores the result via ApplyGrades. Grades are mapped back to
 // Criteria by position, never by an ID the model echoes (ADR 0006).
 func (service *EvaluationService) EvaluateListing(ctx context.Context, listingID uuid.UUID) (*EvaluationResult, error) {
-	listingRepo := repository.NewListingRepo(service.pool)
-	listing, err := listingRepo.GetByID(ctx, listingID)
+	listing, criteria, err := service.activeCriteria(ctx, listingID)
 	if err != nil {
 		return nil, err
-	}
-
-	// Active criteria only: a proposed one is not part of the evaluation
-	// until the user approves it (docs/adr/0024).
-	criteria, err := repository.NewCriterionRepo(service.pool).ListActiveByProfile(ctx, listing.ProfileID)
-	if err != nil {
-		return nil, err
-	}
-	if len(criteria) == 0 {
-		return nil, &domain.ValidationError{Field: "criteria", Message: "Profil hat keine aktiven Kriterien — zuerst Kriterien anlegen oder freigeben"}
 	}
 
 	scores, err := service.provider.EvaluateListing(ctx, *listing, criteria)
@@ -73,7 +62,7 @@ func (service *EvaluationService) EvaluateListing(ctx context.Context, listingID
 		return nil, applyError
 	}
 
-	updated, err := listingRepo.GetByID(ctx, listingID)
+	updated, err := repository.NewListingRepo(service.pool).GetByID(ctx, listingID)
 	if err != nil {
 		return nil, err
 	}

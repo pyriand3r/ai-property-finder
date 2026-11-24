@@ -18,7 +18,10 @@ import (
 // client — the path an external client such as Claude Desktop takes.
 func connectMCP(t *testing.T, pool *pgxpool.Pool) *mcp.ClientSession {
 	t.Helper()
-	server := httptest.NewServer(NewHandler(Deps{Criteria: service.NewCriterionService(pool)}))
+	server := httptest.NewServer(NewHandler(Deps{
+		Criteria:   service.NewCriterionService(pool),
+		Evaluation: service.NewEvaluationService(pool, nil, nil), // grading tools never call the LLM provider
+	}))
 	t.Cleanup(server.Close)
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil)

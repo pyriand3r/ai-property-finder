@@ -201,9 +201,9 @@ func TestParseRejectionAnalysis_MalformedJSON(t *testing.T) {
 
 func TestRenderListing_OmitsEmptyFields(t *testing.T) {
 	listing := domain.Listing{Title: "Test House"}
-	rendered := renderListing(listing)
+	rendered := RenderListing(listing)
 	if rendered != "Title: Test House" {
-		t.Errorf("renderListing with only Title set = %q, want exactly %q", rendered, "Title: Test House")
+		t.Errorf("RenderListing with only Title set = %q, want exactly %q", rendered, "Title: Test House")
 	}
 }
 
@@ -211,10 +211,10 @@ func TestRenderListing_IncludesSetFields(t *testing.T) {
 	price := 310000.0
 	currency := "SEK"
 	listing := domain.Listing{Title: "Kappmuren 2", Price: &price, PriceCurrency: &currency}
-	rendered := renderListing(listing)
+	rendered := RenderListing(listing)
 	want := "Title: Kappmuren 2\nPrice: 310000.00 SEK"
 	if rendered != want {
-		t.Errorf("renderListing = %q, want %q", rendered, want)
+		t.Errorf("RenderListing = %q, want %q", rendered, want)
 	}
 }
 
