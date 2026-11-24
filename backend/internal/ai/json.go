@@ -74,10 +74,10 @@ func extractFirstJSON(s string) (string, error) {
 	return "", fmt.Errorf("unbalanced JSON value: %w", ErrParse)
 }
 
-// normalizeGrade trims and upper-cases a raw grade letter and validates it
+// NormalizeGrade trims and upper-cases a raw grade letter and validates it
 // against A-F. Language and surrounding whitespace never gate acceptance —
 // only the letter itself does.
-func normalizeGrade(raw string) (domain.CriterionGrade, error) {
+func NormalizeGrade(raw string) (domain.CriterionGrade, error) {
 	grade := domain.CriterionGrade(strings.ToUpper(strings.TrimSpace(raw)))
 	switch grade {
 	case domain.GradeA, domain.GradeB, domain.GradeC, domain.GradeD, domain.GradeE, domain.GradeF:

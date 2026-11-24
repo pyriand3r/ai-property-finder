@@ -326,7 +326,7 @@ These are bugs and UX gaps found in a manual review of the running app (`docs/re
 
 Spec: [[spec/01_mvp/01-14-external-evaluation-via-mcp]]. ADR: [[adr/0026-external-evaluation-via-mcp]]. Internal evaluation stays unchanged.
 
-- [ ] **9.1 — Shared evaluation code** (#48)
+- [x] **9.1 — Shared evaluation code** (#48)
   - Export the grading instruction from `internal/ai/ops.go`. Split `EvaluateListing` so `ApplyGrades` holds the transaction.
   - **Test:** `go test ./internal/ai/... ./internal/service/...`. Internal evaluation gives the same result as before.
 
