@@ -39,6 +39,7 @@ This is a numbered, append-only log of architecture decisions for this project's
 | [[0022-live-llm-config-runtime]] | LLM settings editable via `PATCH /api/config` + Settings UI, applied live through an atomic snapshot holder | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#Config]] | New (extends ADR 0006/0007/0013) |
 | [[0023-chat-history-repair-and-atomic-persist]] | Replayed history is repaired (synthetic tool_result for dangling tool_use); each roundtrip is persisted in one transaction | [[../../spec/01_mvp/01-09-chat-reliability-fixes]] | New (extends ADR 0008/0010) |
 | [[0024-criterion-proposal-status]] | Criteria are `proposed` or `active`; chat and MCP only propose, the user approves; MCP cannot change active criteria; names unique per profile | [[../../spec/00_infrastructure_setup/00-02-database-schema]], [[../../spec/01_mvp/01-04-criteria-and-scoring]], [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]] | New (partly replaces ADR 0017 and 0019 for criteria) |
+| [[0025-hazard-ratings-region-level-static-data]] | Natural-hazard ratings are region-level, 1-5 (higher is worse) and separate from the Score; static datasets embedded in the binary are synced into `hazard_*` tables at boot; read-only API | [[../../spec/00_infrastructure_setup/00-02-database-schema]], [[../../spec/01_mvp/01-13-hazard-ratings]] | New |
 
 ## Notes
 

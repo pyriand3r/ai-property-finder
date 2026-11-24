@@ -71,6 +71,26 @@ _Avoid_: Edit request, correction
 A Criterion with `status = 'proposed'`. The Agent (chat) or an MCP client suggested it, and the user has not approved it yet. It is shown in the Criteria tab with a "Vorgeschlagen" badge and is ignored by evaluation, Score and ranking until the user approves ("Freischalten"). A Criterion with `status = 'active'` is in use. See [[adr/0024-criterion-proposal-status]].
 _Avoid_: Draft criterion, pending criterion
 
+**Hazard Rating**:
+A whole number from 1 (very low) to 5 (very high). It says how exposed one Hazard Region is to one Hazard Type. **Higher is worse**, the opposite direction of the Score. It belongs to the region, not to a Listing, and it is never an input to the Score, the ranking or the evaluation. Ratings of different hazard types come from different methods and are not comparable. A hazard with no source data for a region has no Hazard Rating. See [[spec/01_mvp/01-13-hazard-ratings]] and [[adr/0025-hazard-ratings-region-level-static-data]].
+_Avoid_: Risk score, Naturrisiko-Score (means: natural-risk score), hazard grade (a Grade is the A-F mark of a Criterion)
+
+**Hazard Type**:
+One of four natural hazards: `wildfire`, `flood`, `earthquake`, `landslide`. Each Hazard Type has its own Hazard Source per country.
+_Avoid_: Peril, risk category, disaster type
+
+**Hazard Region**:
+The geographic unit a Hazard Rating is given for. For Portugal it is the municipality (*concelho*). A Hazard Region has a key like `PT-1106`: the country code, a dash and the official national code (for Portugal the 4-digit DICO code). Names are not unique, so the key is the identity. It is the place of many Listings, not the place of one Listing.
+_Avoid_: Location (a Listing's own address and coordinates), area, zone (a seismic zone is a value inside the source data)
+
+**Hazard Source**:
+The published dataset that a Hazard Rating was derived from: publisher, URL, licence, version, retrieval date and a `method` text. The `method` says how the dataset's own values became the 1-5 scale, and which step is the app's own interpretation. A Source in the sense of [[#Source]] is something else: what the Agent read for one Listing.
+_Avoid_: Provider (the LLM provider), data feed
+
+**Hazard Dataset**:
+The static JSON file of one country, embedded in the backend binary, that holds its Hazard Sources, Hazard Regions and Hazard Ratings. The backend copies it into the database at boot. Nothing is fetched at runtime. To change a rating, replace the file and release.
+_Avoid_: Seed data, hazard import, hazard feed
+
 ## Carried over unchanged from the predecessor project
 
 Criterion, Objective/Subjective Criterion, Weight, Evaluation, Grade, Score, Status, Letztkontakt, Rejection, Property. They keep the meaning they had in the predecessor project. They are not repeated here, so that two copies do not drift apart.

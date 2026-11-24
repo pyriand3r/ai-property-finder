@@ -87,10 +87,14 @@ backend/
 │   │   └── pdf.go                # Passes uploaded PDFs to Claude as native document content blocks
 │   ├── geocode/                   # New: address → coordinates
 │   │   └── nominatim.go           # HTTP GET to nominatim.openstreetmap.org, rate-limited
+│   ├── hazard/                    # New: static natural-hazard datasets (ADR 0025)
+│   │   ├── hazard.go              # Loads and validates the dataset files embedded in the binary (go:embed)
+│   │   └── datasets/pt.json       # One JSON file per country; HazardService syncs it into hazard_* at boot
 │   ├── db/repository/
 │   │   ├── chat_repo.go          # New
 │   │   ├── context_repo.go       # New
 │   │   ├── profile_repo.go       # Unchanged
+│   │   ├── hazard_repo.go        # New (ADR 0025)
 │   │   └── listing_repo.go       # Extended — document_md, source_type
 │   └── ... (api/, events/, web/, config/ unchanged)
 ```

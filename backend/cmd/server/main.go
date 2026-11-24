@@ -5,10 +5,12 @@
 //  2. Env config (DATABASE_URL required)
 //  3. pgxpool connect
 //  4. run pending migrations (forward-only; fail-fast on error)
-//  5. seed Tier 2 app_config from env (write-once; DB authoritative after)
-//  6. load Tier 2 app_config (llm.*), build the live LLM runtime from it
+//  5. sync the embedded natural-hazard datasets into hazard_* (idempotent;
+//     fail-fast; docs/adr/0025)
+//  6. seed Tier 2 app_config from env (write-once; DB authoritative after)
+//  7. load Tier 2 app_config (llm.*), build the live LLM runtime from it
 //     (internal/llm; editable at runtime via PATCH /api/config)
-//  7. start HTTP server (GET /health, GET/PATCH /api/config, GET /api/events, ...)
+//  8. start HTTP server (GET /health, GET/PATCH /api/config, GET /api/events, ...)
 //
 // The rest of the API surface lands in later layers.
 package main
@@ -25,6 +27,7 @@ import (
 	"propertyfinder/internal/db"
 	"propertyfinder/internal/events"
 	"propertyfinder/internal/llm"
+	"propertyfinder/internal/service"
 	"syscall"
 	"time"
 
@@ -62,6 +65,11 @@ func run() error {
 	if migrationError := db.Run(ctx, envConfig.DatabaseURL); migrationError != nil {
 		return migrationError
 	}
+
+	if hazardError := service.NewHazardService(pool).SeedStatic(ctx); hazardError != nil {
+		return hazardError
+	}
+	log.Print("hazard datasets synced")
 
 	if seedError := config.SeedFromEnv(ctx, pool, envConfig.ClaudeAPIKey); seedError != nil {
 		return seedError

@@ -31,6 +31,7 @@ type Server struct {
 	note       *NoteHandler
 	upload     *UploadHandler
 	geocode    *GeocodeHandler
+	hazard     *HazardHandler
 	chat       *ChatHandler
 	ranking    *RankingHandler
 	toolCall   *ToolCallHandler
@@ -79,6 +80,7 @@ func NewServer(pool *pgxpool.Pool, llmRuntime *llm.Runtime, dataDir, appPassword
 		note:       &NoteHandler{service: service.NewNoteService(pool)},
 		upload:     &UploadHandler{service: service.NewUploadService(dataDir)},
 		geocode:    &GeocodeHandler{},
+		hazard:     &HazardHandler{service: service.NewHazardService(pool)},
 		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, llmRuntime, broker, dataDir, evaluationService)},
 		ranking:    &RankingHandler{service: service.NewRankingService(pool, llmRuntime)},
 		toolCall:   &ToolCallHandler{service: service.NewToolCallService(pool)},
@@ -125,6 +127,8 @@ func (server *Server) Router() http.Handler {
 	timed.Post("/api/upload/pdf", server.upload.PDF)
 	timed.Post("/api/upload/image", server.upload.Image)
 	timed.Get("/api/geocode", server.geocode.Get)
+	timed.Get("/api/hazards/regions", server.hazard.SearchRegions)
+	timed.Get("/api/hazards/regions/{regionKey}", server.hazard.GetRegion)
 
 	timed.Get("/api/context/global", server.context.GetGlobal)
 	timed.Put("/api/context/global", server.context.PutGlobal)

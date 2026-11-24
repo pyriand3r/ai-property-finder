@@ -85,3 +85,59 @@ func TestMigration000004_ExistingCriteriaBecomeActive(t *testing.T) {
 		t.Error("status 'bogus' was accepted, want the CHECK constraint to reject it")
 	}
 }
+
+// TestMigration000005_HazardTablesEnforceTheirConstraints: the repository
+// tests never run SQL, so nothing else would notice a mistyped constraint.
+// Each rejected row below is a data error a hand-edited dataset could carry;
+// the last block checks the one delete that must cascade.
+func TestMigration000005_HazardTablesEnforceTheirConstraints(t *testing.T) {
+	pool := dbtest.NewPool(t)
+	ctx := context.Background()
+
+	const (
+		insertSource = `INSERT INTO hazard_source (id, hazard_type, title, publisher, url, license, dataset_version, retrieved_on, method)
+			VALUES ($1, $2, 't', 'p', 'https://example.test', 'l', 'v', '2026-11-24', 'm')`
+		insertRegion = `INSERT INTO hazard_region (key, country, name, name_search) VALUES ($1, $2, 'n', 'n')`
+		insertRating = `INSERT INTO hazard_rating (region_key, hazard_type, rating, source_id) VALUES ($1, $2, $3, $4)`
+	)
+	mustExec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("%s %v: %v", sql, args, err)
+		}
+	}
+	mustExec(insertSource, "fire", "wildfire")
+	mustExec(insertSource, "quake", "earthquake")
+	mustExec(insertRegion, "PT-1106", "PT")
+	mustExec(insertRating, "PT-1106", "wildfire", 5, "fire")
+
+	rejected := map[string]struct {
+		sql  string
+		args []any
+	}{
+		"rating 6 is above the scale":           {insertRating, []any{"PT-1106", "earthquake", 6, "quake"}},
+		"rating 0 is below the scale":           {insertRating, []any{"PT-1106", "earthquake", 0, "quake"}},
+		"rating cites a source of another type": {insertRating, []any{"PT-1106", "earthquake", 3, "fire"}},
+		"rating cites an unknown source":        {insertRating, []any{"PT-1106", "earthquake", 3, "nope"}},
+		"rating for an unknown region":          {insertRating, []any{"PT-9999", "wildfire", 3, "fire"}},
+		"second rating for the same hazard":     {insertRating, []any{"PT-1106", "wildfire", 2, "fire"}},
+		"source with an unknown hazard type":    {insertSource, []any{"tsunami-src", "tsunami"}},
+		"region key in lower case":              {insertRegion, []any{"pt-1", "PT"}},
+		"region key of another country":         {insertRegion, []any{"ES-1", "PT"}},
+		"region country that is no two-letter":  {insertRegion, []any{"PRT-1", "PRT"}},
+	}
+	for name, tc := range rejected {
+		if _, err := pool.Exec(ctx, tc.sql, tc.args...); err == nil {
+			t.Errorf("%s: accepted, want the constraint to reject it", name)
+		}
+	}
+
+	mustExec(`DELETE FROM hazard_region WHERE key = 'PT-1106'`)
+	var left int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM hazard_rating`).Scan(&left); err != nil {
+		t.Fatal(err)
+	}
+	if left != 0 {
+		t.Errorf("%d ratings left after deleting their region, want 0 (ON DELETE CASCADE)", left)
+	}
+}

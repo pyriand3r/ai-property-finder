@@ -6,6 +6,7 @@ package domain
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -302,6 +303,96 @@ type ChatMessage struct {
 	AttachmentPath *string         `json:"attachment_path,omitempty"`
 	ListingID      *uuid.UUID      `json:"listing_id,omitempty"`
 	CreatedAt      time.Time       `json:"created_at"`
+}
+
+// ── Hazard ratings ──────────────────────────────────────────────────────
+
+// HazardType is a natural-hazard category a region is rated for
+// (docs/adr/0025). The set is closed: the hazard_source CHECK constraint
+// lists the same four values.
+type HazardType string
+
+const (
+	HazardWildfire   HazardType = "wildfire"
+	HazardFlood      HazardType = "flood"
+	HazardEarthquake HazardType = "earthquake"
+	HazardLandslide  HazardType = "landslide"
+)
+
+// HazardTypes returns every HazardType in display order — the order the API
+// and the docs use.
+func HazardTypes() []HazardType {
+	return []HazardType{HazardWildfire, HazardFlood, HazardEarthquake, HazardLandslide}
+}
+
+// Valid reports whether t is one of the four known hazard types.
+func (t HazardType) Valid() bool { return slices.Contains(HazardTypes(), t) }
+
+// A hazard rating runs from HazardRatingMin (very low hazard) to
+// HazardRatingMax (very high hazard). Higher is worse — the opposite
+// direction of a Listing's Score, which the rating never feeds into.
+const (
+	HazardRatingMin = 1
+	HazardRatingMax = 5
+)
+
+// HazardRegion is a geographic unit hazards are rated for. Key is
+// "<ISO 3166-1 alpha-2 country>-<national code>"; for Portugal it is
+// "PT-<4-digit DICO code of the municipality>" (for example PT-1106 for
+// Lisboa). ParentName (district or island) tells apart regions that share a
+// Name. NameSearch is Name lower-cased and without diacritics, filled when a
+// dataset is loaded; it is only used for lookups and never sent to clients.
+type HazardRegion struct {
+	Key        string `json:"key"`
+	Country    string `json:"country"`
+	Name       string `json:"name"`
+	ParentName string `json:"parent_name"`
+	NameSearch string `json:"-"`
+}
+
+// HazardSource records which published dataset a rating was derived from.
+// Method says how the dataset's own classes became the 1-5 scale and whether
+// that step is an app-specific interpretation. RetrievedOn is a YYYY-MM-DD
+// date.
+type HazardSource struct {
+	ID             string     `json:"id"`
+	HazardType     HazardType `json:"hazard_type"`
+	Title          string     `json:"title"`
+	Publisher      string     `json:"publisher"`
+	URL            string     `json:"url"`
+	License        string     `json:"license"`
+	DatasetVersion string     `json:"dataset_version"`
+	RetrievedOn    string     `json:"retrieved_on"`
+	Method         string     `json:"method"`
+	Notes          string     `json:"notes"`
+}
+
+// HazardRating is one (region, hazard type) rating as a dataset file
+// states it. The stored row also carries updated_at, which the database
+// sets; clients get it through HazardRatingDetail.
+type HazardRating struct {
+	RegionKey  string     `json:"region_key"`
+	HazardType HazardType `json:"hazard_type"`
+	Rating     int        `json:"rating"`
+	SourceID   string     `json:"source_id"`
+}
+
+// HazardRatingDetail is a stored rating joined with its source, the shape
+// the API returns. UpdatedAt is when the rating value or its source_id last
+// changed in the database; syncing identical data does not move it.
+type HazardRatingDetail struct {
+	HazardType HazardType   `json:"hazard_type"`
+	Rating     int          `json:"rating"`
+	UpdatedAt  time.Time    `json:"updated_at"`
+	Source     HazardSource `json:"source"`
+}
+
+// RegionHazards is a region together with all its ratings, in HazardTypes
+// order. A hazard without usable source data for the region is absent from
+// Ratings.
+type RegionHazards struct {
+	HazardRegion
+	Ratings []HazardRatingDetail `json:"ratings"`
 }
 
 // ── Domain Errors ───────────────────────────────────────────────────────
