@@ -15,9 +15,10 @@ var errBoom = errors.New("boom")
 // Chat() call — enough to drive Loop.Run through multiple roundtrips
 // without a real LLM.
 type fakeProvider struct {
-	batches [][]ChatEvent
-	err     error
-	calls   int
+	batches  [][]ChatEvent
+	err      error
+	calls    int
+	requests []ChatRequest
 }
 
 func (p *fakeProvider) SupportsDocumentInput() bool                   { return true }
@@ -25,10 +26,11 @@ func (p *fakeProvider) SupportsImageInput() bool                      { return t
 func (p *fakeProvider) FormatTools([]Tool) any                        { return nil }
 func (p *fakeProvider) FormatMessages([]domain.ChatMessage) []Message { return nil }
 
-func (p *fakeProvider) Chat(context.Context, ChatRequest) (<-chan ChatEvent, error) {
+func (p *fakeProvider) Chat(_ context.Context, req ChatRequest) (<-chan ChatEvent, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
+	p.requests = append(p.requests, req)
 	batch := p.batches[p.calls]
 	p.calls++
 	ch := make(chan ChatEvent, len(batch))
@@ -99,12 +101,12 @@ func TestLoop_Run_DispatchesToolCallAndContinues(t *testing.T) {
 	dispatched := 0
 	loop := &Loop{
 		Provider: provider,
-		Dispatch: func(_ context.Context, call ToolCall) (string, bool) {
+		Dispatch: func(_ context.Context, call ToolCall) ToolResult {
 			dispatched++
 			if call.Name != "fetch_url" {
 				t.Errorf("dispatched tool = %q, want fetch_url", call.Name)
 			}
-			return `{"text":"ok"}`, false
+			return ToolResult{Result: `{"text":"ok"}`}
 		},
 	}
 
@@ -148,6 +150,60 @@ func TestLoop_Run_DispatchesToolCallAndContinues(t *testing.T) {
 	}
 }
 
+func TestLoop_Run_AttachesLinkedPDFAfterAllToolResults(t *testing.T) {
+	provider := &fakeProvider{
+		batches: [][]ChatEvent{
+			{
+				{Type: ChatEventToolCallRequest, ToolCall: &ToolCall{ID: "call_pdf", Name: "fetch_url", Arguments: json.RawMessage(`{"url":"https://x/floorplan.pdf"}`)}},
+				{Type: ChatEventToolCallRequest, ToolCall: &ToolCall{ID: "call_save", Name: "save_listing", Arguments: json.RawMessage(`{}`)}},
+				{Type: ChatEventDone},
+			},
+			{
+				{Type: ChatEventTextDelta, Text: "Grundriss berücksichtigt."},
+				{Type: ChatEventDone},
+			},
+		},
+	}
+	loop := &Loop{
+		Provider: provider,
+		Dispatch: func(_ context.Context, call ToolCall) ToolResult {
+			if call.ID == "call_pdf" {
+				return ToolResult{Result: `{"media_type":"application/pdf"}`, DocumentData: "JVBERi0xLjQ="}
+			}
+			return ToolResult{Result: `{"status":"ok"}`}
+		},
+	}
+
+	var roundtrips []RoundtripOutcome
+	_, err := loop.Run(context.Background(), TurnRequest{}, func(ChatEvent) {}, func(outcome RoundtripOutcome) {
+		roundtrips = append(roundtrips, outcome)
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(provider.requests) != 2 {
+		t.Fatalf("Provider.Chat requests = %d, want 2", len(provider.requests))
+	}
+	messages := provider.requests[1].Messages
+	blocks := messages[len(messages)-1].Content
+	if len(blocks) != 3 {
+		t.Fatalf("tool-result message blocks = %+v, want two tool results followed by one PDF", blocks)
+	}
+	if blocks[0].Type != ContentBlockToolResult || blocks[0].ToolResultForID != "call_pdf" ||
+		blocks[1].Type != ContentBlockToolResult || blocks[1].ToolResultForID != "call_save" {
+		t.Errorf("first blocks = %+v, want both tool_result blocks before document content", blocks[:2])
+	}
+	if blocks[2].Type != ContentBlockDocument || blocks[2].DocumentData != "JVBERi0xLjQ=" {
+		t.Errorf("last block = %+v, want the linked native PDF", blocks[2])
+	}
+	if len(roundtrips) != 2 || len(roundtrips[0].Results) != 2 {
+		t.Fatalf("roundtrips = %+v, want two persisted tool outcomes", roundtrips)
+	}
+	if strings.Contains(roundtrips[0].Results[0].Result, "JVBERi0xLjQ=") {
+		t.Error("persisted tool outcome contains base64 PDF data")
+	}
+}
+
 func TestLoop_Run_StopsAtRoundtripLimitWithPendingToolCall(t *testing.T) {
 	batch := []ChatEvent{
 		{Type: ChatEventToolCallRequest, ToolCall: &ToolCall{ID: "call_1", Name: "fetch_url", Arguments: json.RawMessage(`{}`)}},
@@ -157,7 +213,7 @@ func TestLoop_Run_StopsAtRoundtripLimitWithPendingToolCall(t *testing.T) {
 	loop := &Loop{
 		Provider:         provider,
 		MaxLLMRoundtrips: 2,
-		Dispatch:         func(context.Context, ToolCall) (string, bool) { return `{}`, false },
+		Dispatch:         func(context.Context, ToolCall) ToolResult { return ToolResult{Result: `{}`} },
 	}
 
 	var roundtrips []RoundtripOutcome
@@ -233,10 +289,10 @@ func TestLoop_Run_StopsBetweenRoundtripsOnCancel(t *testing.T) {
 	dispatchSawCanceledCtx := false
 	loop := &Loop{
 		Provider: provider,
-		Dispatch: func(ctx context.Context, _ ToolCall) (string, bool) {
+		Dispatch: func(ctx context.Context, _ ToolCall) ToolResult {
 			cancel()
 			dispatchSawCanceledCtx = ctx.Err() != nil
-			return `{}`, false
+			return ToolResult{Result: `{}`}
 		},
 	}
 

@@ -26,8 +26,10 @@ fehlschlägt, melde den Fehler im Chat und schlage eine Alternative vor.
 
 ## Ablauf bei einem neuen Inserat (URL)
 1. fetch_url auf die Hauptseite
-2. Wenn der Kontext eine Portal-Regel für diese Domain enthält: dem dort
-   genannten Link folgen (fetch_url)
+2. Folge relevanten sekundären und tertiären Links mit fetch_url, z.B.
+   Portal → Maklerseite → Exposé- oder Grundriss-PDF. Portal-Regeln geben
+   die wichtigen Links vor; folge auch ohne Regel klar erkennbaren Links zu
+   weiteren Inseratsdetails oder Dokumenten. PDFs werden direkt mitgelesen.
 3. Vor dem Speichern: list_profile_listings prüfen, ob source_url schon
    existiert (Duplikat) – falls ja, im Chat nachfragen statt stillschweigend
    ein zweites Inserat anzulegen

@@ -25,11 +25,11 @@ const (
 	ContentBlockToolUse    ContentBlockType = "tool_use"
 	ContentBlockToolResult ContentBlockType = "tool_result"
 	// ContentBlockDocument carries a PDF attached natively for this turn
-	// only (spec 00-03 "PDF Handling") — appended to the triggering user
-	// Message by AgentService when its chat_message row has
-	// attachment_path set, not requested via a Tool call. Gated on
-	// Provider.SupportsDocumentInput(); a provider that returns false for
-	// it never receives this block type.
+	// only (spec 00-03 "PDF Handling"). AgentService appends an uploaded PDF
+	// to the triggering user Message; Loop appends a PDF discovered through
+	// fetch_url after the corresponding tool_result blocks. Gated on
+	// Provider.SupportsDocumentInput(); a provider that returns false for it
+	// never receives this block type.
 	ContentBlockDocument ContentBlockType = "document"
 	// ContentBlockImage carries a JPG/PNG attached natively for this turn
 	// only (spec 00-03 "PDF Handling", ADR 0020) — same mechanism as
@@ -61,7 +61,7 @@ type ContentBlock struct {
 	ToolResultError bool
 
 	// Document fields: set for ContentBlockDocument. DocumentData is
-	// base64-encoded PDF bytes (internal/attachment.ReadBase64's output).
+	// base64-encoded PDF bytes from an upload or a fetch_url result.
 	DocumentData string
 
 	// Image fields: set for ContentBlockImage. ImageData is base64-encoded

@@ -63,6 +63,49 @@ func TestFetchPage_ExtractsTextImagesAndLinks(t *testing.T) {
 	}
 }
 
+func TestFetchPage_MultiHopLinkChain_ReturnsLinkedPDF(t *testing.T) {
+	pdfBytes := []byte("%PDF-1.4\n% floor-plan fixture")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/portal":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<html><body><a href="/broker">Maklerseite</a></body></html>`))
+		case "/broker":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<html><body><a href="/floorplan.pdf">Grundriss</a></body></html>`))
+		case "/floorplan.pdf":
+			w.Header().Set("Content-Type", "application/pdf; charset=binary")
+			_, _ = w.Write(pdfBytes)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := &Client{HTTPClient: server.Client()}
+	portal, err := client.FetchPage(context.Background(), server.URL+"/portal")
+	if err != nil {
+		t.Fatalf("FetchPage(portal) returned error: %v", err)
+	}
+	if len(portal.Links) != 1 {
+		t.Fatalf("portal Links = %v, want one broker link", portal.Links)
+	}
+	broker, err := client.FetchPage(context.Background(), portal.Links[0])
+	if err != nil {
+		t.Fatalf("FetchPage(broker) returned error: %v", err)
+	}
+	if len(broker.Links) != 1 {
+		t.Fatalf("broker Links = %v, want one floor-plan link", broker.Links)
+	}
+	pdf, err := client.FetchPage(context.Background(), broker.Links[0])
+	if err != nil {
+		t.Fatalf("FetchPage(floor plan) returned error: %v", err)
+	}
+	if !bytes.Equal(pdf.PDFData, pdfBytes) {
+		t.Errorf("PDFData = %q, want %q", pdf.PDFData, pdfBytes)
+	}
+}
+
 func TestFetchPage_RejectsNonHTTPScheme(t *testing.T) {
 	client := NewClient()
 	if _, err := client.FetchPage(context.Background(), "ftp://example.com/file"); err == nil {

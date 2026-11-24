@@ -39,8 +39,10 @@ Wenn ein Tool fehlschlägt, melde den Fehler im Chat und schlage eine Alternativ
 
 ## Ablauf bei einem neuen Inserat
 1. fetch_url auf die Hauptseite
-2. Wenn der Kontext eine Portal-Regel für diese Domain enthält: dem dort
-   genannten Link folgen (fetch_url)
+2. Folge relevanten sekundären und tertiären Links mit fetch_url, z.B.
+   Portal → Maklerseite → Exposé- oder Grundriss-PDF. Portal-Regeln geben
+   die wichtigen Links vor; folge auch ohne Regel klar erkennbaren Links zu
+   weiteren Inseratsdetails oder Dokumenten. PDFs werden direkt mitgelesen.
 3. download_image für alle relevanten Fotos, Kategorien vergeben
 4. save_listing mit allen Feldern + document_md (Originaltext-Auszug,
    deutsche Übersetzung, Bewertungstabelle, Vor-/Nachteile)

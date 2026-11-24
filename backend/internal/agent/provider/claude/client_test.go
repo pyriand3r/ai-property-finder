@@ -242,6 +242,28 @@ func TestFormatMessages_TranslatesImageBlock(t *testing.T) {
 	}
 }
 
+func TestFormatMessages_TranslatesLinkedPDFAfterToolResult(t *testing.T) {
+	messages := []agent.Message{
+		{Role: "user", Content: []agent.ContentBlock{
+			{Type: agent.ContentBlockToolResult, ToolResultForID: "call_pdf", ToolResultText: `{"media_type":"application/pdf"}`},
+			{Type: agent.ContentBlockDocument, DocumentData: "JVBERi0xLjQ="},
+		}},
+	}
+
+	params := formatMessages(messages)
+
+	if len(params) != 1 || len(params[0].Content) != 2 {
+		t.Fatalf("formatMessages = %+v, want one message with tool_result and document", params)
+	}
+	if params[0].Content[0].OfToolResult == nil {
+		t.Fatalf("first block = %+v, want tool_result", params[0].Content[0])
+	}
+	document := params[0].Content[1].OfDocument
+	if document == nil || document.Source.OfBase64 == nil || document.Source.OfBase64.Data != "JVBERi0xLjQ=" {
+		t.Errorf("second block = %+v, want base64 PDF document", params[0].Content[1])
+	}
+}
+
 // TestFormatMessages_RepairedHistoryHasNoDanglingToolUse replays the
 // buglist scenario end to end through the Claude formatter: stored rows
 // with an assistant tool_use whose role=tool row never got written, then

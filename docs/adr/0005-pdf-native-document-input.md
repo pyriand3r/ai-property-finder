@@ -19,7 +19,7 @@ The reference Obsidian workflow already has a PDF fallback for pages that block 
 
 ## Decision
 
-Uploaded PDFs go to Claude as a native `document` content block in the same chat turn. See [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#PDF Handling]]. There is no `internal/pdf` OCR/extraction step and no pymupdf-like dependency. Claude reads text and embedded images directly. `download_image` is only called afterwards. It is called only if the user wants a specific photo copied out and stored with the Listing. The Agent does not need extraction to *understand* the PDF. Only the app needs it, to *save* a chosen image file.
+Uploaded PDFs go to Claude as a native `document` content block in the same chat turn. PDFs discovered through secondary or tertiary `fetch_url` links use the same native input path: the Tool returns turn-local document bytes, and the Agent loop appends them after that roundtrip's Tool results. The base64 payload is not stored in `chat_message.tool_result` or resent in later turns. See [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#PDF Handling]]. There is no `internal/pdf` OCR/extraction step and no pymupdf-like dependency. Claude reads text and embedded images directly. `download_image` is only called afterwards. It is called only if the user wants a specific photo copied out and stored with the Listing. The Agent does not need extraction to *understand* the PDF. Only the app needs it, to *save* a chosen image file.
 
 ## Alternatives considered
 
