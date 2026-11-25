@@ -29,15 +29,15 @@ The agent loop (`internal/agent/loop.go`) does not depend on one provider, per [
 
 ## Provider Abstraction
 
-Three providers are in scope for the app long-term. All of them talk through one Go interface (`internal/agent.Provider`). The predecessor project abstracted `ParseSearchProfile`/`EvaluateListing` the same way.
+Three providers are implemented. All of them talk through one Go interface (`internal/agent.Provider`). The predecessor project abstracted `ParseSearchProfile`/`EvaluateListing` the same way.
 
 | Provider | Role | Status |
 |---|---|---|
-| Claude API | Agentic tool use, multi-turn loop, native PDF input | Only MVP provider |
-| LM Studio | Local, OpenAI-compatible inference server | Deferred. The interface seam is kept, but it is not implemented for MVP |
-| OpenCode | OpenAI-compatible endpoint, alternative local/self-hosted backend | Deferred. Same seam as LM Studio |
+| Claude API | Agentic tool use, multi-turn loop, native PDF and image input | Implemented (default) |
+| LM Studio | Local, OpenAI-compatible inference server | Implemented ([[../../docs/adr/0030-openai-compatible-agent-provider]]). No API key needed |
+| OpenCode | OpenAI-compatible endpoint, alternative local/self-hosted backend | Implemented, same package as LM Studio. Needs a Base URL and normally an API key |
 
-The reason for shipping Claude-only first: [[../../docs/adr/0006-single-provider-for-agent-mvp]]. The seam matters even though only one implementation exists at MVP. It stops `internal/agent/loop.go` and the Tool dispatch code from hard-coding Claude-specific request and response shapes.
+The reason Claude came first: [[../../docs/adr/0006-single-provider-for-agent-mvp]]. The seam stops `internal/agent/loop.go` and the Tool dispatch code from hard-coding Claude-specific request and response shapes.
 
 ---
 
@@ -76,7 +76,7 @@ The `Provider` interface normalizes four differences between LLM backends:
 - document-input capability flags
 - message formatting for history replay (`FormatMessages`). It converts DB-neutral `chat_message` rows into provider-specific LLM message structures. This includes `tool_result` → Claude content blocks or OpenAI `tool` role messages, per [[../../docs/adr/0010-tool-result-jsonb-for-replay]].
 
-The Claude implementation (`internal/agent/provider/claude/`) translates Anthropic's native SSE event stream into the normalized `ChatEvent` channel. Future LM Studio / OpenCode implementations will map OpenAI-compatible streaming tool-use events into the same channel.
+The Claude implementation (`internal/agent/provider/claude/`) translates Anthropic's native SSE event stream into the normalized `ChatEvent` channel. The OpenAI-compatible implementation (`internal/agent/provider/openai/`, used for LM Studio and OpenCode) maps Chat Completions SSE chunks into the same channel. It has no SDK: plain `net/http` against `{base_url}/chat/completions`. Tool calls are assembled from `delta.tool_calls` and emitted when the stream ends. A stream that ends without `[DONE]` or a `finish_reason` is an error. It reports no document and no image input, so a linked PDF becomes a tool error and an attached image is not sent. The shared stored-row mapping is `agent.StoredHistoryMessages`; the one-`tool`-message-per-result split happens in `Chat`. The single-shot operations use `internal/ai/openai.go` (non-streaming) for the same two providers.
 
 ---
 
@@ -148,9 +148,9 @@ The respective multipart form handlers enforce these limits (`POST /api/upload/p
 
 Stored as key-value rows in `app_config` (category `llm`). The DB is the source of truth. `CLAUDE_API_KEY` from the environment is written once, on the very first boot, as `llm.api_key` (`config.SeedFromEnv`) and is never read again.
 
-- `llm.provider`: `claude` is the only implemented provider (default). `lmstudio` / `opencode` are reserved values for when those implementations exist. The selectable providers come from the backend (`llm.Providers()`), not from the frontend.
+- `llm.provider`: `claude` (default), `lmstudio` or `opencode`. The selectable providers come from the backend (`llm.Providers()`), not from the frontend.
 - `llm.api_key`: write-only over HTTP (see "Editing" below).
-- `llm.base_url`: optional for `claude` (proxy/gateway override), required for `lmstudio`/`opencode`.
+- `llm.base_url`: optional for `claude` (proxy/gateway override), required for `lmstudio`/`opencode` and must include the version prefix (for example `http://localhost:1234/v1`). The API key is optional for `lmstudio`; it is sent only when set.
 - `llm.model` (default `claude-sonnet-5`)
 - `llm.timeout_seconds` (default 30, allowed 1–600)
 - `llm.max_retries` (default 2, allowed 0–10)

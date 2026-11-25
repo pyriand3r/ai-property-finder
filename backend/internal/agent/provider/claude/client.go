@@ -1,7 +1,7 @@
 // Package claude is the Claude API implementation of agent.Provider (spec
-// 00-03, ADR 0007). It is the sole MVP provider (ADR 0006); LM Studio and
-// OpenCode implementations will live as sibling packages behind the same
-// agent.Provider interface.
+// 00-03, ADR 0007). The OpenAI-compatible backends (LM Studio, OpenCode) live
+// in the sibling package provider/openai behind the same agent.Provider
+// interface (ADR 0030).
 package claude
 
 import (
@@ -94,72 +94,10 @@ func (p *Provider) FormatTools(tools []agent.Tool) any {
 }
 
 // FormatMessages converts DB-neutral chat_message rows into normalized
-// agent.Message values, applying Claude's wire convention: tool results
-// belong on a "user" turn as ToolResult content blocks, immediately
-// following the assistant turn that requested them. Consecutive
-// role=tool rows collapse into one user Message, matching how Claude
-// expects all tool_results for one assistant turn to arrive together.
+// agent.Message values using Claude's wire convention: tool results on a
+// "user" turn as ToolResult blocks (agent.StoredHistoryMessages).
 func (p *Provider) FormatMessages(messages []domain.ChatMessage) []agent.Message {
-	result := make([]agent.Message, 0, len(messages))
-	for _, m := range messages {
-		switch m.Role {
-		case domain.ChatRoleUser:
-			result = append(result, agent.Message{
-				Role:    "user",
-				Content: []agent.ContentBlock{{Type: agent.ContentBlockText, Text: m.Content}},
-			})
-		case domain.ChatRoleAssistant:
-			result = append(result, agent.Message{Role: "assistant", Content: assistantBlocks(m)})
-		case domain.ChatRoleTool:
-			block := toolResultBlock(m)
-			if n := len(result); n > 0 && result[n-1].Role == "user" && isToolResultMessage(result[n-1]) {
-				result[n-1].Content = append(result[n-1].Content, block)
-			} else {
-				result = append(result, agent.Message{Role: "user", Content: []agent.ContentBlock{block}})
-			}
-		}
-	}
-	return result
-}
-
-func assistantBlocks(m domain.ChatMessage) []agent.ContentBlock {
-	var blocks []agent.ContentBlock
-	if strings.TrimSpace(m.Content) != "" {
-		blocks = append(blocks, agent.ContentBlock{Type: agent.ContentBlockText, Text: m.Content})
-	}
-	if len(m.ToolCalls) > 0 {
-		var calls []agent.StoredToolCall
-		if err := json.Unmarshal(m.ToolCalls, &calls); err == nil {
-			for _, call := range calls {
-				blocks = append(blocks, agent.ContentBlock{
-					Type:      agent.ContentBlockToolUse,
-					ToolUseID: call.ID,
-					ToolName:  call.Name,
-					ToolInput: call.Input,
-				})
-			}
-		}
-	}
-	return blocks
-}
-
-func toolResultBlock(m domain.ChatMessage) agent.ContentBlock {
-	var stored agent.StoredToolResult
-	_ = json.Unmarshal(m.ToolResult, &stored)
-	return agent.ContentBlock{
-		Type:            agent.ContentBlockToolResult,
-		ToolResultForID: stored.ToolCallID,
-		ToolResultText:  string(stored.Result),
-	}
-}
-
-func isToolResultMessage(m agent.Message) bool {
-	for _, block := range m.Content {
-		if block.Type != agent.ContentBlockToolResult {
-			return false
-		}
-	}
-	return len(m.Content) > 0
+	return agent.StoredHistoryMessages(messages)
 }
 
 // Chat sends req to Claude in streaming mode and translates Anthropic's SSE

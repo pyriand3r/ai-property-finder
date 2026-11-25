@@ -84,6 +84,7 @@ func isContextLengthError(msg string) bool {
 	msg = strings.ToLower(msg)
 	return strings.Contains(msg, "context length") ||
 		strings.Contains(msg, "context window") ||
+		strings.Contains(msg, "context overflow") ||
 		strings.Contains(msg, "context_length") ||
 		strings.Contains(msg, "maximum context") ||
 		strings.Contains(msg, "too many tokens") ||

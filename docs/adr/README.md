@@ -44,6 +44,7 @@ This is a numbered, append-only log of architecture decisions for this project's
 | [[0027-hazard-source-catalogue-and-suggestions]] | Hazard sources are a declarative catalogue per country (bundled / candidate); the Agent and MCP only suggest sources (`suggest_hazard_source`), the user approves before ingestion; ingestion stays a release step | [[../../spec/01_mvp/01-15-hazard-source-catalogue]], [[../../spec/01_mvp/01-13-hazard-ratings]] | New (extends ADR 0025) |
 | [[0028-portal-search-task-persistence]] | `search_portal` Tool; a portal search is a `task` row (`portal.search`) with a resumable payload, continued after a restart; narrows ADR 0008 for this task type only | [[../../spec/01_mvp/01-16-portal-search]], [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration]] | New (narrows ADR 0008) |
 | [[0029-scheduled-saved-searches]] | Saved searches run on an every-N-hours schedule; one scheduler goroutine claims due searches in the database; new links (not seen before) go to the Agent as one `[Geplante Suche]` chat message, limited per run | [[../../spec/01_mvp/01-17-scheduled-searches]], [[../../spec/01_mvp/01-16-portal-search]] | New (builds on ADR 0028) |
+| [[0030-openai-compatible-agent-provider]] | LM Studio and OpenCode share one OpenAI-compatible `agent.Provider` (plain HTTP + SSE, no SDK); no native PDF/image input; Base URL required, API key optional | [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#Provider Abstraction]] | New (implements the revisit trigger of ADR 0006, uses the seam of ADR 0007) |
 
 ## Notes
 

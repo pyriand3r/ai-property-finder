@@ -115,6 +115,9 @@ func TestRuntime_Apply_InvalidUpdateChangesNothing(t *testing.T) {
 		"empty language":    {ReasoningLanguage: new("")},
 		"zero tool budget":  {MaxToolCallsPerTurn: new(0)},
 		"mixed valid+wrong": {Model: new("claude-opus-4-5"), MaxLLMRoundtrips: new(0)},
+		// base_url is stored empty for claude: switching to a provider with
+		// no built-in endpoint must be rejected, not saved as a dead config.
+		"lmstudio without base url": {Provider: new("lmstudio"), Model: new("qwen3")},
 	}
 	for name, update := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -134,6 +137,42 @@ func TestRuntime_Apply_InvalidUpdateChangesNothing(t *testing.T) {
 				t.Error("invalid update swapped the snapshot")
 			}
 		})
+	}
+}
+
+// TestRuntime_Apply_LMStudioNeedsNoAPIKey: a local LM Studio server has no
+// key, so switching to it with an empty key must yield a working (not
+// unconfigured) agent provider, with the key sent only if one is set.
+func TestRuntime_Apply_LMStudioNeedsNoAPIKey(t *testing.T) {
+	cfg := baseConfig()
+	cfg.APIKey = ""
+	store := &fakeStore{stored: cfg}
+	runtime := newRuntime(t, store)
+
+	if _, err := runtime.Apply(context.Background(), Update{Provider: new("lmstudio"), BaseURL: new("http://127.0.0.1:1/v1"), Model: new("qwen3")}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	events, err := runtime.Snapshot().Agent.Chat(context.Background(), agent.ChatRequest{})
+	if errors.Is(err, agent.ErrNotConfigured) {
+		t.Fatal("agent provider is the unconfigured stand-in for a configured LM Studio")
+	}
+	if err == nil {
+		for range events { // nothing listens on port 1: drains one error event
+		}
+	}
+}
+
+// TestRuntime_New_OpenAICompatibleWithoutBaseURLIsUnconfigured: a hand-edited
+// app_config row (provider=opencode, no base_url) must boot into the
+// unconfigured stand-in rather than fail or dial an empty URL.
+func TestRuntime_New_OpenAICompatibleWithoutBaseURLIsUnconfigured(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Provider = "opencode"
+	runtime := newRuntime(t, &fakeStore{stored: cfg})
+
+	if _, err := runtime.Snapshot().Agent.Chat(context.Background(), agent.ChatRequest{}); !errors.Is(err, agent.ErrNotConfigured) {
+		t.Fatalf("Chat error = %v, want ErrNotConfigured", err)
 	}
 }
 

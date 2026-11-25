@@ -68,7 +68,31 @@ const apiKeyPlaceholder = computed(() =>
     : 'Noch kein API-Key gesetzt',
 );
 
-const canSave = computed(() => draft.provider !== '' && draft.model.trim() !== '');
+const selectedProvider = computed(() =>
+  props.config.providers.find((provider) => provider.id === draft.provider),
+);
+
+const baseUrlLabel = computed(() =>
+  selectedProvider.value?.requires_base_url ? 'Base URL' : 'Base URL (optional)',
+);
+
+/** The provider's typical endpoint (LM Studio, OpenCode); Claude falls back to Anthropic's. */
+const baseUrlPlaceholder = computed(
+  () => selectedProvider.value?.default_base_url || 'https://api.anthropic.com',
+);
+
+const apiKeyLabel = computed(() =>
+  selectedProvider.value?.requires_api_key === false ? 'API-Key (optional)' : 'API-Key',
+);
+
+/** Mirrors the backend rule (internal/llm validate): a provider without a built-in
+ * endpoint needs a Base URL. */
+const canSave = computed(
+  () =>
+    draft.provider !== '' &&
+    draft.model.trim() !== '' &&
+    (!selectedProvider.value?.requires_base_url || draft.base_url.trim() !== ''),
+);
 
 function submit() {
   if (!canSave.value || props.saving) {
@@ -99,7 +123,7 @@ function submit() {
       />
     </NFormItem>
 
-    <NFormItem label="API-Key">
+    <NFormItem :label="apiKeyLabel">
       <NInput
         v-model:value="apiKey"
         type="password"
@@ -109,8 +133,8 @@ function submit() {
       />
     </NFormItem>
 
-    <NFormItem label="Base URL (optional)">
-      <NInput v-model:value="draft.base_url" placeholder="https://api.anthropic.com" clearable />
+    <NFormItem :label="baseUrlLabel">
+      <NInput v-model:value="draft.base_url" :placeholder="baseUrlPlaceholder" clearable />
     </NFormItem>
 
     <NFormItem label="Timeout (Sekunden)">

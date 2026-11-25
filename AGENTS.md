@@ -80,8 +80,10 @@ inherited from the predecessor project's decision (see `docs/00_readme.md`), not
 
 **Agent provider independence (ADR 0007)**: `internal/agent` defines its own wire-neutral `Provider`
 interface, `Message`/`ContentBlock`/`ChatRequest`/`ChatEvent`/`Tool` types — zero Anthropic imports.
-`internal/agent/provider/claude/client.go` is the only package that imports `anthropic-sdk-go`; it
-translates to/from the neutral types using the SDK's streaming `ssestream` package. `internal/ai.Provider`
+`internal/agent/provider/claude/client.go` is the only *agent* package that imports `anthropic-sdk-go`; it
+translates to/from the neutral types using the SDK's streaming `ssestream` package. LM Studio and OpenCode
+share `internal/agent/provider/openai/` (ADR 0030): plain `net/http` + SSE, no SDK, no PDF/image input,
+Base URL required, API key optional; `internal/ai/openai.go` is the matching single-shot transport. `internal/ai.Provider`
 is a **separate**, single-shot interface (`EvaluateListing`, `GenerateRanking`, `AnalyzeRejection`) used
 both directly by REST endpoints and wrapped as the `evaluate_listing` Tool — don't confuse the two
 `Provider` interfaces.
@@ -122,7 +124,7 @@ fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-rating
 - **0003**: Portal rules as natural-language text in Context Files, not scraper code
 - **0004**: One unified confirm-before-apply mechanism, no `Proposal` table
 - **0005**: PDFs go to Claude as native document content blocks — no local text extraction
-- **0006**: Claude API only for MVP; LM Studio/OpenCode deferred post-MVP
+- **0006**: Claude API only for MVP; LM Studio/OpenCode deferred post-MVP (implemented later by 0030)
 - **0007**: Agent loop is provider-independent (own `provider.go` interface, not the Anthropic SDK)
 - **0008**: Agent turns are fire-and-forget — no recovery on server restart
 - **0009**: Pending Agent proposals live in `chat_message.tool_calls` JSONB, confirmed via REST — no `Proposal` table
@@ -148,6 +150,7 @@ fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-rating
 - **0027**: Hazard sources are a declarative per-country catalogue (`bundled`/`candidate`); Agent and MCP only *suggest* sources (`suggest_hazard_source`, table `hazard_source_suggestion`), the user approves before ingestion; ingestion stays a release step (extends 0025)
 - **0028**: `search_portal` Tool; a portal search is a `task` row (`portal.search`) with a resumable payload, continued after a restart; narrows 0008 for this task type only
 - **0029**: Saved searches run on an every-N-hours schedule (one scheduler goroutine, SQL claim); new links go to the Agent as a `[Geplante Suche]` chat message, limited per run; builds on 0028
+- **0030**: LM Studio and OpenCode share one OpenAI-compatible `agent.Provider` (`internal/agent/provider/openai`, plain HTTP + SSE, no SDK, no PDF/image input); Base URL required, API key optional; extends 0006/0007
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -172,7 +175,8 @@ backend/
     ├── agent/        # provider-independent agent loop: loop.go, tools.go (Registry/Dispatch),
     │                 #   provider.go (interface), context_builder.go (system prompt assembly),
     │                 #   unconfigured.go (no-API-key fallback)
-    │   └── provider/claude/  # client.go — the ONLY package importing anthropic-sdk-go
+    │   ├── provider/claude/  # client.go — the only agent package importing anthropic-sdk-go
+    │   └── provider/openai/  # client.go — OpenAI-compatible Chat Completions (LM Studio, OpenCode), ADR 0030
     ├── llm/          # runtime.go (live config + provider snapshot, PATCH validation), providers.go (selectable
     │                 #   provider catalog), store.go (app_config persistence) — ADR 0022
     ├── ai/           # single-shot LLM ops: provider.go (interface), claude.go (impl), ops.go
@@ -350,7 +354,7 @@ Env vars (`.env`, from `.env.example`): `DB_PASSWORD` and `APP_PASSWORD` (both r
 | | |
 |---|---|
 | Backend | Go 1.26 (`backend/go.mod`), chi v5 router, `pgx/v5` (no ORM), `golang-migrate/v4` |
-| AI SDK | `anthropic-sdk-go` v1.61.0 — imported **only** inside `internal/agent/provider/claude` |
+| AI SDK | `anthropic-sdk-go` v1.61.0 — imported **only** inside `internal/agent/provider/claude` and `internal/ai/claude.go`; the OpenAI-compatible provider (`provider/openai`) uses plain `net/http` |
 | Frontend | Vue 3.5 (`<script setup>`), TypeScript 5.9 (strict), Vite 7, vue-router 4, Naive UI 2.42, OpenLayers (`ol`) 10, `marked` + `dompurify` |
 | State mgmt | None (no Pinia/Vuex) — composables only |
 | Package manager | npm (`package-lock.json` present; no yarn/pnpm lockfile) |
@@ -393,7 +397,7 @@ Mocking, no library used, two conventions by collaborator kind:
    literal canned bytes — for Claude, a hand-authored raw SSE event stream as a string constant
    (`internal/agent/provider/claude/client_test.go`). No cassette/VCR library.
 
-Covered packages: `internal/agent` (loop, tools, context builder), `internal/agent/provider/claude`,
+Covered packages: `internal/agent` (loop, tools, context builder), `internal/agent/provider/claude`, `internal/agent/provider/openai`,
 `internal/ai` (JSON extraction, grade normalization), `internal/llm` (runtime swap/validation),
 `internal/api` (auth, config, events/SSE, geocode validation, helpers, listing patch body),
 `internal/service` (chat-history JSON merge logic), `internal/attachment`, `internal/fetch`,
@@ -512,7 +516,6 @@ PDFs and listing images).
 ## Deferred / Not in MVP
 
 - `chromedp` (headless Chrome) — plain HTTP only for page fetching
-- LM Studio / OpenCode providers — Claude API only (ADR 0006)
 - Automated recurring search (Phase 3)
 - `Proposal` table — replaced by chat confirmations (ADR 0004/0009)
 - Per-portal scraper modules — replaced by Portal Rules in Context Files (ADR 0003)

@@ -357,6 +357,10 @@ Spec: [[spec/01_mvp/01-16-portal-search]], [[spec/01_mvp/01-17-scheduled-searche
   - Preamble section „Mehrere Links in einer Nachricht“ and `MaxBatchListingsPerTurn` in `internal/agent/context_builder.go`; spec 01-03 (section Batch Ingestion) and 00-04. No new Tool, no schema change.
   - **Test:** `go test ./internal/agent/`.
 
+- [x] **10.4 — OpenAI-compatible provider: LM Studio and OpenCode** (#22)
+  - `internal/agent/provider/openai` (`agent.Provider`, streaming, no SDK), `internal/ai/openai.go` (single-shot transport), catalogue entries and Base-URL validation in `internal/llm`, shared `agent.StoredHistoryMessages`, Settings form hints. ADR 0030, spec 00-03.
+  - **Test:** `go test ./internal/agent/... ./internal/ai/ ./internal/llm/`; `npm run test:run`.
+
 ---
 
 ## Dependencies
