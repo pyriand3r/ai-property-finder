@@ -144,6 +144,28 @@ func geocodeHandler(deps Deps) mcp.ToolHandlerFor[GeocodeInput, any] {
 	}
 }
 
+// SuggestHazardSourceInput mirrors suggest_hazard_source's schema in
+// internal/agent/tools.go. The suggestion is global, not per profile;
+// profile_id is only needed because the Registry is profile-scoped.
+type SuggestHazardSourceInput struct {
+	ProfileID  string `json:"profile_id" jsonschema:"UUID of the Search Profile (unused by this tool but required for schema uniformity)"`
+	Country    string `json:"country" jsonschema:"ISO 3166-1 alpha-2 country code, e.g. SE, AT, PT"`
+	HazardType string `json:"hazard_type" jsonschema:"One of: wildfire, flood, earthquake, landslide"`
+	Scope      string `json:"scope,omitempty" jsonschema:"Part of the country the source covers, e.g. Azores; empty = whole country"`
+	Title      string `json:"title" jsonschema:"Name of the dataset"`
+	Publisher  string `json:"publisher" jsonschema:"Authority or institution that publishes it"`
+	URL        string `json:"url" jsonschema:"Absolute http(s) URL of the dataset page or download"`
+	License    string `json:"license,omitempty" jsonschema:"License, if known"`
+	Rationale  string `json:"rationale" jsonschema:"Why it is useful: coverage, resolution (municipality level?), format"`
+}
+
+func suggestHazardSourceHandler(deps Deps) mcp.ToolHandlerFor[SuggestHazardSourceInput, any] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, input SuggestHazardSourceInput) (*mcp.CallToolResult, any, error) {
+		output, err := dispatchViaRegistry(ctx, deps, input.ProfileID, "suggest_hazard_source", input)
+		return nil, output, err
+	}
+}
+
 // ProfileScopedInput is shared by list_profile_listings and
 // compute_ranking, neither of which takes any field besides profile_id
 // (internal/agent/tools.go's Dispatch doesn't even read call.Arguments

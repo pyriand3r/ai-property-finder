@@ -1,0 +1,55 @@
+{
+  "country": "PT",
+  "entries": [
+    {
+      "id": "pt-wildfire-icnf",
+      "hazard_type": "wildfire",
+      "scope": "Portugal (Festland)",
+      "status": "bundled",
+      "source_id": "pt-icnf-wildfire-hazard-2020-2030"
+    },
+    {
+      "id": "pt-flood-apa",
+      "hazard_type": "flood",
+      "scope": "Portugal (Festland)",
+      "status": "bundled",
+      "source_id": "pt-apa-pgri2-flood-hazard-t100"
+    },
+    {
+      "id": "pt-earthquake-np-en-1998-1",
+      "hazard_type": "earthquake",
+      "scope": "Portugal (Festland, Madeira, Azoren)",
+      "status": "bundled",
+      "source_id": "pt-np-en-1998-1-seismic-zones"
+    },
+    {
+      "id": "pt-landslide-elsus",
+      "hazard_type": "landslide",
+      "scope": "Portugal (Festland)",
+      "status": "bundled",
+      "source_id": "eu-jrc-elsus-v2-landslide-susceptibility"
+    },
+    {
+      "id": "pt-azores-flood-regional",
+      "hazard_type": "flood",
+      "scope": "Azoren",
+      "status": "candidate",
+      "title": "Hochwasserflächen der Azoren (Regionalregierung)",
+      "publisher": "Governo Regional dos Açores",
+      "url": "https://visualizador-idea.ambiente.azores.gov.pt",
+      "license": "",
+      "notes": "Die Azoren veröffentlichen eigene Überschwemmungsflächen über den Geodienst der Regionalregierung (Spec 01-13, Abschnitt Coverage). Nicht eingebunden. Lizenz, Download-Format und Gemeindezuordnung sind zu klären."
+    },
+    {
+      "id": "pt-azores-landslide-regional",
+      "hazard_type": "landslide",
+      "scope": "Azoren",
+      "status": "candidate",
+      "title": "Erdrutschdaten der Azoren (Regionalregierung)",
+      "publisher": "Governo Regional dos Açores",
+      "url": "https://visualizador-idea.ambiente.azores.gov.pt",
+      "license": "",
+      "notes": "Gleicher Geodienst wie beim Hochwasser. Nicht eingebunden. Der genaue Datensatz und die Lizenz sind zu klären."
+    }
+  ]
+}

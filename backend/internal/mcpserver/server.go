@@ -112,6 +112,13 @@ func NewHandler(deps Deps) http.Handler {
 	}, computeRankingHandler(deps))
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name: "suggest_hazard_source",
+		Description: "Schlägt eine öffentliche Naturgefahren-Datenquelle (wildfire, flood, earthquake, landslide) für ein Land vor, die der Quellenkatalog noch nicht enthält. " +
+			"Der Vorschlag hat Status 'proposed': er ändert keine Bewertung und lädt nichts herunter. Der Nutzer gibt ihn im Globalen Kontext frei oder lehnt ihn ab. " +
+			"Quellen, die schon im Katalog stehen oder schon vorgeschlagen wurden, werden abgelehnt.",
+	}, suggestHazardSourceHandler(deps))
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_pending_evaluations",
 		Description: "Listet die Inserate eines Profils, die (neu) bewertet werden müssen (needs_reevaluation): id, title, status, overall_score (null, wenn noch nie bewertet).",
 	}, listPendingEvaluationsHandler(deps))

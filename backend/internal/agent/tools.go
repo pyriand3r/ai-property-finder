@@ -134,6 +134,27 @@ func Tools() []Tool {
 			}`),
 		},
 		{
+			Name: "suggest_hazard_source",
+			Description: "Schlägt eine öffentliche Datenquelle für Naturgefahren (Waldbrand, Hochwasser, Erdbeben, Erdrutsch) vor, die die App noch nicht kennt " +
+				"— z.B. wenn der Nutzer ein Inserat in einem Land ohne Naturgefahren-Daten betrachtet. Der Vorschlag wird nur gespeichert: " +
+				"Er ändert keine Bewertung und lädt nichts herunter. Erst wenn der Nutzer ihn im Globalen Kontext freigibt, darf die Quelle eingebunden werden. " +
+				"Nenne nur Quellen, deren Herausgeber und URL du aus einer gelesenen Seite kennst; erfinde keine URLs. " +
+				"Ist die Quelle schon im Katalog oder schon vorgeschlagen, meldet das Tool einen Fehler.",
+			InputSchema: json.RawMessage(`{
+				"properties": {
+					"country": {"type": "string", "description": "ISO 3166-1 alpha-2 Ländercode, z.B. SE, AT, PT."},
+					"hazard_type": {"type": "string", "enum": ["wildfire", "flood", "earthquake", "landslide"]},
+					"scope": {"type": "string", "description": "Welcher Teil des Landes abgedeckt ist, z.B. 'Österreich' oder 'Azoren'. Optional."},
+					"title": {"type": "string", "description": "Name des Datensatzes."},
+					"publisher": {"type": "string", "description": "Herausgebende Behörde oder Institution."},
+					"url": {"type": "string", "description": "Absolute http(s)-URL der Seite oder des Downloads."},
+					"license": {"type": "string", "description": "Lizenz, falls bekannt. Optional."},
+					"rationale": {"type": "string", "description": "Warum die Quelle nützlich ist: Abdeckung, Auflösung (Gemeindeebene?), Format."}
+				},
+				"required": ["country", "hazard_type", "title", "publisher", "url", "rationale"]
+			}`),
+		},
+		{
 			Name:        "geocode",
 			Description: "Löst eine Adresse in Koordinaten (Breitengrad/Längengrad) auf, z.B. wenn eine Quelle nur eine Adresse aber keine Koordinaten nennt.",
 			InputSchema: json.RawMessage(`{
@@ -215,6 +236,14 @@ type AddressGeocoder interface {
 	Geocode(ctx context.Context, address, country string) (*geocode.Result, error)
 }
 
+// HazardSourceSuggester backs suggest_hazard_source: it stores a source
+// suggestion with status proposed (docs/adr/0027). Satisfied by
+// *service.HazardSourceService without internal/agent importing
+// internal/service.
+type HazardSourceSuggester interface {
+	Suggest(ctx context.Context, input domain.HazardSourceSuggestionInput) (*domain.HazardSourceSuggestion, error)
+}
+
 var validImageCategories = map[string]bool{
 	"exterior":    true,
 	"interior":    true,
@@ -238,6 +267,8 @@ type Registry struct {
 	Evaluator  ListingEvaluator
 	Geocoder   AddressGeocoder
 	DataDir    string
+	// HazardSources backs suggest_hazard_source.
+	HazardSources HazardSourceSuggester
 
 	touchedListingID *uuid.UUID
 }
@@ -268,6 +299,8 @@ func (r *Registry) Dispatch(ctx context.Context, call ToolCall) ToolResult {
 		result, isError = r.proposeCriteria(ctx, call.Arguments)
 	case "update_context":
 		result, isError = r.updateContext(call.Arguments)
+	case "suggest_hazard_source":
+		result, isError = r.suggestHazardSource(ctx, call.Arguments)
 	case "geocode":
 		result, isError = r.geocodeAddress(ctx, call.Arguments)
 	case "list_profile_listings":
@@ -644,6 +677,47 @@ func (r *Registry) updateContext(raw json.RawMessage) (string, bool) {
 	return mustJSON(map[string]any{
 		"status":  "pending_confirmation",
 		"summary": fmt.Sprintf("Kontext-Ergänzung vorgeschlagen (%s) — ⚠️ Noch nicht aktiv, Bestätigung ausstehend.", args.Scope),
+	}), false
+}
+
+// suggestHazardSource stores a hazard data source suggestion with status
+// proposed (docs/adr/0027). Nothing is ingested and no rating changes: the
+// user approves or rejects it in the Global Context view, and an approved
+// source still needs a release that ships its dataset.
+func (r *Registry) suggestHazardSource(ctx context.Context, raw json.RawMessage) (string, bool) {
+	var args struct {
+		Country    string `json:"country"`
+		HazardType string `json:"hazard_type"`
+		Scope      string `json:"scope"`
+		Title      string `json:"title"`
+		Publisher  string `json:"publisher"`
+		URL        string `json:"url"`
+		License    string `json:"license"`
+		Rationale  string `json:"rationale"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return errorJSON("ungültige Argumente: " + err.Error()), true
+	}
+	// The model sometimes writes `&amp;` into a tool argument (docs/buglist.md
+	// issue #4); decode it where the row is written, as proposeCriteria does.
+	suggestion, err := r.HazardSources.Suggest(ctx, domain.HazardSourceSuggestionInput{
+		Country:    html.UnescapeString(args.Country),
+		HazardType: domain.HazardType(strings.ToLower(strings.TrimSpace(args.HazardType))),
+		Scope:      html.UnescapeString(args.Scope),
+		Title:      html.UnescapeString(args.Title),
+		Publisher:  html.UnescapeString(args.Publisher),
+		URL:        html.UnescapeString(args.URL),
+		License:    html.UnescapeString(args.License),
+		Rationale:  html.UnescapeString(args.Rationale),
+	})
+	if err != nil {
+		return errorJSON(err.Error()), true
+	}
+	return mustJSON(map[string]any{
+		"status":        "pending_confirmation",
+		"suggestion_id": suggestion.ID,
+		"summary": fmt.Sprintf("Vorgeschlagen: Naturgefahren-Quelle %q (%s, %s) — ⚠️ Noch nicht eingebunden, Freigabe durch den Nutzer im Globalen Kontext ausstehend.",
+			suggestion.Title, suggestion.Country, suggestion.HazardType),
 	}), false
 }
 

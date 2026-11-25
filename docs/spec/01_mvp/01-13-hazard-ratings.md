@@ -28,7 +28,7 @@ Four rules shape everything below. They are decided in [[../../docs/adr/0025-haz
 - The data is **static**. It ships inside the backend binary and is cached in the database at boot. Nothing is fetched at runtime, and no request writes it.
 - Each rating names its **source** and how the source's own values became a number from 1 to 5.
 
-This spec covers the backend: data model, dataset files, sync, read API and the Portugal data (issue #44), and the UI (issue #45, section "UI"). More countries and Agent-suggested sources are issue #46.
+This spec covers the backend: data model, dataset files, sync, read API and the Portugal data (issue #44), and the UI (issue #45, section "UI"). The source catalogue and Agent-suggested sources are [[01-15-hazard-source-catalogue]] (issue #46).
 
 ## Concepts
 
@@ -278,7 +278,7 @@ Frontend only. No backend change. Ratings are always shown **apart from the Scor
 ## Not in this spec
 
 - **Storing the region on the Listing.** The name match above is a stopgap. A stored key (`listing.hazard_region_key`), set by the Agent or by hand, would be exact. See [[../../ideas]].
-- **More countries** (Sweden, Austria) and **Agent-suggested sources**: issue #46.
+- **The source catalogue and Agent-suggested sources**: [[01-15-hazard-source-catalogue]] (issue #46). **Datasets for more countries** (Sweden, Austria) are not built yet; the catalogue lists candidate sources for them.
 - **An Agent Tool or MCP tool** for hazard lookups: see [[../../ideas]].
 
 ## Verification

@@ -1,0 +1,27 @@
+{
+  "country": "AT",
+  "entries": [
+    {
+      "id": "at-flood-hora",
+      "hazard_type": "flood",
+      "scope": "Österreich",
+      "status": "candidate",
+      "title": "HORA – Hochwasserrisikozonierung Austria",
+      "publisher": "BMLUK (Bundesministerium für Land- und Forstwirtschaft)",
+      "url": "https://hora.gv.at",
+      "license": "",
+      "notes": "Startpunkt, nicht geprüft: HORA zeigt Hochwasser-Anschlaglinien (HQ30, HQ100, HQ300). Ob ein Massen-Download pro Gemeinde erlaubt ist und unter welcher Lizenz, ist zu klären."
+    },
+    {
+      "id": "at-earthquake-geosphere",
+      "hazard_type": "earthquake",
+      "scope": "Österreich",
+      "status": "candidate",
+      "title": "Erdbebengefährdung Österreich",
+      "publisher": "GeoSphere Austria",
+      "url": "https://www.geosphere.at",
+      "license": "",
+      "notes": "Startpunkt, nicht geprüft: GeoSphere Austria betreibt den Erdbebendienst. Konkreter Datensatz (Gefährdungskarte, Gemeindeebene) und Lizenz sind zu klären."
+    }
+  ]
+}

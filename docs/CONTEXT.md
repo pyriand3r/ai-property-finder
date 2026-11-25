@@ -94,6 +94,14 @@ _Avoid_: Provider (the LLM provider), data feed
 The static JSON file of one country, embedded in the backend binary, that holds its Hazard Sources, Hazard Regions and Hazard Ratings. The backend copies it into the database at boot. Nothing is fetched at runtime. To change a rating, replace the file and release.
 _Avoid_: Seed data, hazard import, hazard feed
 
+**Hazard Source Catalogue**:
+The declarative list, one embedded JSON file per country, of the hazard data sources known for it. An entry is `bundled` (its data ships in the Hazard Dataset) or `candidate` (a known lead, not ingested). See [[spec/01_mvp/01-15-hazard-source-catalogue]] and [[adr/0027-hazard-source-catalogue-and-suggestions]].
+_Avoid_: Source list, source registry
+
+**Source Suggestion**:
+A hazard data source the Agent or an MCP client proposed through `suggest_hazard_source`, stored as `proposed`. The user approves or rejects it in the Global Context view. Approval clears the source for ingestion in a later release. It does not create ratings.
+_Avoid_: Source proposal (a Criterion has a proposal, see [[#Proposed Criterion]]), source request
+
 ## Carried over unchanged from the predecessor project
 
 Criterion, Objective/Subjective Criterion, Weight, Evaluation, Grade, Score, Status, Letztkontakt, Rejection, Property. They keep the meaning they had in the predecessor project. They are not repeated here, so that two copies do not drift apart.

@@ -10,6 +10,7 @@ import {
   updateGlobalContext,
 } from '@/api/context';
 import ContextEditor from '@/components/context/ContextEditor.vue';
+import HazardSourcesPanel from '@/components/hazard/HazardSourcesPanel.vue';
 import { useContextEditor } from '@/composables/useContextEditor';
 
 const router = useRouter();
@@ -38,6 +39,8 @@ onMounted(fetchAll);
       @save="save"
       @restore="restore"
     />
+
+    <HazardSourcesPanel />
   </main>
 </template>
 

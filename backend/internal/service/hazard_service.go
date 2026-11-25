@@ -42,6 +42,11 @@ func (service *HazardService) SeedStatic(ctx context.Context) error {
 			return fmt.Errorf("sync hazard dataset %s: %w", dataset.Country, syncError)
 		}
 	}
+	// The source catalog (docs/adr/0027) must agree with the datasets just
+	// synced; a catalog that does not stops the boot like a bad dataset.
+	if _, catalogError := loadCatalog(); catalogError != nil {
+		return fmt.Errorf("load hazard catalog: %w", catalogError)
+	}
 	return nil
 }
 
