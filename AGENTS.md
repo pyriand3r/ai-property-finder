@@ -45,7 +45,7 @@ editable in a plain form (ADR 0001) — the UI is never chat-only.
 (RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Layer 9 (ADR 0026)
 lets an MCP client grade a Listing itself with no `CLAUDE_API_KEY`. Remaining work is
 tracked as bugs in `docs/buglist.md` (3 open) and
-ideas in `docs/ideas.md` (6 open). UI copy is German (`index.html` is `lang="de"`).
+ideas in `docs/ideas.md` (8 open). UI copy is German (`index.html` is `lang="de"`).
 
 ## Architecture & Data Flow
 
@@ -109,6 +109,8 @@ the `hazard_*` tables (idempotent; it deletes what a file no longer holds). Noth
 no request writes those tables. Read API: `GET /api/hazards/regions` and `.../{regionKey}`. The UI (badges in the Detail and List View, sort/filter) matches `listing.region` to a region by name in the frontend (`src/utils/hazard.ts`); a Listing has no region key yet. A dataset that
 fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-ratings.md`.
 
+**Hazard sources are a catalogue** (ADR 0027): `internal/hazard/catalog/<country>.json` lists the known sources per country, `bundled` (named by `source_id` in the dataset; the loader checks both files agree) or `candidate` (a lead, not ingested). Adding a lead means editing one file. The Agent Tool `suggest_hazard_source` (also on MCP) only stores a `proposed` row in `hazard_source_suggestion`; the user approves or rejects it in the Global Context view. Approval does **not** ingest anything: ingestion stays a release step (a new dataset file). Spec: `docs/spec/01_mvp/01-15-hazard-source-catalogue.md`.
+
 ### Key Architecture Decisions (`docs/adr/`)
 
 - **0001**: Chat is primary UI; plain form is mandatory fallback — not optional
@@ -139,6 +141,7 @@ fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-rating
 - **0024**: Criteria have a `proposed`/`active` status; chat `add` and MCP `propose_criteria` only create `proposed` ones (ignored by evaluation/score), the user approves in the Criteria tab or via the Confirm-Card; MCP cannot change active criteria; names unique per profile. Partly replaces 0017/0019 for criteria
 - **0025**: Natural-hazard ratings are region-level, 1–5 (higher is worse), separate from the Score; static datasets embedded in the binary (`internal/hazard`) are synced into `hazard_*` tables at boot; read-only `GET /api/hazards/regions`
 - **0026**: MCP also lets an external client grade a Listing: `get_evaluation_brief` → `submit_evaluation` (+ `list_pending_evaluations`); server validates, computes the Score; internal evaluation unchanged; evaluation only (plan: layer 9, spec 01-14)
+- **0027**: Hazard sources are a declarative per-country catalogue (`bundled`/`candidate`); Agent and MCP only *suggest* sources (`suggest_hazard_source`, table `hazard_source_suggestion`), the user approves before ingestion; ingestion stays a release step (extends 0025)
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -155,11 +158,11 @@ backend/
     │                 #   writeError/writeJSON/decodeJSON/parseUUID
     ├── service/      # business logic, one service per concern (agent, chat, listing, profile,
     │                 #   criterion, evaluation, ranking, rejection_analysis, image, note, context,
-    │                 #   upload, tool_call, hazard)
+    │                 #   upload, tool_call, hazard, hazard_source)
     ├── domain/       # types.go — shared structs + domain error types (Validation/NotFound/Conflict/Upstream)
     ├── db/           # querier.go (pgx pool/tx abstraction), db.go, migrations/ (golang-migrate, forward-only),
     │                 #   dbtest/ (throwaway Postgres for integration tests, needs TEST_DATABASE_URL)
-    │   └── repository/  # one repo per entity (note, context, chat, image, listing, profile, task, criterion, grade, hazard)
+    │   └── repository/  # one repo per entity (note, context, chat, image, listing, profile, task, criterion, grade, hazard, hazard_suggestion)
     ├── agent/        # provider-independent agent loop: loop.go, tools.go (Registry/Dispatch),
     │                 #   provider.go (interface), context_builder.go (system prompt assembly),
     │                 #   unconfigured.go (no-API-key fallback)
@@ -171,7 +174,7 @@ backend/
     ├── fetch/        # HTTP GET + readability text extraction (go-readability; no chromedp in MVP)
     ├── attachment/   # attachment.go — read/delete uploaded PDFs (ADR 0005) and images (ADR 0020) on disk (base64 in/out)
     ├── geocode/      # nominatim.go — Nominatim HTTP client, rate-limited
-    ├── hazard/       # hazard.go — loads and validates the embedded per-country hazard datasets (datasets/*.json); HazardService syncs them into hazard_* at boot — ADR 0025
+    ├── hazard/       # hazard.go — loads and validates the embedded per-country hazard datasets (datasets/*.json); HazardService syncs them into hazard_* at boot — ADR 0025; catalog.go + catalog/*.json = source catalogue (ADR 0027)
     ├── events/       # broker.go — single SSE Broker for chat streaming + background task progress
     ├── config/       # two-tier config loader (Env + DB-backed LLM config)
     └── web/          # web.go — go:embed of dist/, SPA-fallback handler; dist/ is gitignored except .gitkeep
@@ -190,7 +193,8 @@ src/                           # Vue 3 + TS SPA, repo root (Go embeds its build 
 │   ├── profile/      # ProfileCreateForm, ProfileListItem, ProfileTable
 │   ├── settings/     # LlmConfigForm (presentational; used by SettingsView)
 │   ├── criteria/     # CriteriaEditor, CriterionCreateForm, CriterionListItem
-│   └── shared/       # ReevaluationBanner
+│   ├── shared/       # ReevaluationBanner
+│   └── hazard/       # HazardSourcesPanel (source catalogue + suggestion review, spec 01-15; used by GlobalContextView)
 ├── views/          # route-level: ProfileListView, ProfileShellView (tab shell), ListingDetailView, GlobalContextView, SettingsView
 └── router/index.ts  # all 6 routes, single source of routing truth
 
@@ -388,7 +392,7 @@ Covered packages: `internal/agent` (loop, tools, context builder), `internal/age
 `internal/service` (chat-history JSON merge logic), `internal/attachment`, `internal/fetch`,
 `internal/events` (broker, SSE framing), `internal/geocode` (httptest Nominatim, throttle),
 `internal/config` (`LoadEnv`, `SaveLLM`, redaction), `internal/db/repository`, `internal/hazard` (dataset
-validation, the shipped Portugal data).
+and catalogue validation, the shipped Portugal data).
 
 Repository tests need no database: `internal/db/repository/fake_querier_test.go` is a hand-written
 `db.Querier` that records SQL/args and replays canned rows, tags and errors. They check argument
@@ -400,7 +404,7 @@ test). They are **skipped unless `TEST_DATABASE_URL`** points at a server the te
 on (CI sets it; locally e.g. `postgres://app@127.0.0.1:5432/postgres?sslmode=disable`). Current users:
 the migration tests (`internal/db/migrations_test.go`, incl. the hazard constraints), the criterion status
 workflow (`internal/service/criterion_status_test.go`), the hazard sync and lookups
-(`internal/service/hazard_service_test.go`, `internal/api/hazards_test.go`), `PATCH`/approve REST
+(`internal/service/hazard_service_test.go`, `internal/service/hazard_source_service_test.go`, `internal/api/hazards_test.go`), `PATCH`/approve REST
 (`internal/api/criteria_test.go`) and MCP `propose_criteria` (`internal/mcpserver/propose_criteria_test.go`).
 **Not yet covered**:
 `config.LoadAll`/`SeedFromEnv`/`ConnectPool`, `db.WithTx` on its own, the other `internal/api` handlers
@@ -484,9 +488,9 @@ PDFs and listing images).
 - **Agent** — the LLM running a multi-turn tool-use loop inside a Chat Session (avoid "Assistant/bot").
 - **Tool** — a typed function the Agent calls mid-turn: `fetch_url`, `save_listing`, `download_image`,
   `evaluate_listing`, `geocode`, `compute_ranking`, `read_pdf`, `propose_criteria`, `update_context`,
-  `list_profile_listings`. The same catalog (plus `list_profiles` for discovery) is also reachable
+  `list_profile_listings`, `suggest_hazard_source`. The same catalog (plus `list_profiles` for discovery) is also reachable
   outside a chat session via the MCP interface at `POST /mcp` (docs/adr/0019). MCP additionally has
-  `list_pending_evaluations`, `get_evaluation_brief`, `submit_evaluation` (13 tools in total): an external
+  `list_pending_evaluations`, `get_evaluation_brief`, `submit_evaluation` (14 tools in total): an external
   client grades a Listing itself and needs no LLM key (docs/adr/0026, spec 01-14).
 - **Context File** — persistent Markdown steering Agent behavior (avoid "Prompt"). Two scopes: **Global**
   (app-wide) and **Profile** (per-Search-Profile; overrides Global).

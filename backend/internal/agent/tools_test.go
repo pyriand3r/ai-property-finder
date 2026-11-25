@@ -553,3 +553,51 @@ func TestDispatch_ComputeRanking_OrdersByScoreDescending(t *testing.T) {
 		t.Errorf("result = %s, want both listings present", result)
 	}
 }
+
+type fakeHazardSuggester struct {
+	got domain.HazardSourceSuggestionInput
+	err error
+}
+
+func (f *fakeHazardSuggester) Suggest(_ context.Context, input domain.HazardSourceSuggestionInput) (*domain.HazardSourceSuggestion, error) {
+	f.got = input
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &domain.HazardSourceSuggestion{
+		ID: uuid.New(), Country: input.Country, HazardType: input.HazardType, Title: input.Title,
+		Status: domain.HazardSuggestionProposed,
+	}, nil
+}
+
+// TestDispatch_SuggestHazardSource_StoresAProposalAndSaysItIsNotActive: the
+// Tool only proposes (docs/adr/0027), so the result must tell the model the
+// source is not ingested yet, and arguments must reach the service decoded
+// (the model sometimes writes `&amp;`, docs/buglist.md issue #4).
+func TestDispatch_SuggestHazardSource_StoresAProposalAndSaysItIsNotActive(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+	suggester := &fakeHazardSuggester{}
+	registry.HazardSources = suggester
+
+	args := `{"country":"at","hazard_type":"Flood","title":"HORA","publisher":"Land &amp; Forst","url":"https://hora.gv.at","rationale":"HQ100"}`
+	result, isError := dispatchText(registry, ToolCall{Name: "suggest_hazard_source", Arguments: json.RawMessage(args)})
+	if isError {
+		t.Fatalf("Dispatch returned an error result: %s", result)
+	}
+	if !strings.Contains(result, "pending_confirmation") || !strings.Contains(result, "Noch nicht eingebunden") {
+		t.Errorf("result = %s, want pending_confirmation and a not-ingested notice", result)
+	}
+	if suggester.got.HazardType != domain.HazardFlood || suggester.got.Publisher != "Land & Forst" {
+		t.Errorf("service got %+v, want hazard type flood and the unescaped publisher", suggester.got)
+	}
+}
+
+func TestDispatch_SuggestHazardSource_ServiceErrorReachesTheModel(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+	registry.HazardSources = &fakeHazardSuggester{err: &domain.ConflictError{Message: "Die Quelle steht schon im Katalog (at-flood-hora, Status candidate)."}}
+
+	result, isError := dispatchText(registry, ToolCall{Name: "suggest_hazard_source", Arguments: json.RawMessage(`{"country":"AT"}`)})
+	if !isError || !strings.Contains(result, "schon im Katalog") {
+		t.Errorf("result = %s (isError %v), want the service's message as an error", result, isError)
+	}
+}

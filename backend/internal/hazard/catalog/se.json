@@ -1,0 +1,27 @@
+{
+  "country": "SE",
+  "entries": [
+    {
+      "id": "se-flood-msb",
+      "hazard_type": "flood",
+      "scope": "Schweden",
+      "status": "candidate",
+      "title": "Überschwemmungskartierung",
+      "publisher": "MSB (Myndigheten för samhällsskydd och beredskap)",
+      "url": "https://www.msb.se",
+      "license": "",
+      "notes": "Startpunkt, nicht geprüft: MSB ist die Behörde für Hochwasserkartierung. Konkreter Datensatz, Lizenz und Gemeindezuordnung sind zu klären."
+    },
+    {
+      "id": "se-landslide-sgu",
+      "hazard_type": "landslide",
+      "scope": "Schweden",
+      "status": "candidate",
+      "title": "Erdrutsch- und Erosionskarten",
+      "publisher": "SGU (Sveriges geologiska undersökning)",
+      "url": "https://www.sgu.se",
+      "license": "",
+      "notes": "Startpunkt, nicht geprüft: SGU veröffentlicht geologische Karten, darunter Erdrutschrisiko. Konkreter Datensatz und Lizenz sind zu klären."
+    }
+  ]
+}

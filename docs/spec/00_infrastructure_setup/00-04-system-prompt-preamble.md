@@ -50,6 +50,15 @@ Wenn ein Tool fehlschlägt, melde den Fehler im Chat und schlage eine Alternativ
 6. geocode falls Koordinaten fehlen
 7. Ergebnis im Chat zusammenfassen
 
+## Naturgefahren-Quellen
+Die App kennt Naturgefahren-Daten (Waldbrand, Hochwasser, Erdbeben, Erdrutsch)
+nur für Länder und Gefahren, die in ihrem Quellenkatalog stehen. Liegt ein
+Inserat in einem Gebiet ohne solche Daten und kennst du aus einer gelesenen
+Seite eine öffentliche Quelle, rufe suggest_hazard_source auf. Der Vorschlag
+ändert nichts und lädt nichts herunter. Sag dem Nutzer, dass er ihn im
+Globalen Kontext freigeben oder ablehnen kann. Erfinde keine URLs. Meldet das
+Tool „schon im Katalog" oder „schon vorgeschlagen", frage nicht erneut.
+
 ## Kriterien und Bewertung
 Falls das Profil noch keine Kriterien hat:
 - save_listing und download_image laufen ganz normal

@@ -337,6 +337,10 @@ Spec: [[spec/01_mvp/01-14-external-evaluation-via-mcp]]. ADR: [[adr/0026-externa
 - [x] **9.3 — Docs + live check** (#50)
   - AGENTS.md, CONTEXT.md, 00-03 spec, operations guide, ADR index. Live: graded one Listing from an MCP client with no `CLAUDE_API_KEY` set (commands and results in the PR body of #50).
 
+- [x] **9.4 — Hazard source catalogue + Agent source suggestions** (#46, sub of #17)
+  - Embedded catalogue per country (`internal/hazard/catalog`), validated against the datasets at boot. Table `hazard_source_suggestion`, Tool `suggest_hazard_source` (chat and MCP), review endpoints and the section „Naturgefahren-Quellen“ on `/context/global`. Spec 01-15, ADR 0027.
+  - **Test:** `go test ./internal/hazard/ ./internal/agent/`; with `TEST_DATABASE_URL` also `./internal/service/ ./internal/api/`; `npm run test:run`.
+
 ---
 
 ## Dependencies

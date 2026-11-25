@@ -42,7 +42,7 @@ Builds on: issue #45. Touches: the `listing` table and migration, `ListingServic
 
 ### Hazard lookup as an Agent Tool and an MCP tool
 
-Found in #44. The Agent cannot answer "wie hoch ist das Erdbebenrisiko dort?" (means: how high is the earthquake risk there?) from the ratings. `HazardService.SearchRegions` and `GetRegionHazards` (`backend/internal/service/hazard_service.go`) already return everything a Tool needs. Add the Tool to `NewToolRegistry` (`backend/internal/service/tool_registry.go`, `backend/internal/agent/tools.go`). The MCP interface ([[adr/0019-mcp-tool-interface]], `backend/internal/mcpserver/`) reuses the same registry. The Tool is read-only, so it needs no Confirm-Card. It is most useful together with the entry above (the region of the current Listing). Related: issue #46 (Agent source suggestions).
+Found in #44. The Agent cannot answer "wie hoch ist das Erdbebenrisiko dort?" (means: how high is the earthquake risk there?) from the ratings. `HazardService.SearchRegions` and `GetRegionHazards` (`backend/internal/service/hazard_service.go`) already return everything a Tool needs. Add the Tool to `NewToolRegistry` (`backend/internal/service/tool_registry.go`, `backend/internal/agent/tools.go`). The MCP interface ([[adr/0019-mcp-tool-interface]], `backend/internal/mcpserver/`) reuses the same registry. The Tool is read-only, so it needs no Confirm-Card. It is most useful together with the entry above (the region of the current Listing). Related: issue #46 (done: `suggest_hazard_source`, see [[spec/01_mvp/01-15-hazard-source-catalogue]]).
 
 ### Hazard data for Madeira and the Azores (wildfire, flood, landslide)
 
@@ -55,6 +55,14 @@ Found in #44. The landslide rating comes from the EU-level ELSUS v2 map because 
 ### Keep the hazard dataset build scripts in the repository
 
 Found in #44. `pt.json` was produced by one-off Python GIS scripts (raster and polygon overlays with the CAOP 2025 boundaries) that are not in the repository. Spec 01-13 lists every source, layer and threshold, so a person can repeat the work, but nobody can re-run it. A documented tool (inputs, pinned versions, one command per hazard) would make the next update, and the first one for Sweden or Austria (issue #46), much cheaper. `AGENTS.md` says there is no `scripts/` directory today, so first decide where such a tool lives and that it stays outside `go build ./...`. Touches: spec 01-13 "Updating a dataset", `backend/internal/hazard/datasets/`.
+
+### Create a hazard source suggestion by hand, and link it to the dataset that ships it
+
+Found in #46. A suggestion can only come from the Agent or an MCP client ([[adr/0027-hazard-source-catalogue-and-suggestions]], [[spec/01_mvp/01-15-hazard-source-catalogue]]). Two small gaps: (1) the user cannot add a source they know in the UI (a form on the "Naturgefahren-Quellen" section in `src/components/hazard/HazardSourcesPanel.vue` plus `POST /api/hazards/source-suggestions` calling `HazardSourceService.Suggest`); (2) when a maintainer ships an approved source, nothing marks the suggestion as done, so it stays `approved` forever. A fourth status `ingested`, or a `catalog_entry_id` column set by hand, would close it. Touches: migration for `hazard_source_suggestion`, `internal/service/hazard_source_service.go`, the panel above.
+
+### Agent Tool to read the hazard source catalogue
+
+Found in #46. `suggest_hazard_source` only learns that a source is known after it fails with "schon im Katalog". A read-only Tool (`list_hazard_sources`, country filter) built on `HazardSourceService.Catalog` would let the Agent check first and tell the user what coverage a country has. It could share the lookup Tool in "Hazard lookup as an Agent Tool and an MCP tool" above. Touches: `backend/internal/agent/tools.go`, `backend/internal/service/tool_registry.go`, `backend/internal/mcpserver/`.
 
 ---
 

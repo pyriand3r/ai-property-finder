@@ -20,15 +20,16 @@ import (
 // duplicated wiring.
 func NewToolRegistry(pool *pgxpool.Pool, dataDir string, evaluation *EvaluationService, profileID uuid.UUID) *agent.Registry {
 	return &agent.Registry{
-		ProfileID:  profileID,
-		Listings:   repository.NewListingRepo(pool),
-		Criteria:   NewCriterionService(pool),
-		Images:     repository.NewImageRepo(pool),
-		Fetcher:    fetch.NewClient(),
-		Downloader: fetch.NewClient(),
-		DataDir:    dataDir,
-		Evaluator:  evaluationAdapter{evaluation},
-		Geocoder:   geocodeAdapter{},
+		ProfileID:     profileID,
+		Listings:      repository.NewListingRepo(pool),
+		Criteria:      NewCriterionService(pool),
+		Images:        repository.NewImageRepo(pool),
+		Fetcher:       fetch.NewClient(),
+		Downloader:    fetch.NewClient(),
+		DataDir:       dataDir,
+		Evaluator:     evaluationAdapter{evaluation},
+		Geocoder:      geocodeAdapter{},
+		HazardSources: NewHazardSourceService(pool),
 	}
 }
 

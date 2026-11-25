@@ -196,6 +196,27 @@ Region-level natural hazard ratings (migration `000005_hazard_rating`, [[../../d
 
 Primary key `(region_key, hazard_type)`. `FOREIGN KEY (source_id, hazard_type) REFERENCES hazard_source (id, hazard_type)`: a rating can only cite a source of its own hazard type. A hazard with no source data for a region has no row.
 
+
+**`hazard_source_suggestion`**: hazard data sources suggested by the Agent or an MCP client, waiting for the user (migration `000006_hazard_source_suggestion`, [[../../docs/adr/0027-hazard-source-catalogue-and-suggestions]], [[../01_mvp/01-15-hazard-source-catalogue]]). Unlike the three tables above, requests write it. It is global: no foreign key to `search_profile` or `listing`. A row holds no ratings.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | UUID | PK, DEFAULT `gen_random_uuid()` | |
+| `country` | TEXT | NOT NULL, CHECK (`country ~ '^[A-Z]{2}$'`) | ISO 3166-1 alpha-2 |
+| `hazard_type` | TEXT | NOT NULL, CHECK (the four hazard types) | |
+| `scope` | TEXT | NOT NULL, DEFAULT `''` | Part of the country the source covers. Empty = all of it. |
+| `title` | TEXT | NOT NULL | Name of the dataset |
+| `publisher` | TEXT | NOT NULL | |
+| `url` | TEXT | NOT NULL | As suggested |
+| `url_key` | TEXT | NOT NULL | `url` without scheme, `www.`, fragment and trailing slash, host lower-cased (`hazard.SourceURLKey`). Never sent to clients. |
+| `license` | TEXT | NOT NULL, DEFAULT `''` | Empty = not known |
+| `rationale` | TEXT | NOT NULL | Why the source is useful |
+| `status` | TEXT | NOT NULL, DEFAULT `'proposed'`, CHECK (`status IN ('proposed','approved','rejected')`) | TEXT + CHECK like `criterion.status` |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | |
+| `decided_at` | TIMESTAMPTZ | NULL | Set when the user approves or rejects |
+
+`UNIQUE (country, hazard_type, url_key)`: one suggestion per source. A rejected row stays, so the source is not suggested again.
+
 ---
 
 ## Foreign Key Delete Behaviour (new/changed only)

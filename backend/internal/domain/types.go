@@ -395,6 +395,80 @@ type RegionHazards struct {
 	Ratings []HazardRatingDetail `json:"ratings"`
 }
 
+// HazardCatalogStatus says whether the app ships a catalog entry's data.
+type HazardCatalogStatus string
+
+const (
+	// HazardCatalogBundled: the data is in an embedded dataset file and
+	// SourceID names its hazard_source row.
+	HazardCatalogBundled HazardCatalogStatus = "bundled"
+	// HazardCatalogCandidate: a known public source that is not ingested yet.
+	HazardCatalogCandidate HazardCatalogStatus = "candidate"
+)
+
+// HazardCatalogEntry is one row of the source catalog (docs/adr/0027,
+// spec 01-15): a hazard data source known for a country, shipped or not.
+// Scope says which part of the country it covers ("" = all of it). For a
+// bundled entry Title, Publisher, URL and License are copied from the
+// dataset source SourceID, so they are stated once.
+type HazardCatalogEntry struct {
+	ID         string              `json:"id"`
+	Country    string              `json:"country"`
+	HazardType HazardType          `json:"hazard_type"`
+	Scope      string              `json:"scope"`
+	Status     HazardCatalogStatus `json:"status"`
+	SourceID   string              `json:"source_id,omitempty"`
+	Title      string              `json:"title"`
+	Publisher  string              `json:"publisher"`
+	URL        string              `json:"url"`
+	License    string              `json:"license"`
+	Notes      string              `json:"notes"`
+}
+
+// HazardSuggestionStatus is the review state of a HazardSourceSuggestion.
+type HazardSuggestionStatus string
+
+const (
+	// HazardSuggestionProposed: made by the Agent (or an MCP client), not yet
+	// reviewed by the user.
+	HazardSuggestionProposed HazardSuggestionStatus = "proposed"
+	// HazardSuggestionApproved: the user cleared the source for ingestion.
+	HazardSuggestionApproved HazardSuggestionStatus = "approved"
+	// HazardSuggestionRejected: the user does not want the source. It stays,
+	// so the same source is not suggested again.
+	HazardSuggestionRejected HazardSuggestionStatus = "rejected"
+)
+
+// HazardSourceSuggestion is a hazard data source the Agent found that the
+// catalog does not hold (docs/adr/0027). It changes no rating: ingestion
+// is a release step that needs the user's approval first.
+type HazardSourceSuggestion struct {
+	ID         uuid.UUID              `json:"id"`
+	Country    string                 `json:"country"`
+	HazardType HazardType             `json:"hazard_type"`
+	Scope      string                 `json:"scope"`
+	Title      string                 `json:"title"`
+	Publisher  string                 `json:"publisher"`
+	URL        string                 `json:"url"`
+	License    string                 `json:"license"`
+	Rationale  string                 `json:"rationale"`
+	Status     HazardSuggestionStatus `json:"status"`
+	CreatedAt  time.Time              `json:"created_at"`
+	DecidedAt  *time.Time             `json:"decided_at,omitempty"`
+}
+
+// HazardSourceSuggestionInput is what a caller supplies to suggest a source.
+type HazardSourceSuggestionInput struct {
+	Country    string
+	HazardType HazardType
+	Scope      string
+	Title      string
+	Publisher  string
+	URL        string
+	License    string
+	Rationale  string
+}
+
 // ── Domain Errors ───────────────────────────────────────────────────────
 
 // ValidationError signals 400 Bad Request — invalid input.

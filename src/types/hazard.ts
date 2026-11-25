@@ -35,3 +35,38 @@ export interface HazardRatingDetail {
 export interface RegionHazards extends HazardRegion {
   ratings: HazardRatingDetail[];
 }
+
+/** Mirrors backend/internal/domain.HazardCatalogEntry JSON (GET /api/hazards/sources, ADR 0027). */
+export interface HazardCatalogEntry {
+  id: string;
+  country: string;
+  hazard_type: HazardType;
+  /** Part of the country the source covers. */
+  scope: string;
+  /** `bundled`: the data ships in the app. `candidate`: known, not ingested. */
+  status: 'bundled' | 'candidate';
+  source_id?: string;
+  title: string;
+  publisher: string;
+  url: string;
+  license: string;
+  notes: string;
+}
+
+export type HazardSuggestionStatus = 'proposed' | 'approved' | 'rejected';
+
+/** Mirrors backend/internal/domain.HazardSourceSuggestion JSON (ADR 0027). */
+export interface HazardSourceSuggestion {
+  id: string;
+  country: string;
+  hazard_type: HazardType;
+  scope: string;
+  title: string;
+  publisher: string;
+  url: string;
+  license: string;
+  rationale: string;
+  status: HazardSuggestionStatus;
+  created_at: string;
+  decided_at?: string;
+}
