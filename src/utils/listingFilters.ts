@@ -1,4 +1,6 @@
+import type { HazardType } from '@/types/hazard';
 import type { Listing, ListingStatus } from '@/types/listing';
+import type { HazardRatingMap } from '@/utils/hazard';
 
 /** An inclusive numeric range; `null` = that bound is not set. */
 export interface NumberRange {
@@ -13,6 +15,16 @@ export interface ListingFilters {
   price: NumberRange;
   size: NumberRange;
   region: string | null;
+  hazard: HazardFilter;
+}
+
+/**
+ * "Waldbrand höchstens 3": keeps listings whose region rating for `type` is at most `max`.
+ * Higher is worse (ADR 0025). Active only when both are set.
+ */
+export interface HazardFilter {
+  type: HazardType | null;
+  max: number | null;
 }
 
 export function emptyListingFilters(): ListingFilters {
@@ -22,6 +34,7 @@ export function emptyListingFilters(): ListingFilters {
     price: { min: null, max: null },
     size: { min: null, max: null },
     region: null,
+    hazard: { type: null, max: null },
   };
 }
 
@@ -39,8 +52,27 @@ function inRange(value: number | undefined, range: NumberRange): boolean {
   return (range.min === null || value >= range.min) && (range.max === null || value <= range.max);
 }
 
-export function matchesListingFilters(listing: Listing, filters: ListingFilters): boolean {
+/**
+ * Like a numeric range, a listing without a rating (no region found, or no data for that
+ * hazard) is hidden once the hazard filter is active: "Erdbeben höchstens 2" must not show
+ * listings whose earthquake hazard is unknown.
+ */
+function matchesHazard(filter: HazardFilter, ratings: HazardRatingMap | undefined): boolean {
+  if (filter.type === null || filter.max === null) {
+    return true;
+  }
+  const rating = ratings?.[filter.type];
+  return rating !== undefined && rating <= filter.max;
+}
+
+/** `hazardRatings` = the ratings of the listing's Hazard Region, if one was found. */
+export function matchesListingFilters(
+  listing: Listing,
+  filters: ListingFilters,
+  hazardRatings?: HazardRatingMap,
+): boolean {
   return (
+    matchesHazard(filters.hazard, hazardRatings) &&
     (filters.status === null || listing.status === filters.status) &&
     inRange(listing.overall_score, filters.score) &&
     inRange(listing.price, filters.price) &&

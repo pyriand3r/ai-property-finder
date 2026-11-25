@@ -63,6 +63,23 @@ describe('matchesListingFilters', () => {
     expect(matchesListingFilters(makeListing(), filters)).toBe(false);
   });
 
+  it('keeps listings whose region rating is at most the chosen maximum', () => {
+    const filters = { ...emptyListingFilters(), hazard: { type: 'flood' as const, max: 2 } };
+    expect(matchesListingFilters(makeListing(), filters, { flood: 2 })).toBe(true);
+    expect(matchesListingFilters(makeListing(), filters, { flood: 3 })).toBe(false);
+  });
+
+  it('hides listings without a rating for the chosen hazard once the hazard filter is active', () => {
+    const filters = { ...emptyListingFilters(), hazard: { type: 'flood' as const, max: 5 } };
+    expect(matchesListingFilters(makeListing(), filters)).toBe(false);
+    expect(matchesListingFilters(makeListing(), filters, { earthquake: 1 })).toBe(false);
+  });
+
+  it('ignores a hazard filter that has a type but no maximum', () => {
+    const filters = { ...emptyListingFilters(), hazard: { type: 'flood' as const, max: null } };
+    expect(matchesListingFilters(makeListing(), filters)).toBe(true);
+  });
+
   it('combines all filters with AND', () => {
     const filters = {
       ...emptyListingFilters(),

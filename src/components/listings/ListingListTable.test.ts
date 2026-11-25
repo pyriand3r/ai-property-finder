@@ -9,6 +9,16 @@ import type { Listing, ListingStatus } from '@/types/listing';
 
 // The table's own rendering is under test; its data composables/API call /api.
 vi.mock('@/api/criteria', () => ({ listCriteria: () => Promise.resolve([]) }));
+vi.mock('@/composables/useListingHazards', () => ({
+  useListingHazards: () => ({
+    hazards: shallowRef(
+      new Map([
+        ['safe', { ratings: [{ hazard_type: 'flood', rating: 1 }] }],
+        ['wet', { ratings: [{ hazard_type: 'flood', rating: 4 }] }],
+      ]),
+    ),
+  }),
+}));
 vi.mock('@/composables/useListingThumbnails', () => ({
   useListingThumbnails: () => ({ thumbnails: shallowRef(new Map()) }),
 }));
@@ -104,5 +114,38 @@ describe('ListingListTable', () => {
     expect(wrapper.text()).toContain('Haus c');
     expect(wrapper.text()).not.toContain('Haus a');
     expect(wrapper.text()).not.toContain('Haus b');
+  });
+
+  it('shows the hazard rating as a badge and filters by hazard type and maximum rating', async () => {
+    const wrapper = mount(ListingListTable, {
+      props: {
+        profileId: 'p1',
+        listings: [
+          makeListing('safe', 'new'),
+          makeListing('wet', 'new'),
+          makeListing('unknown', 'new'),
+        ],
+      },
+    });
+    await flushPromises();
+
+    const badges = wrapper.findAll('.n-tag').map((tag) => tag.text());
+    expect(badges).toContain('1');
+    expect(badges).toContain('4');
+    expect(wrapper.text()).toContain('Hochwasser');
+    expect(wrapper.text()).toContain('Haus unknown');
+
+    const selects = wrapper.findAllComponents(NSelect);
+    selects
+      .find((select) => select.props('placeholder') === 'Naturgefahr')
+      ?.vm.$emit('update:value', 'flood');
+    selects
+      .find((select) => select.props('placeholder') === 'Einstufung höchstens')
+      ?.vm.$emit('update:value', 2);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Haus safe');
+    expect(wrapper.text()).not.toContain('Haus wet');
+    expect(wrapper.text()).not.toContain('Haus unknown');
   });
 });

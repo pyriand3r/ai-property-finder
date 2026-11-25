@@ -30,7 +30,7 @@ Asked on 2026-11-24, scoped down to evaluation only ([[adr/0026-external-evaluat
 
 ### Find the hazard region of a Listing
 
-Found in #44. A Listing has a free-text `region`, a `country` and optional coordinates (`Listing` in `backend/internal/domain/types.go`, `src/types/listing.ts`). Hazard ratings are stored per region key such as `PT-1106` ([[adr/0025-hazard-ratings-region-level-static-data]], [[spec/01_mvp/01-13-hazard-ratings]]). Nothing maps one to the other. Issue #45 (hazard UI, badges plus sort and filter) cannot show ratings for a Listing without this step.
+Found in #44. A Listing has a free-text `region`, a `country` and optional coordinates (`Listing` in `backend/internal/domain/types.go`, `src/types/listing.ts`). Hazard ratings are stored per region key such as `PT-1106` ([[adr/0025-hazard-ratings-region-level-static-data]], [[spec/01_mvp/01-13-hazard-ratings]]). Nothing maps one to the other. Issue #45 (hazard UI) ships the first option below as a stopgap, in `src/utils/hazard.ts` (`resolveHazardRegion`, rules in [[spec/01_mvp/01-13-hazard-ratings#UI]]): it matches `listing.region` by name, and shows no rating when the name is missing, not a municipality, or ambiguous. A stored key would replace it.
 
 Options:
 
@@ -38,7 +38,7 @@ Options:
 - Let the Agent resolve the municipality when it geocodes (`geocode` Tool, [[adr/0011-nominatim-geocoding-tool]]; Nominatim returns the municipality) and store the key on the Listing, for example in a new `listing.hazard_region_key` column.
 - Bundle simplified CAOP municipality boundaries and look the key up from `latitude` and `longitude`. It needs no network and no Agent, but adds tens of MB.
 
-Depends on: issue #45. Touches: the `listing` table and migration, `ListingService`, `ListingPatch` (a manual edit must be possible, [[adr/0001-chat-first-with-form-fallback]]), the Agent's `save_listing` Tool.
+Builds on: issue #45. Touches: the `listing` table and migration, `ListingService`, `ListingPatch` (a manual edit must be possible, [[adr/0001-chat-first-with-form-fallback]]), the Agent's `save_listing` Tool.
 
 ### Hazard lookup as an Agent Tool and an MCP tool
 
