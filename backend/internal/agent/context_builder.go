@@ -96,6 +96,37 @@ Bewerte NIE ohne bestätigte Kriterien.
 - user_confirmed_fields: Felder die der Nutzer manuell geändert hat, werden
   dir mitgeteilt. Überschreibe sie nur nach Rückfrage.`
 
+// MaxBatchListingsPerTurn is how many Listings the Agent imports from one
+// user message that holds several URLs (issue #20, spec 01-03). Each Listing
+// needs about four Tool calls (fetch_url, download_image, save_listing,
+// evaluate_listing) and fetch_url calls of different Listings share one
+// roundtrip, so the number stays inside DefaultMaxToolCallsPerTurn and the
+// default roundtrip budget (ADR 0013, ADR 0029). The rest waits for a
+// follow-up message.
+const MaxBatchListingsPerTurn = 3
+
+// systemPreambleBatchFormat is appended after systemPreambleTools; %d is
+// MaxBatchListingsPerTurn.
+const systemPreambleBatchFormat = `
+## Mehrere Links in einer Nachricht
+Enthält eine Nachricht mehrere Inserats-URLs, ist jede URL ein eigenes
+Inserat mit dem vollen Ablauf oben und einem eigenen save_listing. Eine
+Anweisung der Nachricht („bewerte alle“) gilt für alle URLs. Doppelte URLs
+bearbeitest du nur einmal.
+- Bearbeite pro Nachricht höchstens %d Inserate, in der Reihenfolge der
+  Nachricht. Rufe gleichartige Tools mehrerer Inserate (z.B. fetch_url) in
+  derselben Anfrage gemeinsam auf, sonst reicht das Limit nicht.
+- Nenne die übrigen URLs am Ende und frage, ob du mit ihnen weitermachen
+  sollst. Starte sie nicht ungefragt.
+- Schlägt eine URL fehl (blockiert, kein Inserat) oder ist sie ein Duplikat
+  (Schritt 3), melde das für diese URL und mache mit den anderen weiter.
+  Frage zum Duplikat erst in der Zusammenfassung nach.
+- Schließe mit einer Zusammenfassung ab: eine Zeile pro URL mit Titel und
+  Score oder dem Grund, warum nichts gespeichert wurde.
+- Ist eine URL eine Suchergebnis-Seite, gilt dafür der Abschnitt
+  Portal-Suche; sie zählt nicht zu den %d Inseraten.
+`
+
 // systemPreambleContextFiles is always present — it holds regardless of
 // tool availability, since Context Files carry portal rules the Agent
 // should follow even in a text-only turn.
@@ -126,6 +157,7 @@ func BuildSystemPrompt(hasTools bool, maxRoundtrips int, globalContextMD, profil
 	preamble.WriteString(systemPreambleIntro)
 	if hasTools {
 		preamble.WriteString(systemPreambleTools)
+		fmt.Fprintf(&preamble, systemPreambleBatchFormat, MaxBatchListingsPerTurn, MaxBatchListingsPerTurn)
 	}
 	preamble.WriteString(systemPreambleContextFiles)
 	fmt.Fprintf(&preamble, systemPreambleLimitsFormat, maxRoundtrips)

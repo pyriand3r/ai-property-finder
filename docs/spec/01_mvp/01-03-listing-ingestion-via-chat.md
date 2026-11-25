@@ -38,6 +38,18 @@ This is the chat version of the core loop of the reference Obsidian workflow. Th
 The flow is the same as above from step 4 on. Steps 2–3 are replaced by `read_pdf`. The Agent does not follow second links, because a PDF is the end source. Sometimes the PDF images are unclear, or the user wants a specific image stored. Then the user asks the Agent. If a source page URL is given, the Agent calls `download_image` against it. If not, the Agent asks the user to also share the original page, so it can extract images.
 
 ---
+## Batch Ingestion (several URLs in one message)
+
+A message may hold several listing URLs (issue #20). Each URL is its own Source and gets the full URL flow above, with its own `save_listing`. An instruction in the message ("bewerte alle") applies to every URL. A URL that appears twice is handled once.
+
+- **Limit.** The Agent imports at most `MaxBatchListingsPerTurn` (3, `internal/agent/context_builder.go`) Listings per message, in message order. One Listing needs about four Tool calls, so three fit the turn budget of 15 calls and 5 roundtrips ([[../../adr/0013-agent-turn-llm-roundtrip-budget]]). The Agent issues the same Tool of several Listings (for example `fetch_url`) in one roundtrip, otherwise the roundtrips run out. A test keeps the limit inside the default call budget.
+- **Rest.** The Agent names the remaining URLs and asks whether to go on. It does not start them unasked. The user answers in the next message.
+- **Failures do not stop the batch.** A blocked URL, a page that is not a listing, or a duplicate is reported for that URL only; the Agent goes on with the others. The duplicate question is asked in the final summary, as in [[#Deduplication]].
+- **Summary.** The final reply has one line per URL: title and Score, or the reason nothing was saved. Each saved Listing gets its inline card.
+- **Search-result URLs** in the batch follow [[01-16-portal-search]] and do not count against the limit.
+- No code splits the message. The Agent reads the URLs from the text; the rule lives in the system prompt ([[../00_infrastructure_setup/00-04-system-prompt-preamble]]).
+
+---
 
 ## Deduplication
 
@@ -64,4 +76,4 @@ Before the Agent calls `save_listing` for a URL import, it checks `list_profile_
 
 ## Open Questions / TBD
 
-- Batch ingestion (pasting several URLs in one message): the MVP handles one Source per user message. Support for a list waits until we see real usage.
+None.

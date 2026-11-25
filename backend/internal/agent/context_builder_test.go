@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"propertyfinder/internal/domain"
 	"strings"
 	"testing"
@@ -89,5 +90,26 @@ func TestBuildSystemPrompt_IncludesListingBlockWhenNonEmpty(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("blocks = %+v, want one block matching the listing context text exactly", blocks)
+	}
+}
+
+// TestBuildSystemPrompt_BatchLimitFitsTurnBudget guards issue #20: the number
+// of Listings the Agent may import from one message is stated in the prompt
+// only when Tools exist, and must stay within the default tool-call budget
+// (about four calls per Listing, ADR 0013) so a full batch is not cut off
+// mid-way.
+func TestBuildSystemPrompt_BatchLimitFitsTurnBudget(t *testing.T) {
+	const toolCallsPerListing = 4
+	if MaxBatchListingsPerTurn*toolCallsPerListing > DefaultMaxToolCallsPerTurn {
+		t.Errorf("MaxBatchListingsPerTurn = %d needs %d tool calls, default budget is %d",
+			MaxBatchListingsPerTurn, MaxBatchListingsPerTurn*toolCallsPerListing, DefaultMaxToolCallsPerTurn)
+	}
+
+	want := fmt.Sprintf("höchstens %d Inserate", MaxBatchListingsPerTurn)
+	if got := BuildSystemPrompt(true, 5, "", "", "")[0].Text; !strings.Contains(got, want) {
+		t.Errorf("prompt with tools lacks %q", want)
+	}
+	if got := BuildSystemPrompt(false, 5, "", "", "")[0].Text; strings.Contains(got, "Mehrere Links") {
+		t.Errorf("prompt without tools mentions batch ingestion: %q", got)
 	}
 }
