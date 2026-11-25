@@ -19,13 +19,15 @@ import (
 // catalog outside a chat session, for an explicit profile_id, with zero
 // duplicated wiring.
 func NewToolRegistry(pool *pgxpool.Pool, dataDir string, evaluation *EvaluationService, profileID uuid.UUID) *agent.Registry {
+	fetcher := fetch.NewClient()
 	return &agent.Registry{
 		ProfileID:     profileID,
 		Listings:      repository.NewListingRepo(pool),
 		Criteria:      NewCriterionService(pool),
 		Images:        repository.NewImageRepo(pool),
-		Fetcher:       fetch.NewClient(),
-		Downloader:    fetch.NewClient(),
+		Fetcher:       fetcher,
+		Downloader:    fetcher,
+		PortalSearch:  NewPortalSearchService(pool, fetcher),
 		DataDir:       dataDir,
 		Evaluator:     evaluationAdapter{evaluation},
 		Geocoder:      geocodeAdapter{},

@@ -7,10 +7,12 @@
 //  4. run pending migrations (forward-only; fail-fast on error)
 //  5. sync the embedded natural-hazard datasets into hazard_* (idempotent;
 //     fail-fast; docs/adr/0025)
-//  6. seed Tier 2 app_config from env (write-once; DB authoritative after)
-//  7. load Tier 2 app_config (llm.*), build the live LLM runtime from it
+//  6. resume portal searches that were running at the last shutdown
+//     (docs/adr/0028)
+//  7. seed Tier 2 app_config from env (write-once; DB authoritative after)
+//  8. load Tier 2 app_config (llm.*), build the live LLM runtime from it
 //     (internal/llm; editable at runtime via PATCH /api/config)
-//  8. start HTTP server (GET /health, GET/PATCH /api/config, GET /api/events, ...)
+//  9. start HTTP server (GET /health, GET/PATCH /api/config, GET /api/events, ...)
 //
 // The rest of the API surface lands in later layers.
 package main
@@ -26,6 +28,7 @@ import (
 	"propertyfinder/internal/config"
 	"propertyfinder/internal/db"
 	"propertyfinder/internal/events"
+	"propertyfinder/internal/fetch"
 	"propertyfinder/internal/llm"
 	"propertyfinder/internal/service"
 	"syscall"
@@ -70,6 +73,12 @@ func run() error {
 		return hazardError
 	}
 	log.Print("hazard datasets synced")
+
+	resumed, recoverError := service.NewPortalSearchService(pool, fetch.NewClient()).Recover(ctx)
+	if recoverError != nil {
+		return recoverError
+	}
+	log.Printf("portal searches resumed: %d", resumed)
 
 	if seedError := config.SeedFromEnv(ctx, pool, envConfig.ClaudeAPIKey); seedError != nil {
 		return seedError

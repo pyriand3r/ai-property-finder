@@ -166,6 +166,24 @@ func suggestHazardSourceHandler(deps Deps) mcp.ToolHandlerFor[SuggestHazardSourc
 	}
 }
 
+// SearchPortalInput mirrors search_portal's schema in internal/agent/tools.go.
+// Start a search with url, read a running one back with task_id.
+type SearchPortalInput struct {
+	ProfileID    string `json:"profile_id" jsonschema:"UUID of the Search Profile (call list_profiles first if unknown)"`
+	URL          string `json:"url,omitempty" jsonschema:"Absolute URL of the portal's search-result page; starts a search"`
+	TaskID       string `json:"task_id,omitempty" jsonschema:"UUID of a running search from an earlier call; use instead of url to read its result"`
+	MaxPages     int    `json:"max_pages,omitempty" jsonschema:"Number of result pages, 1-5, default 1"`
+	PageParam    string `json:"page_param,omitempty" jsonschema:"Name of the query parameter that holds the page number; required when max_pages > 1"`
+	LinkContains string `json:"link_contains,omitempty" jsonschema:"Only keep links that contain this text"`
+}
+
+func searchPortalHandler(deps Deps) mcp.ToolHandlerFor[SearchPortalInput, any] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, input SearchPortalInput) (*mcp.CallToolResult, any, error) {
+		output, err := dispatchViaRegistry(ctx, deps, input.ProfileID, "search_portal", input)
+		return nil, output, err
+	}
+}
+
 // ProfileScopedInput is shared by list_profile_listings and
 // compute_ranking, neither of which takes any field besides profile_id
 // (internal/agent/tools.go's Dispatch doesn't even read call.Arguments

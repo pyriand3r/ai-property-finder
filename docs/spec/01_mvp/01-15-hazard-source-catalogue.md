@@ -105,7 +105,7 @@ A decision is final.
 
 ### The Tool `suggest_hazard_source`
 
-Available to the chat Agent and, with the same arguments plus `profile_id`, on MCP (14 tools in total). It stores one `proposed` row.
+Available to the chat Agent and, with the same arguments plus `profile_id`, on MCP (15 tools in total). It stores one `proposed` row.
 
 | Argument | |
 |---|---|

@@ -62,7 +62,7 @@ What we **keep as-is**:
 
 All of these still apply to how the Agent parses tool calls.
 
-What we **keep in part**: task persistence and recovery only applies to the Phase 3 automated recurring search. Agent chat turns use a simpler fire-and-forget model ([[../../docs/adr/0008-agent-turn-fire-and-forget]]). They do not use the `task` table.
+What we **keep in part**: task persistence and recovery applies only to the `search_portal` Tool ([[../../docs/adr/0028-portal-search-task-persistence]]), because a portal search is plain HTTP with no LLM cost. Agent chat turns use a simpler fire-and-forget model ([[../../docs/adr/0008-agent-turn-fire-and-forget]]). They do not use the `task` table.
 
 ---
 

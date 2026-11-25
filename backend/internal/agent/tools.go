@@ -40,6 +40,24 @@ func Tools() []Tool {
 			}`),
 		},
 		{
+			Name: "search_portal",
+			Description: "Durchsucht eine Suchergebnis-Seite eines Portals (kein einzelnes Inserat) und liefert die gefundenen Inserats-Links, getrennt in new_links (noch nicht im Profil gespeichert) und known_links (source_url existiert schon). " +
+				"Mit url starten; die Suche läuft als Hintergrund-Task und überlebt einen Server-Neustart. Ist sie nach ca. 30 s nicht fertig, kommt status=running zurück — dann mit task_id erneut aufrufen. " +
+				"Mehrere Seiten: max_pages (höchstens 5) plus page_param, der Name des Query-Parameters für die Seitennummer (z.B. page); Seite 1 ist die URL unverändert. " +
+				"Ohne link_contains werden alle Links derselben Domain geliefert, auch Navigation; setze link_contains auf einen Teil der Inserats-URL (z.B. /bostad/), sofern eine Portal-Regel ihn nennt. " +
+				"Die Links sind nur Kandidaten: lege nichts an, ohne fetch_url und save_listing für jeden neuen Link zu nutzen, und frage den Nutzer vorher, wenn es sehr viele sind.",
+			InputSchema: json.RawMessage(`{
+				"properties": {
+					"url": {"type": "string", "description": "Absolute URL der Suchergebnis-Seite. Zum Starten einer Suche."},
+					"task_id": {"type": "string", "description": "UUID einer laufenden Suche aus einem früheren Aufruf. Statt url, um das Ergebnis abzuholen."},
+					"max_pages": {"type": "integer", "description": "Anzahl der Ergebnisseiten, 1-5, Standard 1."},
+					"page_param": {"type": "string", "description": "Name des Query-Parameters für die Seitennummer. Erforderlich bei max_pages > 1."},
+					"link_contains": {"type": "string", "description": "Nur Links, die diesen Text enthalten."}
+				},
+				"required": []
+			}`),
+		},
+		{
 			Name: "save_listing",
 			Description: "Legt ein neues Inserat an oder aktualisiert ein bestehendes. listing_id weglassen = neu anlegen; " +
 				"listing_id angeben = bestehendes Inserat aktualisieren. Felder, die in fields fehlen, bleiben unverändert. " +
@@ -244,6 +262,15 @@ type HazardSourceSuggester interface {
 	Suggest(ctx context.Context, input domain.HazardSourceSuggestionInput) (*domain.HazardSourceSuggestion, error)
 }
 
+// PortalSearcher backs search_portal: a persisted, resumable search of a
+// portal's result pages (docs/adr/0028). Satisfied by
+// *service.PortalSearchService without internal/agent importing
+// internal/service.
+type PortalSearcher interface {
+	Start(ctx context.Context, profileID uuid.UUID, request domain.PortalSearchRequest) (*domain.PortalSearch, error)
+	Status(ctx context.Context, profileID, taskID uuid.UUID) (*domain.PortalSearch, error)
+}
+
 var validImageCategories = map[string]bool{
 	"exterior":    true,
 	"interior":    true,
@@ -269,6 +296,8 @@ type Registry struct {
 	DataDir    string
 	// HazardSources backs suggest_hazard_source.
 	HazardSources HazardSourceSuggester
+	// PortalSearch backs search_portal.
+	PortalSearch PortalSearcher
 
 	touchedListingID *uuid.UUID
 }
@@ -301,6 +330,8 @@ func (r *Registry) Dispatch(ctx context.Context, call ToolCall) ToolResult {
 		result, isError = r.updateContext(call.Arguments)
 	case "suggest_hazard_source":
 		result, isError = r.suggestHazardSource(ctx, call.Arguments)
+	case "search_portal":
+		result, isError = r.searchPortal(ctx, call.Arguments)
 	case "geocode":
 		result, isError = r.geocodeAddress(ctx, call.Arguments)
 	case "list_profile_listings":
@@ -719,6 +750,51 @@ func (r *Registry) suggestHazardSource(ctx context.Context, raw json.RawMessage)
 		"summary": fmt.Sprintf("Vorgeschlagen: Naturgefahren-Quelle %q (%s, %s) — ⚠️ Noch nicht eingebunden, Freigabe durch den Nutzer im Globalen Kontext ausstehend.",
 			suggestion.Title, suggestion.Country, suggestion.HazardType),
 	}), false
+}
+
+// searchPortal starts a portal search (url) or reads one back (task_id).
+// Errors the Agent can act on (bad URL, unknown task) come back as a tool
+// error text, like in the other Tools.
+func (r *Registry) searchPortal(ctx context.Context, raw json.RawMessage) (string, bool) {
+	var args struct {
+		URL          string `json:"url"`
+		TaskID       string `json:"task_id"`
+		MaxPages     int    `json:"max_pages"`
+		PageParam    string `json:"page_param"`
+		LinkContains string `json:"link_contains"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return errorJSON("ungültige Argumente: " + err.Error()), true
+	}
+	if r.PortalSearch == nil {
+		return errorJSON("search_portal ist nicht verfügbar"), true
+	}
+
+	var search *domain.PortalSearch
+	var err error
+	switch {
+	case strings.TrimSpace(args.TaskID) != "":
+		taskID, parseError := uuid.Parse(strings.TrimSpace(args.TaskID))
+		if parseError != nil {
+			return errorJSON("task_id ist keine gültige UUID"), true
+		}
+		search, err = r.PortalSearch.Status(ctx, r.ProfileID, taskID)
+	case strings.TrimSpace(args.URL) != "":
+		search, err = r.PortalSearch.Start(ctx, r.ProfileID, domain.PortalSearchRequest{
+			URL: args.URL, PageParam: args.PageParam, MaxPages: args.MaxPages, LinkContains: args.LinkContains,
+		})
+	default:
+		return errorJSON("url oder task_id ist erforderlich"), true
+	}
+	if err != nil {
+		var validation *domain.ValidationError
+		var notFound *domain.NotFoundError
+		if errors.As(err, &validation) || errors.As(err, &notFound) {
+			return errorJSON(err.Error()), true
+		}
+		return errorJSON("Suche fehlgeschlagen: " + err.Error()), true
+	}
+	return mustJSON(search), false
 }
 
 func (r *Registry) geocodeAddress(ctx context.Context, raw json.RawMessage) (string, bool) {
