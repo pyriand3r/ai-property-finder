@@ -236,6 +236,29 @@ Primary key `(region_key, hazard_type)`. `FOREIGN KEY (source_id, hazard_type) R
 
 All FK behaviours from the predecessor project stay the same for the carried-over tables.
 
+### `saved_search`
+
+A portal search-result URL that is searched on a schedule ([[../01_mvp/01-17-scheduled-searches]], [[../../adr/0029-scheduled-saved-searches]]). Migration 000007.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK | |
+| `profile_id` | UUID FK → `search_profile`, CASCADE | `UNIQUE (profile_id, name)` |
+| `name`, `url` | TEXT NOT NULL | |
+| `page_param`, `link_contains` | TEXT NOT NULL DEFAULT `''` | Request of `search_portal` |
+| `max_pages` | INTEGER DEFAULT 1 | CHECK 1–5 |
+| `interval_hours` | INTEGER DEFAULT 24 | CHECK 1–720 |
+| `enabled` | BOOLEAN DEFAULT TRUE | |
+| `next_run_at` | TIMESTAMPTZ | NULL while disabled |
+| `import_new` | BOOLEAN DEFAULT TRUE | |
+| `max_import` | INTEGER DEFAULT 3 | CHECK 1–10 |
+| `seen_links` | JSONB DEFAULT `[]` | `matchKey` of links already reported or handed to the Agent |
+| `last_status` | TEXT DEFAULT `idle` | CHECK `idle`, `running`, `succeeded`, `failed`. `running` is the claim that stops a double run. |
+| `last_run_at`, `last_task_id` | TIMESTAMPTZ, UUID | `last_task_id` is the `task` row of the run; no FK, tasks may be deleted |
+| `last_found`, `last_new`, `last_imported` | INTEGER DEFAULT 0 | |
+| `last_summary`, `last_error` | TEXT | |
+| `created_at`, `updated_at` | TIMESTAMPTZ | |
+
 ---
 
 ## Indexes (new only)
@@ -245,6 +268,7 @@ All FK behaviours from the predecessor project stay the same for the carried-ove
 | `chat_message`      | `session_id, created_at` | Load the history of a session in order |
 | `chat_message`      | `listing_id`           | Jump from a Listing to the chat turn that created or updated it |
 | `context_revision`  | `context_id, created_at` | Look up history, newest first |
+| `saved_search`      | `next_run_at` (partial, `WHERE enabled`) | The scheduler's lookup of due searches |
 
 The hazard tables have no extra index. The primary keys cover the lookups by key and by region, and the tables hold a few hundred rows.
 

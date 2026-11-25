@@ -8,6 +8,7 @@ import ChatView from '@/components/chat/ChatView.vue';
 import ProfileContextPanel from '@/components/context/ProfileContextPanel.vue';
 import CriteriaEditor from '@/components/criteria/CriteriaEditor.vue';
 import ListingsPanel from '@/components/listings/ListingsPanel.vue';
+import SavedSearchesPanel from '@/components/searches/SavedSearchesPanel.vue';
 import { useRejectionAnalysisToast } from '@/composables/useRejectionAnalysisToast';
 
 // OpenLayers is a heavy dependency (~300kB) only the Karte tab needs — load
@@ -28,7 +29,7 @@ const props = defineProps<{
  * optional `:tab` route segment (`/profiles/:profileId/:tab?`, see `src/router/index.ts`)
  * so reload and deep links keep the tab. Missing or unknown values fall back to `chat`.
  */
-const TABS = ['chat', 'context', 'criteria', 'listings', 'map'] as const;
+const TABS = ['chat', 'context', 'criteria', 'listings', 'searches', 'map'] as const;
 type Tab = (typeof TABS)[number];
 
 const router = useRouter();
@@ -70,6 +71,9 @@ onMounted(async () => {
       </NTabPane>
       <NTabPane name="listings" tab="Inserate">
         <ListingsPanel :profile-id="profileId" />
+      </NTabPane>
+      <NTabPane name="searches" tab="Suchen">
+        <SavedSearchesPanel :profile-id="profileId" />
       </NTabPane>
       <NTabPane name="map" tab="Karte">
         <ListingsMapPanel :profile-id="profileId" />

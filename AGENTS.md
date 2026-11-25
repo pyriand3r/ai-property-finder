@@ -43,7 +43,7 @@ editable in a plain form (ADR 0001) — the UI is never chat-only.
 
 **Build state**: all 11 layers (0–10) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
 (RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Layer 9 (ADR 0026)
-lets an MCP client grade a Listing itself with no `CLAUDE_API_KEY`. Layer 10 (ADR 0028) adds the `search_portal` Tool. Remaining work is
+lets an MCP client grade a Listing itself with no `CLAUDE_API_KEY`. Layer 10 (ADR 0028, 0029) adds the `search_portal` Tool and scheduled saved searches. Remaining work is
 tracked as bugs in `docs/buglist.md` (3 open) and
 ideas in `docs/ideas.md` (8 open). UI copy is German (`index.html` is `lang="de"`).
 
@@ -113,6 +113,8 @@ fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-rating
 
 **Portal searches are resumable tasks** (ADR 0028): the Tool `search_portal` (also on MCP) reads a portal search-result URL and returns candidate listing links, split into new and already-known ones; it creates no Listing. A search is a `task` row of type `portal.search`; `task.payload` holds the resumable state (next page, links found). `PortalSearchService.Recover` runs in `main` after the migrations and continues searches that were `running` at the last shutdown (max 3 times). This is the only task type that is resumed: it makes no LLM call, so a repeat costs nothing. Chat turns stay unrecovered (ADR 0008). Spec: `docs/spec/01_mvp/01-16-portal-search.md`.
 
+**Saved searches run on a schedule** (ADR 0029): table `saved_search` (a `search_portal` request plus "every N hours"). `main` starts one scheduler goroutine (`SavedSearchService.RunScheduler`, tick 1 min) after `Server.RecoverSavedSearches` has failed the runs the last shutdown left `running`. A run is claimed in SQL (`last_status = 'running'`), runs `PortalSearchService.Run`, and — if `import_new` — sends one `[Geplante Suche]` user message with at most `max_import` unseen links to the profile's active chat session (`AgentService.SendToActiveSession`; skipped, links stay unseen, when a turn is running). REST: `/api/profiles/{id}/saved-searches`; UI: tab „Suchen“. Spec: `docs/spec/01_mvp/01-17-scheduled-searches.md`.
+
 ### Key Architecture Decisions (`docs/adr/`)
 
 - **0001**: Chat is primary UI; plain form is mandatory fallback — not optional
@@ -145,6 +147,7 @@ fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-rating
 - **0026**: MCP also lets an external client grade a Listing: `get_evaluation_brief` → `submit_evaluation` (+ `list_pending_evaluations`); server validates, computes the Score; internal evaluation unchanged; evaluation only (plan: layer 9, spec 01-14)
 - **0027**: Hazard sources are a declarative per-country catalogue (`bundled`/`candidate`); Agent and MCP only *suggest* sources (`suggest_hazard_source`, table `hazard_source_suggestion`), the user approves before ingestion; ingestion stays a release step (extends 0025)
 - **0028**: `search_portal` Tool; a portal search is a `task` row (`portal.search`) with a resumable payload, continued after a restart; narrows 0008 for this task type only
+- **0029**: Saved searches run on an every-N-hours schedule (one scheduler goroutine, SQL claim); new links go to the Agent as a `[Geplante Suche]` chat message, limited per run; builds on 0028
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -161,11 +164,11 @@ backend/
     │                 #   writeError/writeJSON/decodeJSON/parseUUID
     ├── service/      # business logic, one service per concern (agent, chat, listing, profile,
     │                 #   criterion, evaluation, ranking, rejection_analysis, image, note, context,
-    │                 #   upload, tool_call, hazard, hazard_source, portal_search)
+    │                 #   upload, tool_call, hazard, hazard_source, portal_search, saved_search)
     ├── domain/       # types.go — shared structs + domain error types (Validation/NotFound/Conflict/Upstream)
     ├── db/           # querier.go (pgx pool/tx abstraction), db.go, migrations/ (golang-migrate, forward-only),
     │                 #   dbtest/ (throwaway Postgres for integration tests, needs TEST_DATABASE_URL)
-    │   └── repository/  # one repo per entity (note, context, chat, image, listing, profile, task, criterion, grade, hazard, hazard_suggestion)
+    │   └── repository/  # one repo per entity (note, context, chat, image, listing, profile, task, criterion, grade, hazard, hazard_suggestion, saved_search)
     ├── agent/        # provider-independent agent loop: loop.go, tools.go (Registry/Dispatch),
     │                 #   provider.go (interface), context_builder.go (system prompt assembly),
     │                 #   unconfigured.go (no-API-key fallback)
@@ -197,6 +200,7 @@ src/                           # Vue 3 + TS SPA, repo root (Go embeds its build 
 │   ├── settings/     # LlmConfigForm (presentational; used by SettingsView)
 │   ├── criteria/     # CriteriaEditor, CriterionCreateForm, CriterionListItem
 │   ├── shared/       # ReevaluationBanner
+│   ├── searches/     # SavedSearchesPanel (container), SavedSearchForm — tab „Suchen“ (spec 01-17)
 │   └── hazard/       # HazardSourcesPanel (source catalogue + suggestion review, spec 01-15; used by GlobalContextView)
 ├── views/          # route-level: ProfileListView, ProfileShellView (tab shell), ListingDetailView, GlobalContextView, SettingsView
 └── router/index.ts  # all 6 routes, single source of routing truth
@@ -407,7 +411,7 @@ test). They are **skipped unless `TEST_DATABASE_URL`** points at a server the te
 on (CI sets it; locally e.g. `postgres://app@127.0.0.1:5432/postgres?sslmode=disable`). Current users:
 the migration tests (`internal/db/migrations_test.go`, incl. the hazard constraints), the criterion status
 workflow (`internal/service/criterion_status_test.go`), the hazard sync and lookups
-(`internal/service/hazard_service_test.go`, `internal/service/hazard_source_service_test.go`, `internal/api/hazards_test.go`), `PATCH`/approve REST
+(`internal/service/hazard_service_test.go`, `internal/service/hazard_source_service_test.go`, `internal/api/hazards_test.go`, `internal/service/saved_search_service_test.go`, `internal/api/saved_searches_test.go`), `PATCH`/approve REST
 (`internal/api/criteria_test.go`) and MCP `propose_criteria` (`internal/mcpserver/propose_criteria_test.go`).
 **Not yet covered**:
 `config.LoadAll`/`SeedFromEnv`/`ConnectPool`, `db.WithTx` on its own, the other `internal/api` handlers

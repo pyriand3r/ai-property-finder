@@ -2,10 +2,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"propertyfinder/internal/agent"
 	"propertyfinder/internal/events"
+	"propertyfinder/internal/fetch"
 	"propertyfinder/internal/llm"
 	"propertyfinder/internal/mcpserver"
 	"propertyfinder/internal/service"
@@ -20,24 +22,26 @@ import (
 
 // Server wraps the chi router and the configured handlers.
 type Server struct {
-	config     *ConfigHandler
-	profile    *ProfileHandler
-	context    *ContextHandler
-	criterion  *CriterionHandler
-	listing    *ListingHandler
-	evaluation *EvaluationHandler
-	events     *EventHandler
-	image      *ImageHandler
-	note       *NoteHandler
-	upload     *UploadHandler
-	geocode    *GeocodeHandler
-	hazard     *HazardHandler
-	chat       *ChatHandler
-	ranking    *RankingHandler
-	toolCall   *ToolCallHandler
-	auth       *AuthHandler
-	mcp        http.Handler
-	dataDir    string
+	config      *ConfigHandler
+	profile     *ProfileHandler
+	context     *ContextHandler
+	criterion   *CriterionHandler
+	listing     *ListingHandler
+	evaluation  *EvaluationHandler
+	events      *EventHandler
+	image       *ImageHandler
+	note        *NoteHandler
+	upload      *UploadHandler
+	geocode     *GeocodeHandler
+	hazard      *HazardHandler
+	chat        *ChatHandler
+	savedSearch *SavedSearchHandler
+	scheduler   *service.SavedSearchService
+	ranking     *RankingHandler
+	toolCall    *ToolCallHandler
+	auth        *AuthHandler
+	mcp         http.Handler
+	dataDir     string
 }
 
 // NewServer constructs the API server, wiring handlers to services backed
@@ -69,26 +73,42 @@ func NewServer(pool *pgxpool.Pool, llmRuntime *llm.Runtime, dataDir, appPassword
 			return service.NewToolRegistry(pool, dataDir, evaluationService, profileID)
 		},
 	})
+	agentService := service.NewAgentService(pool, llmRuntime, broker, dataDir, evaluationService)
+	savedSearchService := service.NewSavedSearchService(pool, service.NewPortalSearchService(pool, fetch.NewClient()), agentService)
 	return &Server{
-		config:     &ConfigHandler{runtime: llmRuntime},
-		profile:    &ProfileHandler{service: profileService},
-		context:    &ContextHandler{service: contextService},
-		criterion:  &CriterionHandler{service: criterionService},
-		listing:    &ListingHandler{service: service.NewListingService(pool, dataDir, rejectionAnalysisService)},
-		evaluation: &EvaluationHandler{service: evaluationService},
-		events:     &EventHandler{broker: broker},
-		image:      &ImageHandler{service: service.NewImageService(pool, dataDir)},
-		note:       &NoteHandler{service: service.NewNoteService(pool)},
-		upload:     &UploadHandler{service: service.NewUploadService(dataDir)},
-		geocode:    &GeocodeHandler{},
-		hazard:     &HazardHandler{service: service.NewHazardService(pool), sources: service.NewHazardSourceService(pool)},
-		chat:       &ChatHandler{service: service.NewChatService(pool), agent: service.NewAgentService(pool, llmRuntime, broker, dataDir, evaluationService)},
-		ranking:    &RankingHandler{service: service.NewRankingService(pool, llmRuntime)},
-		toolCall:   &ToolCallHandler{service: service.NewToolCallService(pool)},
-		auth:       NewAuthHandler(appPassword, cookieSecure),
-		mcp:        mcpHandler,
-		dataDir:    dataDir,
+		config:      &ConfigHandler{runtime: llmRuntime},
+		profile:     &ProfileHandler{service: profileService},
+		context:     &ContextHandler{service: contextService},
+		criterion:   &CriterionHandler{service: criterionService},
+		listing:     &ListingHandler{service: service.NewListingService(pool, dataDir, rejectionAnalysisService)},
+		evaluation:  &EvaluationHandler{service: evaluationService},
+		events:      &EventHandler{broker: broker},
+		image:       &ImageHandler{service: service.NewImageService(pool, dataDir)},
+		note:        &NoteHandler{service: service.NewNoteService(pool)},
+		upload:      &UploadHandler{service: service.NewUploadService(dataDir)},
+		geocode:     &GeocodeHandler{},
+		hazard:      &HazardHandler{service: service.NewHazardService(pool), sources: service.NewHazardSourceService(pool)},
+		chat:        &ChatHandler{service: service.NewChatService(pool), agent: agentService},
+		savedSearch: &SavedSearchHandler{service: savedSearchService},
+		scheduler:   savedSearchService,
+		ranking:     &RankingHandler{service: service.NewRankingService(pool, llmRuntime)},
+		toolCall:    &ToolCallHandler{service: service.NewToolCallService(pool)},
+		auth:        NewAuthHandler(appPassword, cookieSecure),
+		mcp:         mcpHandler,
+		dataDir:     dataDir,
 	}
+}
+
+// RecoverSavedSearches settles the saved search runs the last process left
+// running (docs/adr/0029). main calls it once at boot, before RunScheduler.
+func (server *Server) RecoverSavedSearches(ctx context.Context) (int64, error) {
+	return server.scheduler.Recover(ctx)
+}
+
+// RunScheduler runs the saved searches that are due until ctx ends (docs/adr/
+// 0029). It blocks, so main starts it in a goroutine.
+func (server *Server) RunScheduler(ctx context.Context) {
+	server.scheduler.RunScheduler(ctx)
 }
 
 // Router builds the chi router. GET /health, POST /api/auth/login, and the
@@ -161,6 +181,12 @@ func (server *Server) Router() http.Handler {
 			r.Post("/listings", server.listing.Create)
 			r.Post("/listings/reevaluate-all", server.evaluation.ReevaluateAll)
 			r.Post("/ranking/refresh", server.ranking.Refresh)
+
+			r.Get("/saved-searches", server.savedSearch.List)
+			r.Post("/saved-searches", server.savedSearch.Create)
+			r.Patch("/saved-searches/{searchId}", server.savedSearch.Update)
+			r.Delete("/saved-searches/{searchId}", server.savedSearch.Delete)
+			r.Post("/saved-searches/{searchId}/run", server.savedSearch.Run)
 
 			r.Get("/chat/sessions", server.chat.ListSessions)
 			r.Post("/chat/sessions", server.chat.StartSession)
