@@ -106,6 +106,10 @@ _Avoid_: Source proposal (a Criterion has a proposal, see [[#Proposed Criterion]
 One run of the `search_portal` Tool over a portal search-result URL (one or more result pages). It returns candidate Listing links, split into new and known (a Listing of the profile already has that `source_url`). It creates no Listing. It is stored as a `task` row of type `portal.search` and continued after a restart. See [[spec/01_mvp/01-16-portal-search]] and [[adr/0028-portal-search-task-persistence]].
 _Avoid_: Crawl, scrape, Portal (a Portal Rule is a Context File fragment, see [[#Portal Rule]])
 
+**Saved Search**:
+A portal search-result URL (with the `search_portal` settings) that the app searches on a schedule, "every N hours". Each run is a Portal Search. Links that are new since the last run can be handed to the Agent, which loads them as Listings in the profile's active Chat Session. Stored in table `saved_search`. See [[spec/01_mvp/01-17-scheduled-searches]] and [[adr/0029-scheduled-saved-searches]].
+_Avoid_: Alert, watch, crawler job
+
 ## Carried over unchanged from the predecessor project
 
 Criterion, Objective/Subjective Criterion, Weight, Evaluation, Grade, Score, Status, Letztkontakt, Rejection, Property. They keep the meaning they had in the predecessor project. They are not repeated here, so that two copies do not drift apart.

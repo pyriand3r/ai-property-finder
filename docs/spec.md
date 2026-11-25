@@ -119,5 +119,5 @@ The user can see and edit every field the Agent fills in. A plain detail form sh
 - Multi-hop following (second and third links, for example broker page → floor-plan PDF)
 - Natural disaster risk rating for each region, taken over from the predecessor project (its Phase 2)
 
-### Phase 3 — Automated Recurring Search *(carried over, still postponed)*
-- Scheduled Chat-driven search runs against saved portal search-result URLs. The scope is the same as Phase 3 of the predecessor project. It is built again as an Agent Tool (`search_portal`) instead of a custom scraper module. The Tool itself exists since issue #18 ([[spec/01_mvp/01-16-portal-search]]); the scheduled runs are still open
+### Phase 3 — Automated Recurring Search *(built with issue #19)*
+- Scheduled Chat-driven search runs against saved portal search-result URLs. The scope is the same as Phase 3 of the predecessor project. It is built again as an Agent Tool (`search_portal`) instead of a custom scraper module. The Tool itself exists since issue #18 ([[spec/01_mvp/01-16-portal-search]]); the scheduled runs exist since issue #19 ([[spec/01_mvp/01-17-scheduled-searches]])

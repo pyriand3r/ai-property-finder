@@ -343,11 +343,15 @@ Spec: [[spec/01_mvp/01-14-external-evaluation-via-mcp]]. ADR: [[adr/0026-externa
 
 ## Layer 10: Portal search
 
-Spec: [[spec/01_mvp/01-16-portal-search]]. ADR: [[adr/0028-portal-search-task-persistence]].
+Spec: [[spec/01_mvp/01-16-portal-search]], [[spec/01_mvp/01-17-scheduled-searches]]. ADR: [[adr/0028-portal-search-task-persistence]], [[adr/0029-scheduled-saved-searches]].
 
 - [x] **10.1 — `search_portal` Tool + resumable portal-search task** (#18)
   - `TaskRepo` payload methods, `PortalSearchService` (`Start`, `Status`, `Recover`), Tool on the Agent registry and on MCP, preamble section, `Recover` call in `cmd/server/main.go`.
   - **Test:** `go test ./internal/service/ ./internal/agent/` (the task rows need `TEST_DATABASE_URL`).
+
+- [x] **10.2 — Scheduled saved searches: scheduler + UI** (#19)
+  - Migration 000007 `saved_search`, `SavedSearchRepo`, `SavedSearchService` (CRUD, `RunNow`, `RunDue`, `RunScheduler`, `Recover`), `PortalSearchService.Run`, `AgentService.SendToActiveSession`, REST routes, scheduler started in `cmd/server/main.go`, tab „Suchen“ in the profile. Spec 01-17, ADR 0029.
+  - **Test:** `go test ./internal/service/ ./internal/api/` (needs `TEST_DATABASE_URL`); `npm run test:run`.
 
 ---
 

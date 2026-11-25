@@ -186,29 +186,9 @@ func matchKey(rawURL string) string {
 // s.wait for it. A finished search returns its links; a slower one returns
 // the running task, and the caller asks again with Status.
 func (s *PortalSearchService) Start(ctx context.Context, profileID uuid.UUID, request domain.PortalSearchRequest) (*domain.PortalSearch, error) {
-	payload, err := newPortalSearchPayload(request)
+	task, payload, err := s.createTask(ctx, profileID, request)
 	if err != nil {
 		return nil, err
-	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("encode portal search payload: %w", err)
-	}
-
-	now := time.Now().UTC()
-	total := payload.MaxPages
-	task := &domain.Task{
-		ID:        uuid.New(),
-		Type:      domain.TaskTypePortalSearch,
-		Status:    domain.TaskStatusRunning,
-		ProfileID: &profileID,
-		Total:     &total,
-		CreatedAt: now,
-		StartedAt: &now,
-		UpdatedAt: now,
-	}
-	if createError := repository.NewTaskRepo(s.pool).CreateWithPayload(ctx, task, encoded); createError != nil {
-		return nil, createError
 	}
 
 	finished := make(chan struct{})
@@ -226,6 +206,49 @@ func (s *PortalSearchService) Start(ctx context.Context, profileID uuid.UUID, re
 	case <-ctx.Done():
 	}
 	return s.Status(ctx, profileID, task.ID)
+}
+
+// Run is Start for a caller that has time: it runs the search in the calling
+// goroutine until it is done and returns the result. The scheduler uses it
+// (docs/adr/0029). If ctx ends first the task is left running, like a
+// shutdown in the middle of Start's goroutine, and Recover continues it at
+// the next boot; the returned search is then still running.
+func (s *PortalSearchService) Run(ctx context.Context, profileID uuid.UUID, request domain.PortalSearchRequest) (*domain.PortalSearch, error) {
+	task, payload, err := s.createTask(ctx, profileID, request)
+	if err != nil {
+		return nil, err
+	}
+	s.run(ctx, task.ID, payload)
+	return s.Status(context.WithoutCancel(ctx), profileID, task.ID)
+}
+
+// createTask validates request and inserts the running task row.
+func (s *PortalSearchService) createTask(ctx context.Context, profileID uuid.UUID, request domain.PortalSearchRequest) (*domain.Task, *portalSearchPayload, error) {
+	payload, err := newPortalSearchPayload(request)
+	if err != nil {
+		return nil, nil, err
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode portal search payload: %w", err)
+	}
+
+	now := time.Now().UTC()
+	total := payload.MaxPages
+	task := &domain.Task{
+		ID:        uuid.New(),
+		Type:      domain.TaskTypePortalSearch,
+		Status:    domain.TaskStatusRunning,
+		ProfileID: &profileID,
+		Total:     &total,
+		CreatedAt: now,
+		StartedAt: &now,
+		UpdatedAt: now,
+	}
+	if createError := repository.NewTaskRepo(s.pool).CreateWithPayload(ctx, task, encoded); createError != nil {
+		return nil, nil, createError
+	}
+	return task, payload, nil
 }
 
 // Status returns the current state of a portal search of profileID. Links

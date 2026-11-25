@@ -12,7 +12,9 @@
 //  7. seed Tier 2 app_config from env (write-once; DB authoritative after)
 //  8. load Tier 2 app_config (llm.*), build the live LLM runtime from it
 //     (internal/llm; editable at runtime via PATCH /api/config)
-//  9. start HTTP server (GET /health, GET/PATCH /api/config, GET /api/events, ...)
+//  9. settle saved search runs the last shutdown interrupted, start the
+//     scheduler (docs/adr/0029)
+//  10. start HTTP server (GET /health, GET/PATCH /api/config, GET /api/events, ...)
 //
 // The rest of the API surface lands in later layers.
 package main
@@ -98,7 +100,22 @@ func run() error {
 	broker := events.NewBroker()
 	defer broker.Stop()
 
-	router := api.NewServer(pool, llmRuntime, envConfig.DataDir, envConfig.AppPassword, envConfig.CookieSecure, broker).Router()
+	apiServer := api.NewServer(pool, llmRuntime, envConfig.DataDir, envConfig.AppPassword, envConfig.CookieSecure, broker)
+	interrupted, recoverError := apiServer.RecoverSavedSearches(ctx)
+	if recoverError != nil {
+		return recoverError
+	}
+	log.Printf("saved search runs interrupted by the last shutdown: %d", interrupted)
+
+	schedulerCtx, stopScheduler := context.WithCancel(ctx)
+	defer stopScheduler()
+	schedulerDone := make(chan struct{})
+	go func() {
+		defer close(schedulerDone)
+		apiServer.RunScheduler(schedulerCtx)
+	}()
+
+	router := apiServer.Router()
 	server := &http.Server{
 		Addr:              envConfig.HTTPListenAddr,
 		Handler:           router,
@@ -128,6 +145,8 @@ func run() error {
 	if shutdownError := server.Shutdown(shutdownCtx); shutdownError != nil {
 		log.Printf("http server shutdown: %v", shutdownError)
 	}
+	stopScheduler()
+	<-schedulerDone
 	log.Print("shutdown complete")
 	return nil
 }

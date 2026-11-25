@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"propertyfinder/internal/agent"
@@ -91,6 +92,32 @@ func (service *AgentService) SendMessage(ctx context.Context, profileID, session
 		service.runTurn(turnCtx, sessionID)
 	}()
 	return message, nil
+}
+
+// SendToActiveSession sends content as a user message in the profile's
+// active chat session and starts the Agent turn, like SendMessage. The
+// scheduler uses it to hand the new links of a saved search to the Agent
+// (docs/adr/0029). It reports false, without an error, when it did nothing:
+// the profile has no active session, or the session's Agent is in the middle
+// of a turn, which a second turn must not run beside.
+func (service *AgentService) SendToActiveSession(ctx context.Context, profileID uuid.UUID, content string) (bool, error) {
+	session, err := repository.NewChatRepo(service.pool).GetActiveSession(ctx, profileID)
+	if err != nil {
+		if _, ok := errors.AsType[*domain.NotFoundError](err); ok {
+			return false, nil
+		}
+		return false, err
+	}
+	service.turnsMu.Lock()
+	_, busy := service.turns[session.ID]
+	service.turnsMu.Unlock()
+	if busy {
+		return false, nil
+	}
+	if _, sendError := service.SendMessage(ctx, profileID, session.ID, content, nil); sendError != nil {
+		return false, sendError
+	}
+	return true, nil
 }
 
 func (service *AgentService) registerTurn(sessionID uuid.UUID, cancel context.CancelFunc) {

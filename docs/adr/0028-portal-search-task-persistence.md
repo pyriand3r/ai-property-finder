@@ -28,7 +28,7 @@ The `task` table already exists (migration 000001, with a `payload` JSONB column
 2. **A search is a `task` row** of type `portal.search`. `task.payload` holds everything needed to continue: the request, `next_page`, the links found, a recovery counter. The runner writes counters and payload together after every page (`TaskRepo.SaveProgress`).
 3. **The search runs in a detached goroutine.** The Tool waits up to 30 seconds for it. If it is done, the result is returned. If not, `status = running` is returned and the Agent calls the Tool again with the `task_id`. The wait does not decide whether the search lives.
 4. **After a restart, `PortalSearchService.Recover` continues every `running` portal search** at its saved page. It runs once at boot, after the migrations. A search is resumed at most 3 times. After that it is marked `failed`, so a search that crashes the process cannot restart forever.
-5. **No scheduler.** Recurring and automatic search (Phase 3 in [[../../spec]]) stays out. This ADR only gives the Tool a durable task.
+5. **No scheduler.** This ADR only gives the Tool a durable task. Recurring search is [[0029-scheduled-saved-searches]].
 
 ## Alternatives considered
 

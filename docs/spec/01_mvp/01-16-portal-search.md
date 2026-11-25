@@ -22,7 +22,7 @@ A user often has a portal **search-result URL** (a page that lists many listings
 
 The Tool finds links only. It does **not** create Listings. The Agent opens each new link with `fetch_url` and saves it with `save_listing`, as in [[01-03-listing-ingestion-via-chat]], after the user said how many to load.
 
-There is no scheduler. Automatic recurring search stays in Phase 3 ([[../../spec]]).
+The Tool has no schedule of its own. Recurring runs of a saved URL are [[01-17-scheduled-searches]].
 
 ## The Tool `search_portal`
 

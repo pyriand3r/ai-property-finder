@@ -561,3 +561,75 @@ type PortalSearch struct {
 	StopReason string     `json:"stop_reason,omitempty"`
 	Error      *string    `json:"error,omitempty"`
 }
+
+// SavedSearchStatus is the outcome of a saved search's last run.
+type SavedSearchStatus string
+
+const (
+	SavedSearchIdle      SavedSearchStatus = "idle"
+	SavedSearchRunning   SavedSearchStatus = "running"
+	SavedSearchSucceeded SavedSearchStatus = "succeeded"
+	SavedSearchFailed    SavedSearchStatus = "failed"
+)
+
+// SavedSearch is a portal search-result URL the app searches on a schedule
+// (spec 01-17, docs/adr/0029). The request fields are those of
+// PortalSearchRequest. A run finds links with the portal search (ADR 0028)
+// and, when ImportNew is set, hands up to MaxImport links that are new
+// since the last run to the Agent in the profile's active chat session.
+type SavedSearch struct {
+	ID           uuid.UUID `json:"id"`
+	ProfileID    uuid.UUID `json:"profile_id"`
+	Name         string    `json:"name"`
+	URL          string    `json:"url"`
+	PageParam    string    `json:"page_param"`
+	MaxPages     int       `json:"max_pages"`
+	LinkContains string    `json:"link_contains"`
+	// IntervalHours is the schedule: a run every this many hours.
+	IntervalHours int  `json:"interval_hours"`
+	Enabled       bool `json:"enabled"`
+	// NextRunAt is nil while the search is disabled.
+	NextRunAt  *time.Time        `json:"next_run_at,omitempty"`
+	ImportNew  bool              `json:"import_new"`
+	MaxImport  int               `json:"max_import"`
+	LastStatus SavedSearchStatus `json:"last_status"`
+	LastRunAt  *time.Time        `json:"last_run_at,omitempty"`
+	LastTaskID *uuid.UUID        `json:"last_task_id,omitempty"`
+	// LastFound counts the candidate links of the last run, LastNew those
+	// among them not reported by an earlier run and not yet a Listing, and
+	// LastImported those handed to the Agent.
+	LastFound    int       `json:"last_found"`
+	LastNew      int       `json:"last_new"`
+	LastImported int       `json:"last_imported"`
+	LastSummary  string    `json:"last_summary"`
+	LastError    *string   `json:"last_error,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// SavedSearchInput is the editable part of a SavedSearch, as created by the
+// user.
+type SavedSearchInput struct {
+	Name          string
+	URL           string
+	PageParam     string
+	MaxPages      int
+	LinkContains  string
+	IntervalHours int
+	Enabled       bool
+	ImportNew     bool
+	MaxImport     int
+}
+
+// SavedSearchOutcome is what a finished run writes back to its SavedSearch.
+// SeenLinks replaces the stored list of already reported links.
+type SavedSearchOutcome struct {
+	Status    SavedSearchStatus
+	TaskID    *uuid.UUID
+	Found     int
+	New       int
+	Imported  int
+	Summary   string
+	Error     *string
+	SeenLinks []string
+}
