@@ -25,13 +25,14 @@ Two related but different views of a profile's Listings. See [[../CONTEXT#Rankin
 
 ## List View
 
-A table you can sort and filter. It has the same sort options as the predecessor project: Score, price, size, date, and disaster risk (Phase 2). It has the same filter options: status, score range, price range, size range, and region. Every Listing appears here, whatever its Status.
+A table you can sort and filter. It has the same sort options as the predecessor project: Score, price, size, date, and one column per natural hazard (see [[01-13-hazard-ratings#UI]]). It has the same filter options: status, score range, price range, size range, and region. Every Listing appears here, whatever its Status.
 
 **Filter behaviour** (client-side, in `ListingListTable.vue`; logic in `src/utils/listingFilters.ts`):
 
 - Score, price, and size (`property_size_m2`) each take an optional min and max. Both bounds are inclusive.
 - A Listing with no value for a field is hidden as soon as a bound on that field is set.
 - Region is a dropdown. `listing.region` is free text, so the options are the distinct, trimmed values found in the profile's Listings.
+- „Naturgefahr“ and „Einstufung höchstens“ together keep Listings whose region rating for that hazard is at most the value. A Listing with no rating is hidden once both are set ([[01-13-hazard-ratings#UI]]).
 - All filters combine with AND.
 
 This view goes beyond the predecessor project's version. See [[01-10-listing-views-overhaul]] for full detail:

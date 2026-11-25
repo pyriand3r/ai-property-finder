@@ -106,7 +106,7 @@ and budget separately. The API key is write-only: no GET/PATCH response and no l
 hazard type, 1–5, higher is worse, never part of the Score. `internal/hazard` embeds one JSON dataset per
 country (`datasets/pt.json`). `main` calls `HazardService.SeedStatic` after the migrations to sync it into
 the `hazard_*` tables (idempotent; it deletes what a file no longer holds). Nothing is fetched at runtime and
-no request writes those tables. Read API: `GET /api/hazards/regions` and `.../{regionKey}`. A dataset that
+no request writes those tables. Read API: `GET /api/hazards/regions` and `.../{regionKey}`. The UI (badges in the Detail and List View, sort/filter) matches `listing.region` to a region by name in the frontend (`src/utils/hazard.ts`); a Listing has no region key yet. A dataset that
 fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-ratings.md`.
 
 ### Key Architecture Decisions (`docs/adr/`)
@@ -185,7 +185,7 @@ src/                           # Vue 3 + TS SPA, repo root (Go embeds its build 
 │   ├── chat/        # ChatView, ChatMessageList, ChatInput, ChatConfirmCard, ChatListingCard, TokenDonut
 │   ├── listings/     # largest folder: ListingDetailPanel, ListingForm, ListingGallery, ListingMap,
 │   │                 #   ListingsMapPanel, ListingSplitPane, ListingsPanel, ListingListTable,
-│   │                 #   ListingGradeGrid, ListingDocument, ListingNotes, RankingView
+│   │                 #   ListingGradeGrid, ListingHazards (region hazard ratings, spec 01-13), ListingDocument, ListingNotes, RankingView
 │   ├── context/      # ContextEditor (presentational), ProfileContextPanel (container)
 │   ├── profile/      # ProfileCreateForm, ProfileListItem, ProfileTable
 │   ├── settings/     # LlmConfigForm (presentational; used by SettingsView)

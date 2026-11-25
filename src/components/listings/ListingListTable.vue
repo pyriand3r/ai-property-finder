@@ -15,12 +15,23 @@ import { computed, h, onMounted, shallowRef } from 'vue';
 
 import { listCriteria } from '@/api/criteria';
 import { useListingGrades } from '@/composables/useListingGrades';
+import { useListingHazards } from '@/composables/useListingHazards';
 import { useListingThumbnails } from '@/composables/useListingThumbnails';
 import { gradeColor } from '@/utils/gradeColor';
+import {
+  hazardLabel,
+  hazardMaxRatingOptions,
+  hazardRatingColor,
+  hazardRatingLabel,
+  hazardTypeOptions,
+  hazardTypes,
+  ratingMap,
+} from '@/utils/hazard';
 import { distinctRegions, matchesListingFilters } from '@/utils/listingFilters';
 import { statusLabel, statusOptions } from '@/utils/listingStatus';
 
 import type { Criterion } from '@/types/criterion';
+import type { HazardType } from '@/types/hazard';
 import type { Listing, ListingStatus } from '@/types/listing';
 import type { ListingFilters } from '@/utils/listingFilters';
 import type { DataTableColumns } from 'naive-ui';
@@ -43,6 +54,16 @@ const priceMin = shallowRef<number | null>(null);
 const priceMax = shallowRef<number | null>(null);
 const sizeMin = shallowRef<number | null>(null);
 const sizeMax = shallowRef<number | null>(null);
+const hazardTypeFilter = shallowRef<HazardType | null>(null);
+const hazardMaxFilter = shallowRef<number | null>(null);
+
+// Hazard ratings belong to a region, not to a listing (ADR 0025); each listing's region is
+// looked up from its free-text `region` (spec 01-13, issue #45).
+const { hazards } = useListingHazards(() => props.listings);
+
+function hazardRating(listing: Listing, type: HazardType): number | undefined {
+  return ratingMap(hazards.value.get(listing.id))[type];
+}
 
 // Region is free text on the listing (no structured state/region column), so
 // the dropdown offers the distinct values present in this profile's listings.
@@ -57,8 +78,11 @@ const filteredListings = computed(() => {
     score: { min: scoreMin.value, max: scoreMax.value },
     price: { min: priceMin.value, max: priceMax.value },
     size: { min: sizeMin.value, max: sizeMax.value },
+    hazard: { type: hazardTypeFilter.value, max: hazardMaxFilter.value },
   };
-  return props.listings.filter((listing) => matchesListingFilters(listing, filters));
+  return props.listings.filter((listing) =>
+    matchesListingFilters(listing, filters, ratingMap(hazards.value.get(listing.id))),
+  );
 });
 
 function selectListing(listingId: string) {
@@ -175,6 +199,27 @@ const columns = computed<DataTableColumns<Listing>>(() => [
     defaultSortOrder: 'descend',
     render: (row) => row.overall_score?.toFixed(0) ?? '—',
   },
+  // One column per hazard type, apart from the Score and never combined: the four ratings use
+  // different scales (spec 01-13). Higher is worse. A listing without a rating sorts as 0.
+  ...hazardTypes.map((type) => ({
+    title: hazardLabel[type],
+    key: `hazard:${type}`,
+    sorter: (a: Listing, b: Listing) => (hazardRating(a, type) ?? 0) - (hazardRating(b, type) ?? 0),
+    render: (row: Listing) => {
+      const rating = hazardRating(row, type);
+      return rating === undefined
+        ? '—'
+        : h(
+            NTag,
+            {
+              color: { color: hazardRatingColor[rating], textColor: 'white' },
+              round: true,
+              title: `${hazardLabel[type]}: ${rating} – ${hazardRatingLabel[rating]}`,
+            },
+            { default: () => rating },
+          );
+    },
+  })),
   ...criteria.value
     .filter((criterion) => visibleCriterionIds.value.has(criterion.id))
     .map((criterion) => ({
@@ -267,6 +312,23 @@ const columns = computed<DataTableColumns<Listing>>(() => [
         placeholder="Größe max. (m²)"
         style="width: 140px"
         data-testid="filter-size-max"
+      />
+
+      <NSelect
+        v-model:value="hazardTypeFilter"
+        clearable
+        placeholder="Naturgefahr"
+        style="width: 150px"
+        :options="hazardTypeOptions"
+        data-testid="filter-hazard-type"
+      />
+      <NSelect
+        v-model:value="hazardMaxFilter"
+        clearable
+        placeholder="Einstufung höchstens"
+        style="width: 200px"
+        :options="hazardMaxRatingOptions"
+        data-testid="filter-hazard-max"
       />
 
       <NPopover trigger="click" placement="bottom-start">

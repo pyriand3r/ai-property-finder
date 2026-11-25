@@ -6,6 +6,7 @@ import ListingDocument from '@/components/listings/ListingDocument.vue';
 import ListingForm from '@/components/listings/ListingForm.vue';
 import ListingGallery from '@/components/listings/ListingGallery.vue';
 import ListingGradeGrid from '@/components/listings/ListingGradeGrid.vue';
+import ListingHazards from '@/components/listings/ListingHazards.vue';
 import ListingNotes from '@/components/listings/ListingNotes.vue';
 import { useListingDetail } from '@/composables/useListingDetail';
 import { useListingThumbnails } from '@/composables/useListingThumbnails';
@@ -101,6 +102,11 @@ function saveStatus() {
         <section class="listing-detail-section">
           <h3>Bewertung</h3>
           <ListingGradeGrid :grades="grades" />
+        </section>
+
+        <section class="listing-detail-section">
+          <h3>Naturgefahren der Region</h3>
+          <ListingHazards :listing="listing" />
         </section>
 
         <section class="listing-detail-section">

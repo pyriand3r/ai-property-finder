@@ -28,7 +28,7 @@ Four rules shape everything below. They are decided in [[../../docs/adr/0025-haz
 - The data is **static**. It ships inside the backend binary and is cached in the database at boot. Nothing is fetched at runtime, and no request writes it.
 - Each rating names its **source** and how the source's own values became a number from 1 to 5.
 
-This spec covers the backend: data model, dataset files, sync, read API and the Portugal data (issue #44). The UI is issue #45. More countries and Agent-suggested sources are issue #46.
+This spec covers the backend: data model, dataset files, sync, read API and the Portugal data (issue #44), and the UI (issue #45, section "UI"). More countries and Agent-suggested sources are issue #46.
 
 ## Concepts
 
@@ -258,10 +258,26 @@ The Azores publish their own flood areas and landslide data through a regional g
 
 The scripts that produced the first dataset are not in the repository. They were a GIS overlay of the national maps with the CAOP boundaries. This spec lists every source, layer, class and threshold they used.
 
+## UI
+
+Frontend only. No backend change. Ratings are always shown **apart from the Score**, never added up or averaged (the four scales differ), and the copy says that they describe the region.
+
+**Finding the region of a Listing.** A Listing has no region key. `resolveHazardRegion` (`src/utils/hazard.ts`) matches the free-text `listing.region` against the region names from `GET /api/hazards/regions`:
+
+- Names ignore case, accents and hyphens. `listing.region` is split at `,` `;` `/` and the parts are tried from left to right (`Lisboa, Portugal`).
+- A recognised `listing.country` (`PT`, `Portugal`) limits the match to that country. No country: all countries.
+- A name that exists twice (`Lagoa`) is resolved only if the `parent_name` (district or island) appears in `listing.region` or `listing.address`. Otherwise the Listing has **no** region and shows no rating. The app does not guess.
+- A region that is not a municipality (`Alentejo`) does not match. The Listing shows no rating.
+
+`useListingHazards` (`src/composables/useListingHazards.ts`) loads the region list once, then `GET /api/hazards/regions/{key}` once per region used, and re-resolves a Listing when its region, country or address text changes. A failed request leaves the Listing without ratings; it raises no error.
+
+**Detail View** (`ListingHazards.vue`, section „Naturgefahren der Region“): a table of the four hazards, in the API order Waldbrand, Hochwasser, Erdbeben, Erdrutsch. Each row has a badge „3 – mittel“ (colour from green for 1 to dark red for 5) and the source publisher as a link. A tooltip shows the dataset and its `method`, that is, how the source's values became 1-5. A hazard without data says „Keine Daten für diese Region“. If the region is unknown, an empty state says so.
+
+**List View** (`ListingListTable.vue`): one column per hazard with a coloured badge holding the rating (`—` = none). Each column is sortable. A Listing without a rating sorts as 0, below „sehr niedrig“. Two filters, „Naturgefahr“ and „Einstufung höchstens“, keep Listings whose rating for that hazard is at most the chosen value. Like the numeric filters, a Listing without a rating for that hazard is hidden once both are set. There is no combined "risk" column, because it would mix the scales.
+
 ## Not in this spec
 
-- **The UI** (badges, sort and filter by risk, German copy): issue #45.
-- **Finding the region of a Listing.** A Listing has a free-text `region`, a `country` and coordinates. Nothing maps them to a region key yet. The search endpoint lets a client look up a key by name. See [[../../ideas]].
+- **Storing the region on the Listing.** The name match above is a stopgap. A stored key (`listing.hazard_region_key`), set by the Agent or by hand, would be exact. See [[../../ideas]].
 - **More countries** (Sweden, Austria) and **Agent-suggested sources**: issue #46.
 - **An Agent Tool or MCP tool** for hazard lookups: see [[../../ideas]].
 
@@ -269,4 +285,5 @@ The scripts that produced the first dataset are not in the repository. They were
 
 - `go test ./internal/hazard/` checks the shipped dataset (all 308 municipalities, the coverage rule, known answers) and every validation rule.
 - With `TEST_DATABASE_URL` set, `go test ./internal/db/ ./internal/service/ ./internal/api/` runs the migration constraints, the sync (idempotent, prunes, leaves other countries alone) and both endpoints.
+- `npm run test:run` covers the region matching (`src/utils/hazard.test.ts`), the hazard filter (`src/utils/listingFilters.test.ts`) and the badges (`ListingHazards.test.ts`, `ListingListTable.test.ts`).
 - By hand, after login: `curl -b cookies http://localhost:8080/api/hazards/regions/PT-1106` returns Lisboa with four ratings, and `.../regions?country=pt&q=lagoa` returns two regions.
