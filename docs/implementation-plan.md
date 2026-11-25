@@ -341,6 +341,14 @@ Spec: [[spec/01_mvp/01-14-external-evaluation-via-mcp]]. ADR: [[adr/0026-externa
   - Embedded catalogue per country (`internal/hazard/catalog`), validated against the datasets at boot. Table `hazard_source_suggestion`, Tool `suggest_hazard_source` (chat and MCP), review endpoints and the section „Naturgefahren-Quellen“ on `/context/global`. Spec 01-15, ADR 0027.
   - **Test:** `go test ./internal/hazard/ ./internal/agent/`; with `TEST_DATABASE_URL` also `./internal/service/ ./internal/api/`; `npm run test:run`.
 
+## Layer 10: Portal search
+
+Spec: [[spec/01_mvp/01-16-portal-search]]. ADR: [[adr/0028-portal-search-task-persistence]].
+
+- [x] **10.1 — `search_portal` Tool + resumable portal-search task** (#18)
+  - `TaskRepo` payload methods, `PortalSearchService` (`Start`, `Status`, `Recover`), Tool on the Agent registry and on MCP, preamble section, `Recover` call in `cmd/server/main.go`.
+  - **Test:** `go test ./internal/service/ ./internal/agent/` (the task rows need `TEST_DATABASE_URL`).
+
 ---
 
 ## Dependencies

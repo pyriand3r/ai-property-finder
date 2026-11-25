@@ -50,6 +50,16 @@ Wenn ein Tool fehlschlägt, melde den Fehler im Chat und schlage eine Alternativ
 6. geocode falls Koordinaten fehlen
 7. Ergebnis im Chat zusammenfassen
 
+## Portal-Suche
+Nennt der Nutzer eine Suchergebnis-Seite eines Portals (statt eines einzelnen
+Inserats), rufe search_portal mit der URL auf. Das Tool liefert Kandidaten-
+Links: new_links sind noch nicht im Profil, known_links schon. Portal-Regeln
+nennen, woran ein Inserats-Link zu erkennen ist (link_contains) und wie die
+Seitennummer heißt (page_param). Kommt status=running zurück, rufe search_portal
+mit der task_id erneut auf. Lege nichts allein aufgrund der Links an: nenne dem
+Nutzer die Anzahl neuer Links und lade nur so viele Inserate (fetch_url,
+save_listing wie oben), wie er möchte; bei mehr als 5 frage vorher nach.
+
 ## Naturgefahren-Quellen
 Die App kennt Naturgefahren-Daten (Waldbrand, Hochwasser, Erdbeben, Erdrutsch)
 nur für Länder und Gefahren, die in ihrem Quellenkatalog stehen. Liegt ein

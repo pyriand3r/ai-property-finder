@@ -97,6 +97,13 @@ func NewHandler(deps Deps) http.Handler {
 	}, updateContextHandler(deps))
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name: "search_portal",
+		Description: "Durchsucht die Suchergebnis-Seite(n) eines Portals und liefert die gefundenen Inserats-Links, getrennt in new_links (noch nicht im Profil) und known_links (source_url existiert schon). " +
+			"Mit url starten; die Suche läuft als Hintergrund-Task, übersteht einen Server-Neustart und ist nach ca. 30 s entweder fertig oder status=running — dann mit task_id erneut aufrufen. " +
+			"Mehrere Seiten über max_pages (höchstens 5) und page_param. link_contains filtert auf Inserats-Links. Die Links sind nur Kandidaten; angelegt wird mit fetch_url und save_listing.",
+	}, searchPortalHandler(deps))
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "geocode",
 		Description: "Löst eine Adresse in Koordinaten (Breitengrad/Längengrad) auf.",
 	}, geocodeHandler(deps))

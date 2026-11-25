@@ -48,6 +48,6 @@ There is no `task` table integration. There are no checkpoints in the middle of 
 ## Consequences
 
 - `internal/agent/loop.go` runs in a goroutine that is detached from the HTTP request lifecycle. The handler returns `202 Accepted` and the `chat_message.id` of the saved user message. The SSE stream then picks up the goroutine's output on its own.
-- Chat turns do not use the `task` table. The old `task` table stays only for Phase 3 automated recurring search. This is exactly where the predecessor project meant it to be used.
+- Chat turns do not use the `task` table. The `task` table is used for bulk re-evaluation and for portal searches. A portal search makes no LLM call, so it is resumed after a restart: see [[0028-portal-search-task-persistence]]. Chat turns stay unrecovered.
 - A server restart destroys turns that are in progress, with no recovery. We accept this because it is extremely rare on a single-user Docker Compose app.
 - The frontend needs exactly one new control: a retry button on messages where `role = 'user'` and no `role = 'assistant'` follow-up exists.

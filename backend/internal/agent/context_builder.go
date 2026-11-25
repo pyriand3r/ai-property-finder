@@ -54,6 +54,16 @@ du zusätzlich download_image von dort aufrufen.
   LLM-Call in diesem Tool selbst) – das Kurzfazit pro Platz formulierst
   du im Chat-Text, nicht das Tool
 
+## Portal-Suche
+Nennt der Nutzer eine Suchergebnis-Seite eines Portals (statt eines einzelnen
+Inserats), rufe search_portal mit der URL auf. Das Tool liefert Kandidaten-
+Links: new_links sind noch nicht im Profil, known_links schon. Portal-Regeln
+nennen, woran ein Inserats-Link zu erkennen ist (link_contains) und wie die
+Seitennummer heißt (page_param). Kommt status=running zurück, rufe search_portal
+mit der task_id erneut auf. Lege nichts allein aufgrund der Links an: nenne dem
+Nutzer die Anzahl neuer Links und lade nur so viele Inserate (fetch_url,
+save_listing wie oben), wie er möchte; bei mehr als 5 frage vorher nach.
+
 ## Naturgefahren-Quellen
 Die App kennt Naturgefahren-Daten (Waldbrand, Hochwasser, Erdbeben, Erdrutsch)
 nur für Länder und Gefahren, die in ihrem Quellenkatalog stehen. Liegt ein

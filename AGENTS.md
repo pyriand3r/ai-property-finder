@@ -41,9 +41,9 @@ Markdown **Context Files** (Global + per-Profile — the app's own AGENT.md equi
 instead of hardcoded per-portal scraper code. Every Agent-written field is also visible and independently
 editable in a plain form (ADR 0001) — the UI is never chat-only.
 
-**Build state**: all 10 layers (0–9) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
+**Build state**: all 11 layers (0–10) of `docs/implementation-plan.md`, plus the interstitial Review-Fixes
 (RF.1–RF.5) block, are checked off. The MVP is functionally complete per its own plan. Layer 9 (ADR 0026)
-lets an MCP client grade a Listing itself with no `CLAUDE_API_KEY`. Remaining work is
+lets an MCP client grade a Listing itself with no `CLAUDE_API_KEY`. Layer 10 (ADR 0028) adds the `search_portal` Tool. Remaining work is
 tracked as bugs in `docs/buglist.md` (3 open) and
 ideas in `docs/ideas.md` (8 open). UI copy is German (`index.html` is `lang="de"`).
 
@@ -111,6 +111,8 @@ fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-rating
 
 **Hazard sources are a catalogue** (ADR 0027): `internal/hazard/catalog/<country>.json` lists the known sources per country, `bundled` (named by `source_id` in the dataset; the loader checks both files agree) or `candidate` (a lead, not ingested). Adding a lead means editing one file. The Agent Tool `suggest_hazard_source` (also on MCP) only stores a `proposed` row in `hazard_source_suggestion`; the user approves or rejects it in the Global Context view. Approval does **not** ingest anything: ingestion stays a release step (a new dataset file). Spec: `docs/spec/01_mvp/01-15-hazard-source-catalogue.md`.
 
+**Portal searches are resumable tasks** (ADR 0028): the Tool `search_portal` (also on MCP) reads a portal search-result URL and returns candidate listing links, split into new and already-known ones; it creates no Listing. A search is a `task` row of type `portal.search`; `task.payload` holds the resumable state (next page, links found). `PortalSearchService.Recover` runs in `main` after the migrations and continues searches that were `running` at the last shutdown (max 3 times). This is the only task type that is resumed: it makes no LLM call, so a repeat costs nothing. Chat turns stay unrecovered (ADR 0008). Spec: `docs/spec/01_mvp/01-16-portal-search.md`.
+
 ### Key Architecture Decisions (`docs/adr/`)
 
 - **0001**: Chat is primary UI; plain form is mandatory fallback — not optional
@@ -142,6 +144,7 @@ fails `hazard.Parse` stops the boot. Spec: `docs/spec/01_mvp/01-13-hazard-rating
 - **0025**: Natural-hazard ratings are region-level, 1–5 (higher is worse), separate from the Score; static datasets embedded in the binary (`internal/hazard`) are synced into `hazard_*` tables at boot; read-only `GET /api/hazards/regions`
 - **0026**: MCP also lets an external client grade a Listing: `get_evaluation_brief` → `submit_evaluation` (+ `list_pending_evaluations`); server validates, computes the Score; internal evaluation unchanged; evaluation only (plan: layer 9, spec 01-14)
 - **0027**: Hazard sources are a declarative per-country catalogue (`bundled`/`candidate`); Agent and MCP only *suggest* sources (`suggest_hazard_source`, table `hazard_source_suggestion`), the user approves before ingestion; ingestion stays a release step (extends 0025)
+- **0028**: `search_portal` Tool; a portal search is a `task` row (`portal.search`) with a resumable payload, continued after a restart; narrows 0008 for this task type only
 
 0013/0014/0016/0017 together are the practical operating envelope for anyone touching `internal/agent/loop.go`.
 
@@ -158,7 +161,7 @@ backend/
     │                 #   writeError/writeJSON/decodeJSON/parseUUID
     ├── service/      # business logic, one service per concern (agent, chat, listing, profile,
     │                 #   criterion, evaluation, ranking, rejection_analysis, image, note, context,
-    │                 #   upload, tool_call, hazard, hazard_source)
+    │                 #   upload, tool_call, hazard, hazard_source, portal_search)
     ├── domain/       # types.go — shared structs + domain error types (Validation/NotFound/Conflict/Upstream)
     ├── db/           # querier.go (pgx pool/tx abstraction), db.go, migrations/ (golang-migrate, forward-only),
     │                 #   dbtest/ (throwaway Postgres for integration tests, needs TEST_DATABASE_URL)
@@ -488,9 +491,9 @@ PDFs and listing images).
 - **Agent** — the LLM running a multi-turn tool-use loop inside a Chat Session (avoid "Assistant/bot").
 - **Tool** — a typed function the Agent calls mid-turn: `fetch_url`, `save_listing`, `download_image`,
   `evaluate_listing`, `geocode`, `compute_ranking`, `read_pdf`, `propose_criteria`, `update_context`,
-  `list_profile_listings`, `suggest_hazard_source`. The same catalog (plus `list_profiles` for discovery) is also reachable
+  `list_profile_listings`, `suggest_hazard_source`, `search_portal`. The same catalog (plus `list_profiles` for discovery) is also reachable
   outside a chat session via the MCP interface at `POST /mcp` (docs/adr/0019). MCP additionally has
-  `list_pending_evaluations`, `get_evaluation_brief`, `submit_evaluation` (14 tools in total): an external
+  `list_pending_evaluations`, `get_evaluation_brief`, `submit_evaluation` (15 tools in total): an external
   client grades a Listing itself and needs no LLM key (docs/adr/0026, spec 01-14).
 - **Context File** — persistent Markdown steering Agent behavior (avoid "Prompt"). Two scopes: **Global**
   (app-wide) and **Profile** (per-Search-Profile; overrides Global).

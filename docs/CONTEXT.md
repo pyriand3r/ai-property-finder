@@ -102,6 +102,10 @@ _Avoid_: Source list, source registry
 A hazard data source the Agent or an MCP client proposed through `suggest_hazard_source`, stored as `proposed`. The user approves or rejects it in the Global Context view. Approval clears the source for ingestion in a later release. It does not create ratings.
 _Avoid_: Source proposal (a Criterion has a proposal, see [[#Proposed Criterion]]), source request
 
+**Portal Search**:
+One run of the `search_portal` Tool over a portal search-result URL (one or more result pages). It returns candidate Listing links, split into new and known (a Listing of the profile already has that `source_url`). It creates no Listing. It is stored as a `task` row of type `portal.search` and continued after a restart. See [[spec/01_mvp/01-16-portal-search]] and [[adr/0028-portal-search-task-persistence]].
+_Avoid_: Crawl, scrape, Portal (a Portal Rule is a Context File fragment, see [[#Portal Rule]])
+
 ## Carried over unchanged from the predecessor project
 
 Criterion, Objective/Subjective Criterion, Weight, Evaluation, Grade, Score, Status, Letztkontakt, Rejection, Property. They keep the meaning they had in the predecessor project. They are not repeated here, so that two copies do not drift apart.

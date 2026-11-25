@@ -601,3 +601,66 @@ func TestDispatch_SuggestHazardSource_ServiceErrorReachesTheModel(t *testing.T) 
 		t.Errorf("result = %s (isError %v), want the service's message as an error", result, isError)
 	}
 }
+
+type fakePortalSearcher struct {
+	started domain.PortalSearchRequest
+	status  uuid.UUID
+	profile uuid.UUID
+	err     error
+}
+
+func (f *fakePortalSearcher) Start(_ context.Context, profileID uuid.UUID, request domain.PortalSearchRequest) (*domain.PortalSearch, error) {
+	f.started, f.profile = request, profileID
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &domain.PortalSearch{TaskID: uuid.New(), Status: domain.TaskStatusRunning, URL: request.URL, NewLinks: []string{"https://p.test/1"}}, nil
+}
+
+func (f *fakePortalSearcher) Status(_ context.Context, profileID, taskID uuid.UUID) (*domain.PortalSearch, error) {
+	f.status, f.profile = taskID, profileID
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &domain.PortalSearch{TaskID: taskID, Status: domain.TaskStatusSucceeded}, nil
+}
+
+// TestDispatch_SearchPortal_StartsWithURLAndReadsBackWithTaskID: the same
+// Tool starts a search and polls it, both scoped to the turn's profile.
+func TestDispatch_SearchPortal_StartsWithURLAndReadsBackWithTaskID(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+	searcher := &fakePortalSearcher{}
+	registry.PortalSearch = searcher
+
+	result, isError := dispatchText(registry, ToolCall{Name: "search_portal", Arguments: json.RawMessage(
+		`{"url":"https://p.test/s","max_pages":3,"page_param":"page","link_contains":"/bostad/"}`)})
+	if isError || !strings.Contains(result, "https://p.test/1") {
+		t.Fatalf("start: result = %s (isError %v)", result, isError)
+	}
+	want := domain.PortalSearchRequest{URL: "https://p.test/s", MaxPages: 3, PageParam: "page", LinkContains: "/bostad/"}
+	if searcher.started != want || searcher.profile != registry.ProfileID {
+		t.Errorf("service got %+v for profile %s, want %+v for the registry's profile", searcher.started, searcher.profile, want)
+	}
+
+	taskID := uuid.New()
+	result, isError = dispatchText(registry, ToolCall{Name: "search_portal", Arguments: json.RawMessage(`{"task_id":"` + taskID.String() + `"}`)})
+	if isError || searcher.status != taskID || !strings.Contains(result, "succeeded") {
+		t.Errorf("read back: result = %s (isError %v), service asked for %s", result, isError, searcher.status)
+	}
+}
+
+func TestDispatch_SearchPortal_BadInputReachesTheModelAsToolError(t *testing.T) {
+	registry := newTestRegistry(t, newFakeListingWriter(), &fakeImageWriter{})
+	registry.PortalSearch = &fakePortalSearcher{err: &domain.ValidationError{Field: "page_param", Message: "page_param ist bei max_pages > 1 erforderlich"}}
+
+	for name, args := range map[string]string{
+		"neither url nor task_id": `{}`,
+		"bad task_id":             `{"task_id":"nope"}`,
+		"service validation":      `{"url":"https://p.test/s","max_pages":2}`,
+	} {
+		result, isError := dispatchText(registry, ToolCall{Name: "search_portal", Arguments: json.RawMessage(args)})
+		if !isError || !strings.Contains(result, "error") {
+			t.Errorf("%s: result = %s (isError %v), want a tool error", name, result, isError)
+		}
+	}
+}

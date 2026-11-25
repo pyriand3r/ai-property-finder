@@ -184,12 +184,16 @@ type ListingNote struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// TaskType enumerates the kinds of background tasks the app can run. Only
-// bulk re-evaluation exists so far (spec 01-04 Layer 2.3, ADR 0015); chat
+// TaskType enumerates the kinds of background tasks the app can run: bulk
+// re-evaluation (spec 01-04 Layer 2.3, ADR 0015) and portal search (spec
+// 01-16, ADR 0028, the only type that is resumed after a restart). Chat
 // turns are fire-and-forget instead (ADR 0008) and don't use this table.
 type TaskType string
 
-const TaskTypeListingsReevaluateAll TaskType = "listings.reevaluate_all"
+const (
+	TaskTypeListingsReevaluateAll TaskType = "listings.reevaluate_all"
+	TaskTypePortalSearch          TaskType = "portal.search"
+)
 
 // TaskStatus is the lifecycle state of a Task row. There is no "queued"
 // state here — a Task starts "running" the moment its goroutine is
@@ -532,3 +536,28 @@ type UpstreamError struct {
 }
 
 func (err *UpstreamError) Error() string { return err.Message }
+
+// PortalSearchRequest is the input of the search_portal Tool (spec 01-16).
+// Page 1 is URL as given; page N > 1 is URL with the query parameter
+// PageParam set to N, so MaxPages > 1 needs a PageParam.
+type PortalSearchRequest struct {
+	URL          string
+	PageParam    string
+	MaxPages     int
+	LinkContains string
+}
+
+// PortalSearch is the state of one portal search as the Agent sees it: the
+// task row plus the links collected so far. NewLinks are links that are no
+// Listing source_url of the profile yet; KnownLinks already are.
+type PortalSearch struct {
+	TaskID     uuid.UUID  `json:"task_id"`
+	Status     TaskStatus `json:"status"`
+	URL        string     `json:"url"`
+	PagesDone  int        `json:"pages_done"`
+	MaxPages   int        `json:"max_pages"`
+	NewLinks   []string   `json:"new_links"`
+	KnownLinks []string   `json:"known_links"`
+	StopReason string     `json:"stop_reason,omitempty"`
+	Error      *string    `json:"error,omitempty"`
+}
