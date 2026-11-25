@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"propertyfinder/internal/agent"
 	"propertyfinder/internal/agent/provider/claude"
+	"propertyfinder/internal/agent/provider/openai"
 	"propertyfinder/internal/ai"
 	"propertyfinder/internal/config"
 	"propertyfinder/internal/domain"
@@ -186,8 +187,12 @@ func validate(cfg config.LLM, update Update) error {
 	if update.APIKey != nil && cfg.APIKey == "" {
 		return &domain.ValidationError{Field: "api_key", Message: "API-Key darf nicht leer sein (zum Beibehalten das Feld weglassen)"}
 	}
-	if _, ok := FindProvider(cfg.Provider); !ok {
+	info, ok := FindProvider(cfg.Provider)
+	if !ok {
 		return &domain.ValidationError{Field: "provider", Message: fmt.Sprintf("Unbekannter Provider %q (verfügbar: %s)", cfg.Provider, strings.Join(providerIDs(), ", "))}
+	}
+	if info.RequiresBaseURL && cfg.BaseURL == "" {
+		return &domain.ValidationError{Field: "base_url", Message: fmt.Sprintf("Base URL ist für %s erforderlich (z. B. %s)", info.Label, info.DefaultBaseURL)}
 	}
 	if cfg.Model == "" {
 		return &domain.ValidationError{Field: "model", Message: "Modell darf nicht leer sein"}
@@ -243,18 +248,33 @@ func buildSnapshot(cfg config.LLM) (*Snapshot, error) {
 }
 
 // newAgentProvider resolves the multi-turn agent.Provider (ADR 0007) from
-// cfg, mirroring ai.NewProvider's gating: an empty API key or a non-Claude
-// provider value (lmstudio/opencode reserved, ADR 0006) yields the
-// unconfigured stand-in instead of a Provider that would fail on every call
-// anyway.
+// cfg, mirroring ai.NewProvider's gating: Claude without an API key and an
+// OpenAI-compatible provider (lmstudio/opencode, ADR 0030) without a base
+// URL yield the unconfigured stand-in instead of a Provider that would fail
+// on every call anyway.
 func newAgentProvider(cfg config.LLM) agent.Provider {
-	if strings.ToLower(strings.TrimSpace(cfg.Provider)) != "claude" || strings.TrimSpace(cfg.APIKey) == "" {
+	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
+	case "claude":
+		if strings.TrimSpace(cfg.APIKey) == "" {
+			return agent.NewUnconfiguredProvider()
+		}
+		return claude.New(claude.Config{
+			APIKey:         cfg.APIKey,
+			BaseURL:        cfg.BaseURL,
+			Model:          cfg.Model,
+			TimeoutSeconds: cfg.TimeoutSeconds,
+		})
+	case "lmstudio", "opencode":
+		if strings.TrimSpace(cfg.BaseURL) == "" {
+			return agent.NewUnconfiguredProvider()
+		}
+		return openai.New(openai.Config{
+			BaseURL:        cfg.BaseURL,
+			APIKey:         cfg.APIKey,
+			Model:          cfg.Model,
+			TimeoutSeconds: cfg.TimeoutSeconds,
+		})
+	default:
 		return agent.NewUnconfiguredProvider()
 	}
-	return claude.New(claude.Config{
-		APIKey:         cfg.APIKey,
-		BaseURL:        cfg.BaseURL,
-		Model:          cfg.Model,
-		TimeoutSeconds: cfg.TimeoutSeconds,
-	})
 }

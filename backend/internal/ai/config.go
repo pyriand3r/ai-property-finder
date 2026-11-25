@@ -10,7 +10,7 @@ import (
 // import internal/config so the provider abstraction stays dependency-free
 // of the bootstrap layer.
 type Config struct {
-	Provider          string // "claude" | "" (unconfigured); "lmstudio"/"opencode" reserved (ADR 0006)
+	Provider          string // "claude" | "lmstudio" | "opencode" | "" (unconfigured); the last two are OpenAI-compatible (ADR 0030)
 	APIKey            string
 	BaseURL           string
 	Model             string
@@ -38,18 +38,21 @@ func (c Config) reasoningLanguage() string {
 }
 
 const (
-	providerClaude = "claude"
+	providerClaude   = "claude"
+	providerLMStudio = "lmstudio"
+	providerOpenCode = "opencode"
 
 	defaultTimeoutSeconds    = 30
 	defaultReasoningLanguage = "de"
 )
 
 // NewProvider selects and constructs the active Provider from cfg. An empty
-// provider, an unconfigured Claude provider (no API key), or a
-// reserved-but-unimplemented value (lmstudio/opencode, ADR 0006) all yield
-// the unconfigured provider, whose operations fail fast with
-// ErrNotConfigured instead of crashing. A truly unknown provider string is
-// an error so a typo surfaces at startup.
+// provider, an unconfigured Claude provider (no API key), or an
+// OpenAI-compatible provider (lmstudio/opencode, ADR 0030) without a base URL
+// yields the unconfigured provider, whose operations fail fast with
+// ErrNotConfigured instead of crashing. An unknown provider string is an
+// error so a typo surfaces at startup. LM Studio and OpenCode need no API
+// key here: a local server has none, and the key is sent only when set.
 func NewProvider(cfg Config) (Provider, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
 	case "":
@@ -59,8 +62,11 @@ func NewProvider(cfg Config) (Provider, error) {
 			return &unconfiguredProvider{}, nil
 		}
 		return newClaudeProvider(cfg), nil
-	case "lmstudio", "opencode":
-		return &unconfiguredProvider{}, nil
+	case providerLMStudio, providerOpenCode:
+		if strings.TrimSpace(cfg.BaseURL) == "" {
+			return &unconfiguredProvider{}, nil
+		}
+		return newOpenAIProvider(cfg), nil
 	default:
 		return nil, &UnknownProviderError{Provider: cfg.Provider}
 	}

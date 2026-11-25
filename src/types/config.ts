@@ -18,6 +18,10 @@ export interface ProviderInfo {
   label: string;
   models: string[];
   requires_base_url: boolean;
+  /** Typical endpoint, shown as placeholder only — never applied automatically. */
+  default_base_url: string;
+  /** False for providers that run without a key (local LM Studio). */
+  requires_api_key: boolean;
 }
 
 /** Mirrors GET/PATCH /api/config. */

@@ -11,7 +11,7 @@ tags:
 
 ## Status
 
-Accepted. It affects [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#Provider Abstraction]] and [[../../spec.md#Tech Stack]]. (2026-07-29: We considered switching the POC provider to OpenCode and rejected it. Feasibility and tool-use reliability favour Claude. This decision stays as it is.)
+Accepted. It affects [[../../spec/00_infrastructure_setup/00-03-llm-agent-integration#Provider Abstraction]] and [[../../spec.md#Tech Stack]]. (2026-11-25: LM Studio and OpenCode are now implemented, see [[0030-openai-compatible-agent-provider]]. The MVP decision below stays as the record of why they came later.) (2026-07-29: We considered switching the POC provider to OpenCode and rejected it. Feasibility and tool-use reliability favour Claude. This decision stays as it is.)
 
 ## Context
 

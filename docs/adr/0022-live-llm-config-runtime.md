@@ -53,7 +53,8 @@ API key or roundtrip budget meant editing the DB by hand. Both providers (`ai.Pr
 
 - Edits made directly in SQL are not picked up by the running process. The next `PATCH` merges on top of
   them. A restart also loads them.
-- Adding LM Studio / OpenCode means adding an entry to `llm.Providers()` and a branch in
-  `llm.buildSnapshot`. No frontend change.
+- Adding a provider means adding an entry to `llm.Providers()` and a branch in
+  `llm.buildSnapshot`. No frontend change beyond the generic Base URL / API-key hints (LM Studio and
+  OpenCode were added this way, ADR 0030).
 - The `ai.Provider` instance inside a `Snapshot` is rebuilt on every change. This is cheap (SDK client
   construction only).

@@ -3,9 +3,8 @@ package llm
 import "strings"
 
 // ProviderInfo describes one selectable LLM provider. The Settings UI is
-// driven by this list (GET /api/config), so adding a provider (LM Studio /
-// OpenCode, ADR 0006) means adding an entry here plus its implementation —
-// no frontend change.
+// driven by this list (GET /api/config), so adding a provider means adding
+// an entry here plus its implementation — no frontend change.
 type ProviderInfo struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
@@ -16,10 +15,17 @@ type ProviderInfo struct {
 	// RequiresBaseURL is true when the provider has no built-in endpoint.
 	// For claude the Base URL is optional (proxy/gateway override).
 	RequiresBaseURL bool `json:"requires_base_url"`
+	// DefaultBaseURL is a typical endpoint, shown as the Base URL
+	// placeholder. It is never applied implicitly: a switch of provider
+	// must not silently talk to an address the user did not enter.
+	DefaultBaseURL string `json:"default_base_url"`
+	// RequiresAPIKey is false for providers that run without a key (a local
+	// LM Studio server). The key is still sent when one is set.
+	RequiresAPIKey bool `json:"requires_api_key"`
 }
 
-// providers is the catalog of implemented providers (Claude only until the
-// LM Studio/OpenCode work lands, ADR 0006).
+// providers is the catalog of implemented providers: Claude, plus the two
+// OpenAI-compatible backends of ADR 0030.
 var providers = []ProviderInfo{
 	{
 		ID:    "claude",
@@ -30,6 +36,22 @@ var providers = []ProviderInfo{
 			"claude-sonnet-4-5",
 			"claude-haiku-4-5",
 		},
+		RequiresAPIKey: true,
+	},
+	{
+		ID:              "lmstudio",
+		Label:           "LM Studio (lokal)",
+		Models:          []string{},
+		RequiresBaseURL: true,
+		DefaultBaseURL:  "http://localhost:1234/v1",
+	},
+	{
+		ID:              "opencode",
+		Label:           "OpenCode",
+		Models:          []string{},
+		RequiresBaseURL: true,
+		DefaultBaseURL:  "https://opencode.ai/zen/v1",
+		RequiresAPIKey:  true,
 	},
 }
 
@@ -37,7 +59,8 @@ var providers = []ProviderInfo{
 func Providers() []ProviderInfo {
 	result := make([]ProviderInfo, len(providers))
 	for index, info := range providers {
-		info.Models = append([]string(nil), info.Models...)
+		// Never nil: the Settings UI reads this as an array.
+		info.Models = append(make([]string, 0, len(info.Models)), info.Models...)
 		result[index] = info
 	}
 	return result

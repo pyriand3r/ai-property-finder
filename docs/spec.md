@@ -98,7 +98,7 @@ The user can see and edit every field the Agent fills in. A plain detail form sh
 - No authentication required
 - Deployment with Docker Compose
 - All code, comments, API fields and documentation are in English. The UI language is German
-- The AI integration is built around the agentic tool use and native PDF input of the Claude API. The provider abstraction stays. Support for LM Studio and OpenCode is postponed (see Tech Stack)
+- The AI integration is built around the agentic tool use and native PDF input of the Claude API. The provider abstraction stays. LM Studio and OpenCode are supported through one OpenAI-compatible provider, without PDF and image input (see Tech Stack, ADR 0030)
 - The user can edit every field the Agent writes. No field is chat-only
 
 ---

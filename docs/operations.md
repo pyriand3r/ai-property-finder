@@ -74,6 +74,13 @@ Edit them in the web UI: **Einstellungen** (`/settings`, link on the profile lis
 change is possible with `PATCH /api/config`. The API key is write-only. No endpoint ever returns
 it. `GET /api/config` only returns `api_key_configured: true/false`.
 
+For **LM Studio** (local server) or **OpenCode**, choose the provider, enter the Base URL with the
+version prefix (LM Studio: `http://localhost:1234/v1`, OpenCode Zen: `https://opencode.ai/zen/v1`) and
+the model ID as the server names it. The API key is optional for LM Studio. These providers cannot
+read PDFs or images; the Agent reports a linked PDF as an error. How well the Agent works depends on
+the model's tool-use quality (docs/adr/0030). Inside Docker, `localhost` is the container, so use
+`http://host.docker.internal:1234/v1` or the host's LAN address for LM Studio.
+
 You do **not** need to restart the backend. A change applies to the next chat turn and the next
 evaluation. A turn that is already running keeps its old settings (docs/adr/0022).
 
