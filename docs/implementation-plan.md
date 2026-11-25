@@ -353,6 +353,10 @@ Spec: [[spec/01_mvp/01-16-portal-search]], [[spec/01_mvp/01-17-scheduled-searche
   - Migration 000007 `saved_search`, `SavedSearchRepo`, `SavedSearchService` (CRUD, `RunNow`, `RunDue`, `RunScheduler`, `Recover`), `PortalSearchService.Run`, `AgentService.SendToActiveSession`, REST routes, scheduler started in `cmd/server/main.go`, tab „Suchen“ in the profile. Spec 01-17, ADR 0029.
   - **Test:** `go test ./internal/service/ ./internal/api/` (needs `TEST_DATABASE_URL`); `npm run test:run`.
 
+- [x] **10.3 — Batch ingestion of several URLs in one message** (#20)
+  - Preamble section „Mehrere Links in einer Nachricht“ and `MaxBatchListingsPerTurn` in `internal/agent/context_builder.go`; spec 01-03 (section Batch Ingestion) and 00-04. No new Tool, no schema change.
+  - **Test:** `go test ./internal/agent/`.
+
 ---
 
 ## Dependencies
